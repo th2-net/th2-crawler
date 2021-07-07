@@ -13,28 +13,34 @@ The Crawler processes the data starting from this point in time. **Required para
 **to: _2021-06-17T14:00:00.00Z_** - the higher boundary for processing interval of time.
 The Crawler does not process the data after this point in time. **If it is not set the Crawler will work until it is stopped.**
 
-**type: _EVENTS_** - the type of data the Crawler processes. Allowed values are **EVENTS**, **MESSAGES**
+**type: _EVENTS_** - the type of data the Crawler processes. Allowed values are **EVENTS**, **MESSAGES**. The default value is **EVENTS**.
 
 **name: _CrawlerName_** - the Crawler's name to allow data service to identify it. **Required parameter**
 
 **defaultLength: _PT10M_** - the step that the Crawler will use to create intervals.
-It uses the Java Duration format. You can read more about it [here](https://docs.oracle.com/javase/8/docs/api/java/time/Duration.html#parse-java.lang.CharSequence-)
+It uses the Java Duration format. You can read more about it [here](https://docs.oracle.com/javase/8/docs/api/java/time/Duration.html#parse-java.lang.CharSequence-).
+The default value is **PT1H**.
 
 **lastUpdateOffset: _10_** - the timeout to check previously processed intervals.
-Works only if the higher boundary (**to** parameter is set)
+Works only if the higher boundary (**to** parameter is set). The default value is **1**
 
 **lastUpdateOffsetUnit: _HOURS_** - the time unit for **lastUpdateOffset** parameter.
-Allowed values are described [here](https://docs.oracle.com/en/java/javase/11/docs/api/java.base/java/time/temporal/ChronoUnit.html) in **Enum Constants** block
+Allowed values are described [here](https://docs.oracle.com/en/java/javase/11/docs/api/java.base/java/time/temporal/ChronoUnit.html) in **Enum Constants** block.
+The default value is **HOURS**
 
 **delay: _10_** - the delay in seconds between the Crawler has processed the current interval and starts processing the next one.
+The default value is **10**
 
-**batchSize: 500** - the size of data chunks the Crawler requests from the data provider and feeds to the data service
+**batchSize: 500** - the size of data chunks the Crawler requests from the data provider and feeds to the data service.
+The default value is **300**
 
 **toLag: _5_** - the offset from the real time. When the interval's higher bound is greater than the **current time - toLag**
-the Crawler will wait until the interval's end is less than **current time - toLag**
+the Crawler will wait until the interval's end is less than **current time - toLag**.
+The default value is **1**.
 
 **toLagOffsetUnit: _MINUTES_** - the time unit for **toLag** parameter.
-Allowed values are described [here](https://docs.oracle.com/en/java/javase/11/docs/api/java.base/java/time/temporal/ChronoUnit.html) in **Enum Constants** block
+Allowed values are described [here](https://docs.oracle.com/en/java/javase/11/docs/api/java.base/java/time/temporal/ChronoUnit.html) in **Enum Constants** block.
+The default value is **HOURS**.
 
 ## Example of infra-schema
 

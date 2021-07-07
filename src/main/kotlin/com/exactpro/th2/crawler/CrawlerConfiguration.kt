@@ -35,7 +35,7 @@ class CrawlerConfiguration(
     @JsonProperty
     val lastUpdateOffsetUnit: ChronoUnit = ChronoUnit.HOURS,
     @JsonProperty
-    val delay: Long = 100000,
+    val delay: Long = 10,
     @JsonProperty
     val batchSize: Int = 300,
     @JsonProperty
