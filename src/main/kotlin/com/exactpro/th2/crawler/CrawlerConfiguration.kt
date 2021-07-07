@@ -27,8 +27,6 @@ class CrawlerConfiguration(
     @JsonProperty
     val name: String,
     @JsonProperty
-    val version: String,
-    @JsonProperty
     val type: String = "EVENTS",
     @JsonProperty
     val defaultLength: String = "PT1H",
@@ -44,4 +42,4 @@ class CrawlerConfiguration(
     val toLag: Int = 1,
     @JsonProperty
     val toLagOffsetUnit: ChronoUnit = ChronoUnit.HOURS
-        )
+)

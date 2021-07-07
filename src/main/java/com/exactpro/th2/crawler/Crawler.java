@@ -414,7 +414,7 @@ public class Crawler {
             }
 
 
-            if ((!interval.isProcessed() || lastUpdateCheck) && foundInterval == null) {
+            if (!floatingToTime && (!interval.isProcessed() || lastUpdateCheck) && foundInterval == null) {
 
                 if (interval.isProcessed()) {
                     interval = intervalsWorker.setIntervalProcessed(interval, false);

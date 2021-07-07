@@ -1,58 +1,66 @@
-# Overview
-This component sends events/messages to data services for processing. It takes events/messages from 
-time intervals via rpt-data-provider. Those intervals are processed periodically, and new ones are 
-written to Cradle if necessary. 
+# Crawler (0.0.1)
 
-# Configuration
+## Overview
+This component sends events/messages to data services for further processing.
+It requests events/messages for the certain time intervals using rpt-data-provider.
+Those intervals are processed periodically, and new ones are written to Cradle if necessary. 
 
-from: start time (e.g. 2021-06-16T12:00:00.00Z)
+## Configuration parameters
 
-to: end time (e.g. 2021-06-17T14:00:00.00Z)
+**from: _2021-06-16T12:00:00.00Z_** - the lower boundary for processing interval of time.
+The Crawler processes the data starting from this point in time. **Required parameter**
 
-name: name of Crawler (e.g. CommonCrawler)
+**to: _2021-06-17T14:00:00.00Z_** - the higher boundary for processing interval of time.
+The Crawler does not process the data after this point in time. **If it is not set the Crawler will work until it is stopped.**
 
-version: version of Crawler (e.g. v1.2)
+**type: _EVENTS_** - the type of data the Crawler processes. Allowed values are **EVENTS**, **MESSAGES**
 
-defaultLength: length of new intervals that will be written to Cradle (e.g. PT1H)
+**name: _CrawlerName_** - the Crawler's name to allow data service to identify it. **Required parameter**
 
-lastUpdateOffset: time that is supposed to pass since the last processing (e.g. 1)
+**defaultLength: _PT10M_** - the step that the Crawler will use to create intervals.
+It uses the Java Duration format. You can read more about it [here](https://docs.oracle.com/javase/8/docs/api/java/time/Duration.html#parse-java.lang.CharSequence-)
 
-offsetUnit: time unit of lastUpdateOffset (e.g. HOURS)
+**lastUpdateOffset: _10_** - the timeout to check previously processed intervals.
+Works only if the higher boundary (**to** parameter is set)
 
-delay: delay between processing of intervals in seconds (e.g. 100)
+**lastUpdateOffsetUnit: _HOURS_** - the time unit for **lastUpdateOffset** parameter.
+Allowed values are described [here](https://docs.oracle.com/en/java/javase/11/docs/api/java.base/java/time/temporal/ChronoUnit.html) in **Enum Constants** block
 
-batchSize: size of batches that Crawler will take from rpt-data-provider and send to a data-service. (e.g. 500)
+**delay: _10_** - the delay between the Crawler has processed the current interval and starts processing the next one.
 
-toLag: lag of the end time of Crawler (e.g. 30)
+**batchSize: 500** - the size of data chunks the Crawler requests from the data provider and feeds to the data service
 
-toLagOffsetUnit: time unit of toLag (e.g. MINUTES)
+**toLag: _5_** - the offset from the real time. When the interval's higher bound is greater than the **current time - toLag**
+the Crawler will wait until the interval's end is less than **current time - toLag**
 
-# Example of infra-schema
+**toLagOffsetUnit: _MINUTES_** - the time unit for **toLag** parameter.
+Allowed values are described [here](https://docs.oracle.com/en/java/javase/11/docs/api/java.base/java/time/temporal/ChronoUnit.html) in **Enum Constants** block
+
+## Example of infra-schema
 
 schema component description example (crawler.yml):
 
-```
+```yaml
 apiVersion: th2.exactpro.com/v1
 kind: Th2Box
 metadata:
     name: crawler
 spec:
-    image-name: nexus.exactpro.com:9000/th2-crawler
-    image-version: 1.0.0
+    image-name: ghcr.io/th2-net/th2-crawler
+    image-version: <verison>
     type: th2-conn
     custom-config:
         from: 2021-06-16T12:00:00.00Z
         to: 2021-06-16T20:00:00.00Z
         name: test-crawler
-        version: v1.2
         type: EVENTS
         defaultLength: PT1H
         lastUpdateOffset: 2
-        offsetUnit: HOURS
-        delay: 100000
-        batchSize: 200
-        toLag: 1
-        toLagOffsetUnit: HOURS
+        lastUpdateOffsetUnit: HOURS
+        delay: 10
+        batchSize: 300
+        toLag: 5
+        toLagOffsetUnit: MINUTES
     pins:
       - name: to_data_provider
         connection-type: grpc
@@ -70,6 +78,6 @@ spec:
         cpu: 50m
 ```
 
-## Important notes
+### Important notes
 
 Crawler takes events/messages from intervals with startTimestamps >= "from" and < "to" of intervals.
