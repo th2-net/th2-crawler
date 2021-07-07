@@ -18,6 +18,7 @@
 
 package com.exactpro.th2.crawler.main
 
+import com.exactpro.cradle.utils.UpdateNotAppliedException
 import com.exactpro.th2.crawler.Crawler
 import com.exactpro.th2.common.metrics.liveness
 import com.exactpro.th2.common.metrics.readiness
@@ -107,7 +108,7 @@ fun main(args: Array<String>) {
     } catch (ex: UnexpectedDataServiceException) {
         LOGGER.info("Data service changed its name and/or version", ex)
         exitProcess(0)
-    } catch (ex: FailedUpdateException) {
+    } catch (ex: UpdateNotAppliedException) {
         LOGGER.info("Failed to update some fields of table with intervals", ex)
         exitProcess(0)
     } catch (ex: Exception) {

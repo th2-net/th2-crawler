@@ -100,7 +100,7 @@ public class Crawler {
         this.sleepTime = configuration.getDelay() * 1000;
     }
 
-    public void start() throws InterruptedException, IOException, UnexpectedDataServiceException, FailedUpdateException {
+    public void start() throws InterruptedException, IOException, UnexpectedDataServiceException {
         String name = configuration.getName();
         String type = configuration.getType();
         int batchSize = configuration.getBatchSize();
@@ -151,12 +151,7 @@ public class Crawler {
                 restartPod = report.action == CrawlerAction.STOP;
 
                 if (report.action == CrawlerAction.NONE) {
-                    boolean setProcessed = intervalsWorker.setIntervalProcessed(interval, true);
-
-                    if (!setProcessed) {
-                        throw new FailedUpdateException("Failed to set \"processed\" flag of interval from "
-                                +interval.getStartTime()+", to"+interval.getEndTime()+" to true");
-                    }
+                    interval = intervalsWorker.setIntervalProcessed(interval, true);
 
                     RecoveryState previousState = interval.getRecoveryState();
 
@@ -167,12 +162,7 @@ public class Crawler {
                                 numberOfEvents,
                                 previousState.getLastNumberOfMessages());
 
-                        boolean updateState = intervalsWorker.updateRecoveryState(interval, state);
-
-                        if (!updateState) {
-                            throw new FailedUpdateException("Failed to update recovery state of interval from "
-                                    +interval.getStartTime()+", to"+interval.getEndTime());
-                        }
+                        interval = intervalsWorker.updateRecoveryState(interval, state);
                     }
 
                     numberOfEvents = 0L;
@@ -193,7 +183,7 @@ public class Crawler {
         }
     }
 
-    private SendingReport sendEvents(CrawlerId crawlerId, DataServiceInfo dataServiceInfo, int batchSize, EventID startId) throws IOException, FailedUpdateException {
+    private SendingReport sendEvents(CrawlerId crawlerId, DataServiceInfo dataServiceInfo, int batchSize, EventID startId) throws IOException {
         EventResponse response;
         EventID resumeId = startId;
         boolean search = true;
@@ -279,12 +269,7 @@ public class Crawler {
                             numberOfEvents,
                             oldState.getLastNumberOfMessages());
 
-                    boolean updateState = intervalsWorker.updateRecoveryState(interval, newState);
-
-                    if (!updateState) {
-                        throw new FailedUpdateException("Failed to update recovery state of interval from "
-                                +interval.getStartTime()+", to"+interval.getEndTime());
-                    }
+                    interval = intervalsWorker.updateRecoveryState(interval, newState);
                 }
             }
 
@@ -294,7 +279,7 @@ public class Crawler {
         return new SendingReport(CrawlerAction.NONE, dataServiceName, dataServiceVersion);
     }
 
-    private SendingReport sendMessages(CrawlerId crawlerId, DataServiceInfo dataServiceInfo, int batchSize) throws IOException, FailedUpdateException {
+    private SendingReport sendMessages(CrawlerId crawlerId, DataServiceInfo dataServiceInfo, int batchSize) throws IOException {
         MessageID resumeId = null;
         MessageResponse response;
         boolean search = true;
@@ -390,12 +375,7 @@ public class Crawler {
                             oldState.getLastNumberOfEvents(),
                             numberOfMessages);
 
-                    boolean updateState = intervalsWorker.updateRecoveryState(interval, newState);
-
-                    if (!updateState) {
-                        throw new FailedUpdateException("Failed to update recovery state of interval from "
-                                +interval.getStartTime()+", to"+interval.getEndTime());
-                    }
+                    interval = intervalsWorker.updateRecoveryState(interval, newState);
                 }
             }
 
@@ -420,7 +400,7 @@ public class Crawler {
         }
     }
 
-    private GetIntervalReport getInterval(Iterable<Interval> intervals) throws IOException, FailedUpdateException {
+    private GetIntervalReport getInterval(Iterable<Interval> intervals) throws IOException {
         Interval lastInterval = null;
         Interval foundInterval = null;
         long intervalsNumber = 0;
@@ -439,12 +419,7 @@ public class Crawler {
             if ((!interval.isProcessed() || lastUpdateCheck) && foundInterval == null) {
 
                 if (interval.isProcessed()) {
-                    boolean setProcessed = intervalsWorker.setIntervalProcessed(interval, false);
-
-                    if (!setProcessed) {
-                        throw new FailedUpdateException("Failed to set \"processed\" flag of interval from "
-                                +interval.getStartTime()+", to"+interval.getEndTime()+" to false");
-                    }
+                    interval = intervalsWorker.setIntervalProcessed(interval, false);
                 }
 
                 LOGGER.info("Crawler got interval from: {}, to: {}", interval.getStartTime(), interval.getEndTime());
@@ -460,7 +435,7 @@ public class Crawler {
         return new GetIntervalReport(foundInterval, lastInterval);
     }
 
-    private Interval getOrCreateInterval(String name, String version, String type) throws IOException, FailedUpdateException {
+    private Interval getOrCreateInterval(String name, String version, String type) throws IOException {
 
         Instant now = Instant.now().minus(configuration.getToLag(), configuration.getToLagOffsetUnit());
 
