@@ -1,0 +1,99 @@
+plugins {
+    id 'java'
+    id 'org.jetbrains.kotlin.jvm' version '1.4.21'
+    id 'com.palantir.docker' version '0.25.0'
+    id 'application'
+}
+
+group 'com.exactpro.th2'
+version release_version
+
+sourceCompatibility = JavaVersion.VERSION_11
+targetCompatibility = JavaVersion.VERSION_11
+
+compileKotlin {
+    kotlinOptions {
+        jvmTarget = "11"
+
+    }
+}
+
+compileTestKotlin {
+    kotlinOptions {
+        jvmTarget = "11"
+    }
+}
+
+ext {
+    cradleVersion = '2.14.0'
+    grpcCrawlerVersion = '0.0.1'
+    sharedDir = file("${project.rootDir}/shared")
+}
+
+dependencies {
+    // BOM with external dependencies restrictions
+    api platform('com.exactpro.th2:bom:3.0.0')
+
+    api "com.exactpro.th2:cradle-core:${cradleVersion}"
+
+    implementation "com.exactpro.th2:cradle-cassandra:${cradleVersion}"
+
+    // the library for interaction with infra API
+    implementation 'com.exactpro.th2:common:3.16.2'
+
+    implementation "com.exactpro.th2:grpc-crawler-data-service:${grpcCrawlerVersion}"
+
+    // Logging. All versions are specified in BOM dependency
+    implementation "org.slf4j:slf4j-log4j12"
+    implementation "org.slf4j:slf4j-api"
+
+    // Idiomatic logging for Kotlin. Wraps slf4j
+    implementation 'io.github.microutils:kotlin-logging:2.0.4'
+
+    implementation "org.jetbrains.kotlin:kotlin-stdlib"
+
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.6.0'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine'
+
+    // https://mvnrepository.com/artifact/org.mockito/mockito-core
+    testImplementation group: 'org.mockito', name: 'mockito-core', version: '3.11.2'
+}
+
+test {
+    useJUnitPlatform()
+    testLogging {
+        showStandardStreams = true
+    }
+}
+
+jar {
+    manifest {
+        attributes(
+                'Created-By':               "${System.getProperty('java.version')} (${System.getProperty('java.vendor')})",
+                'Specification-Title':      '',
+                'Specification-Vendor':     'Exactpro Systems LLC',
+                'Implementation-Title':     project.archivesBaseName,
+                'Implementation-Vendor':    'Exactpro Systems LLC',
+                'Implementation-Vendor-Id': 'com.exactpro',
+                'Implementation-Version':   project.version
+        )
+    }
+}
+
+application {
+    mainClass.set('com.exactpro.th2.crawler.main.Main')
+}
+
+applicationName = 'service'
+
+distTar {
+    archiveFileName.set("${applicationName}.tar")
+}
+
+dockerPrepare {
+    dependsOn distTar
+}
+
+docker {
+    copySpec.from(tarTree("$buildDir/distributions/${applicationName}.tar"))
+}
