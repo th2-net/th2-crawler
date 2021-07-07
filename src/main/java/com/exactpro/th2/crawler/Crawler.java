@@ -33,7 +33,6 @@ import com.exactpro.th2.crawler.dataservice.grpc.EventDataRequest;
 import com.exactpro.th2.crawler.dataservice.grpc.EventResponse;
 import com.exactpro.th2.crawler.dataservice.grpc.MessageDataRequest;
 import com.exactpro.th2.crawler.dataservice.grpc.MessageResponse;
-import com.exactpro.th2.crawler.exception.FailedUpdateException;
 import com.exactpro.th2.crawler.exception.UnexpectedDataServiceException;
 import com.exactpro.th2.crawler.exception.ConfigurationException;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
@@ -53,7 +52,6 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -445,7 +443,7 @@ public class Crawler {
 
         if (now.isBefore(from)) {
             LOGGER.info("Current time with lag: {} is before \"from\" time of Crawler: {}", now, from);
-            sleepTime = Duration.between(now, from).abs().get(ChronoUnit.MILLIS);
+            sleepTime = getSleepTime(now, from);
             return null;
         }
 
@@ -474,18 +472,18 @@ public class Crawler {
 
                     newIntervalEnd = lastIntervalEnd.plus(length);
 
-                } else { if (floatingToTime) {
+                } else {
+                    if (floatingToTime) {
 
-                    LOGGER.info("Failed to create new interval from: {}, to: {} as it is too early now",
-                            lastIntervalEnd, lastIntervalEnd.plus(length));
+                        LOGGER.info("Failed to create new interval from: {}, to: {} as it is too early now",
+                                lastIntervalEnd, lastIntervalEnd.plus(length));
 
-                    sleepTime = Duration.between(lastIntervalEnd.plus(length), Instant.now()).abs().get(ChronoUnit.MILLIS);
+                        sleepTime = getSleepTime(lastIntervalEnd.plus(length), Instant.now());
 
-                    return null;
+                        return null;
 
-                    } else {
-                        newIntervalEnd = to;
                     }
+                    newIntervalEnd = to;
                 }
 
                 return createAndStoreInterval(lastIntervalEnd, newIntervalEnd, name, version, type, now);
@@ -501,7 +499,7 @@ public class Crawler {
                                 "end time of Crawler: {}",
                         lastIntervalEnd, lastIntervalEnd.plus(length), to);
 
-                sleepTime = Duration.between(lastIntervalEnd.plus(length), Instant.now()).abs().get(ChronoUnit.MILLIS);
+                sleepTime = getSleepTime(lastIntervalEnd.plus(length), Instant.now());
 
                 return null;
             }
@@ -513,7 +511,7 @@ public class Crawler {
     private Interval createAndStoreInterval(Instant from, Instant to, String name, String version, String type, Instant lagTime) throws IOException {
 
         if (lagTime.isBefore(to)) {
-            sleepTime = Duration.between(lagTime, to).abs().get(ChronoUnit.MILLIS);
+            sleepTime = getSleepTime(lagTime, to);
 
             LOGGER.info("It is too early now to create new interval from: {}, to: {}. " +
                     "Falling asleep for {} seconds", from, to, sleepTime);
@@ -546,6 +544,10 @@ public class Crawler {
         LOGGER.info("Crawler created interval from: {}, to: {}", newInterval.getStartTime(), newInterval.getEndTime());
 
         return newInterval;
+    }
+
+    private long getSleepTime(Instant from, Instant to) {
+        return Duration.between(from, to).abs().toMillis();
     }
 
     private static class SendingReport {
