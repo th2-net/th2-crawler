@@ -27,8 +27,6 @@ class CrawlerConfiguration(
     @JsonProperty
     val name: String,
     @JsonProperty
-    val version: String,
-    @JsonProperty
     val type: String = "EVENTS",
     @JsonProperty
     val defaultLength: String = "PT1H",
@@ -37,11 +35,11 @@ class CrawlerConfiguration(
     @JsonProperty
     val lastUpdateOffsetUnit: ChronoUnit = ChronoUnit.HOURS,
     @JsonProperty
-    val delay: Long = 100000,
+    val delay: Long = 10,
     @JsonProperty
     val batchSize: Int = 300,
     @JsonProperty
     val toLag: Int = 1,
     @JsonProperty
     val toLagOffsetUnit: ChronoUnit = ChronoUnit.HOURS
-        )
+)
