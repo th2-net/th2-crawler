@@ -475,10 +475,13 @@ public class Crawler {
                 } else {
                     if (floatingToTime) {
 
-                        LOGGER.info("Failed to create new interval from: {}, to: {} as it is too early now",
-                                lastIntervalEnd, lastIntervalEnd.plus(length));
+                        sleepTime = getSleepTime(lastIntervalEnd.plus(length), to);
 
-                        sleepTime = getSleepTime(lastIntervalEnd.plus(length), Instant.now());
+                        if (LOGGER.isInfoEnabled()) {
+                            LOGGER.info("Failed to create new interval from: {}, to: {} as it is too early now. Wait for {}",
+                                    lastIntervalEnd, lastIntervalEnd.plus(length), Duration.ofMillis(sleepTime));
+                        }
+
 
                         return null;
 
@@ -499,7 +502,7 @@ public class Crawler {
                                 "end time of Crawler: {}",
                         lastIntervalEnd, lastIntervalEnd.plus(length), to);
 
-                sleepTime = getSleepTime(lastIntervalEnd.plus(length), Instant.now());
+                sleepTime = getSleepTime(lastIntervalEnd.plus(length), Instant.now()); // TODO: we need to start from the beginning I guess
 
                 return null;
             }
