@@ -26,7 +26,7 @@ Works only if the higher boundary (**to** parameter is set)
 **lastUpdateOffsetUnit: _HOURS_** - the time unit for **lastUpdateOffset** parameter.
 Allowed values are described [here](https://docs.oracle.com/en/java/javase/11/docs/api/java.base/java/time/temporal/ChronoUnit.html) in **Enum Constants** block
 
-**delay: _10_** - the delay between the Crawler has processed the current interval and starts processing the next one.
+**delay: _10_** - the delay in seconds between the Crawler has processed the current interval and starts processing the next one.
 
 **batchSize: 500** - the size of data chunks the Crawler requests from the data provider and feeds to the data service
 
