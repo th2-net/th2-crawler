@@ -188,6 +188,8 @@ public class Crawler {
         Timestamp fromTimestamp = MessageUtils.toTimestamp(interval.getStartTime());
         Timestamp toTimestamp = MessageUtils.toTimestamp(interval.getEndTime());
 
+        long diff = 0L;
+
         String dataServiceName = dataServiceInfo.getName();
         String dataServiceVersion = dataServiceInfo.getVersion();
 
@@ -228,7 +230,9 @@ public class Crawler {
                 break;
             }
 
-            numberOfEvents += events.size();
+            numberOfEvents += events.size() + diff;
+
+            diff = batchSize - events.size();
 
             EventData lastEvent = events.get(events.size() - 1);
 
@@ -284,6 +288,8 @@ public class Crawler {
         Timestamp fromTimestamp = MessageUtils.toTimestamp(interval.getStartTime());
         Timestamp toTimestamp = MessageUtils.toTimestamp(interval.getEndTime());
 
+        long diff = 0L;
+
         String dataServiceName = dataServiceInfo.getName();
         String dataServiceVersion = dataServiceInfo.getVersion();
 
@@ -325,7 +331,9 @@ public class Crawler {
                 break;
             }
 
-            numberOfMessages += messages.size();
+            numberOfMessages += messages.size() + diff;
+
+            diff = batchSize - messages.size();
 
             MessageData lastMessage = messages.get(messages.size() - 1);
 
