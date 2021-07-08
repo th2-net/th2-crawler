@@ -92,11 +92,13 @@ fun main(args: Array<String>) {
 
         LOGGER.info { "Crawler was created and is going to start" }
 
-        crawler.start()
+        while (!Thread.currentThread().isInterrupted) {
+            val sleepTime = crawler.process()
+
+            Thread.sleep(sleepTime)
+        }
 
         LOGGER.info { "Crawler is going to shutdown" }
-
-        exitProcess(0)
 
     } catch (ex: IOException) {
         LOGGER.error("Error while interacting with Cradle in Crawler", ex)

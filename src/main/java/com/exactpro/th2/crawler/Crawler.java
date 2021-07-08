@@ -77,6 +77,11 @@ public class Crawler {
 
     private long sleepTime;
 
+    private String crawlerType;
+    private int batchSize;
+    private DataServiceInfo info;
+    private CrawlerId crawlerId;
+
     private static final String EVENTS = "EVENTS";
     private static final String MESSAGES = "MESSAGES";
 
@@ -96,14 +101,16 @@ public class Crawler {
         this.defaultIntervalLength = Duration.parse(configuration.getDefaultLength());
         this.numberOfEvents = this.numberOfMessages = 0L;
         this.sleepTime = configuration.getDelay() * 1000;
+
+        prepare();
     }
 
-    public void start() throws InterruptedException, IOException, UnexpectedDataServiceException {
-        String name = configuration.getName();
-        String type = configuration.getType();
-        int batchSize = configuration.getBatchSize();
+    private void prepare() {
+        String crawlerName = configuration.getName();
+        crawlerType = configuration.getType();
+        batchSize = configuration.getBatchSize();
 
-        if (!(EVENTS.equals(type) || MESSAGES.equals(type))) {
+        if (!(EVENTS.equals(crawlerType) || MESSAGES.equals(crawlerType))) {
             throw new ConfigurationException("Type must be either EVENTS or MESSAGES");
         }
 
@@ -111,75 +118,73 @@ public class Crawler {
             throw new IllegalArgumentException("Distance between \"from\" and \"to\" parameters cannot be less" +
                     "than default length of intervals");
 
-        CrawlerId crawlerId = CrawlerId.newBuilder().setName(name).build();
+        crawlerId = CrawlerId.newBuilder().setName(crawlerName).build();
         CrawlerInfo crawlerInfo = CrawlerInfo.newBuilder().setId(crawlerId).build();
 
         LOGGER.info("Crawler started working");
 
-        DataServiceInfo info = dataService.crawlerConnect(crawlerInfo);
+        info = dataService.crawlerConnect(crawlerInfo);
+    }
 
-        while (!Thread.currentThread().isInterrupted()) {
+    public long process() throws IOException, UnexpectedDataServiceException {
+        String dataServiceName = info.getName();
+        String dataServiceVersion = info.getVersion();
 
-            String dataServiceName = info.getName();
-            String dataServiceVersion = info.getVersion();
+        interval = getOrCreateInterval(dataServiceName, dataServiceVersion, crawlerType);
 
-            interval = getOrCreateInterval(dataServiceName, dataServiceVersion, type);
+        if (interval != null) {
 
-            if (interval != null) {
+            boolean restartPod;
+            SendingReport report;
 
-                boolean restartPod;
-                SendingReport report;
+            if (EVENTS.equals(interval.getCrawlerType())) {
+                RecoveryState.InnerEvent lastProcessedEvent = interval.getRecoveryState().getLastProcessedEvent();
+                EventID startId = null;
 
-                if (EVENTS.equals(interval.getCrawlerType())) {
-                    RecoveryState.InnerEvent lastProcessedEvent = interval.getRecoveryState().getLastProcessedEvent();
-                    EventID startId = null;
-
-                    if (lastProcessedEvent != null) {
-                        startId = EventUtils.toEventID(lastProcessedEvent.getId());
-                    }
-
-                    report = sendEvents(crawlerId, info, batchSize, startId);
-
-                } else if (MESSAGES.equals(interval.getCrawlerType())) {
-                    report = sendMessages(crawlerId, info, batchSize);
-                } else {
-                    throw new ConfigurationException("Type must be either EVENTS or MESSAGES");
+                if (lastProcessedEvent != null) {
+                    startId = EventUtils.toEventID(lastProcessedEvent.getId());
                 }
 
-                restartPod = report.action == CrawlerAction.STOP;
+                report = sendEvents(crawlerId, info, batchSize, startId);
 
-                if (report.action == CrawlerAction.NONE) {
-                    interval = intervalsWorker.setIntervalProcessed(interval, true);
-
-                    RecoveryState previousState = interval.getRecoveryState();
-
-                    if (EVENTS.equals(interval.getCrawlerType())) {
-                        RecoveryState state = new RecoveryState(
-                                null,
-                                previousState.getLastProcessedMessages(),
-                                numberOfEvents,
-                                previousState.getLastNumberOfMessages());
-
-                        interval = intervalsWorker.updateRecoveryState(interval, state);
-                    }
-
-                    numberOfEvents = 0L;
-                    numberOfMessages = 0L;
-                }
-
-                if (restartPod) {
-                    throw new UnexpectedDataServiceException("Need to restart Crawler because of changed name and/or version of data-service. " +
-                            "Old name: "+dataServiceName+", old version: "+dataServiceVersion+". " +
-                            "New name: "+report.newName+", new version: "+report.newVersion);
-                }
-
+            } else if (MESSAGES.equals(interval.getCrawlerType())) {
+                report = sendMessages(crawlerId, info, batchSize);
+            } else {
+                throw new ConfigurationException("Type must be either EVENTS or MESSAGES");
             }
 
-            Thread.sleep(sleepTime);
+            restartPod = report.action == CrawlerAction.STOP;
 
-            sleepTime = configuration.getDelay() * 1000;
+            if (report.action == CrawlerAction.NONE) {
+                interval = intervalsWorker.setIntervalProcessed(interval, true);
+
+                RecoveryState previousState = interval.getRecoveryState();
+
+                if (EVENTS.equals(interval.getCrawlerType())) {
+                    RecoveryState state = new RecoveryState(
+                            null,
+                            previousState.getLastProcessedMessages(),
+                            numberOfEvents,
+                            previousState.getLastNumberOfMessages());
+
+                    interval = intervalsWorker.updateRecoveryState(interval, state);
+                }
+
+                numberOfEvents = 0L;
+                numberOfMessages = 0L;
+            }
+
+            if (restartPod) {
+                throw new UnexpectedDataServiceException("Need to restart Crawler because of changed name and/or version of data-service. " +
+                        "Old name: "+dataServiceName+", old version: "+dataServiceVersion+". " +
+                        "New name: "+report.newName+", new version: "+report.newVersion);
+            }
+
         }
+
+        return configuration.getDelay() * 1000;
     }
+
 
     private SendingReport sendEvents(CrawlerId crawlerId, DataServiceInfo dataServiceInfo, int batchSize, EventID startId) throws IOException {
         EventResponse response;
