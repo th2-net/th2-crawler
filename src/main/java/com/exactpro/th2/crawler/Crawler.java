@@ -74,6 +74,7 @@ public class Crawler {
     private long numberOfMessages;
 
     private final boolean floatingToTime;
+    private final boolean workAlone;
 
     private long sleepTime;
 
@@ -97,6 +98,7 @@ public class Crawler {
         this.configuration = Objects.requireNonNull(configuration, "Crawler configuration cannot be null");
         this.from = Instant.parse(configuration.getFrom());
         this.floatingToTime = configuration.getTo() == null;
+        this.workAlone = configuration.getWorkAlone();
         this.to = floatingToTime ? Instant.now() : Instant.parse(configuration.getTo());
         this.defaultIntervalLength = Duration.parse(configuration.getDefaultLength());
         this.numberOfEvents = this.numberOfMessages = 0L;
@@ -426,9 +428,13 @@ public class Crawler {
                 LOGGER.debug("Interval from Cassandra from {}, to {}", interval.getStartTime(), interval.getEndTime());
             }
 
+            boolean floatingAndMultiple = floatingToTime && !workAlone && !interval.isProcessed() && lastUpdateCheck;
+            boolean floatingAndAlone = floatingToTime && workAlone && !interval.isProcessed();
+            boolean fixedAndMultiple = !floatingToTime && !workAlone && !interval.isProcessed() || lastUpdateCheck;
+            boolean fixedAndAlone = !floatingToTime && workAlone && !interval.isProcessed() || lastUpdateCheck;
 
-            if (foundInterval == null && (!interval.isProcessed() || (lastUpdateCheck && !floatingToTime))) {
 
+            if (foundInterval == null && (floatingAndMultiple || floatingAndAlone || fixedAndMultiple || fixedAndAlone)) {
                 if (interval.isProcessed()) {
                     interval = intervalsWorker.setIntervalProcessed(interval, false);
                 }
@@ -448,15 +454,15 @@ public class Crawler {
 
     private Interval getOrCreateInterval(String name, String version, String type) throws IOException {
 
-        Instant now = Instant.now().minus(configuration.getToLag(), configuration.getToLagOffsetUnit());
+        Instant lagNow = Instant.now().minus(configuration.getToLag(), configuration.getToLagOffsetUnit());
 
         if (floatingToTime) {
-            this.to = now;
+            this.to = lagNow;
         }
 
-        if (now.isBefore(from)) {
-            LOGGER.info("Current time with lag: {} is before \"from\" time of Crawler: {}", now, from);
-            sleepTime = getSleepTime(now, from);
+        if (lagNow.isBefore(from)) {
+            LOGGER.info("Current time with lag: {} is before \"from\" time of Crawler: {}", lagNow, from);
+            sleepTime = getSleepTime(lagNow, from);
             return null;
         }
 
@@ -502,7 +508,7 @@ public class Crawler {
                     newIntervalEnd = to;
                 }
 
-                return createAndStoreInterval(lastIntervalEnd, newIntervalEnd, name, version, type, now);
+                return createAndStoreInterval(lastIntervalEnd, newIntervalEnd, name, version, type, lagNow);
             } else {
 
                 if (!floatingToTime) {
@@ -520,7 +526,7 @@ public class Crawler {
                 return null;
             }
         } else {
-            return createAndStoreInterval(from, from.plus(length), name, version, type, now);
+            return createAndStoreInterval(from, from.plus(length), name, version, type, lagNow);
         }
     }
 

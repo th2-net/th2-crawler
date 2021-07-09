@@ -41,5 +41,7 @@ class CrawlerConfiguration(
     @JsonProperty
     val toLag: Int = 1,
     @JsonProperty
-    val toLagOffsetUnit: ChronoUnit = ChronoUnit.HOURS
+    val toLagOffsetUnit: ChronoUnit = ChronoUnit.HOURS,
+    @JsonProperty
+    val workAlone: Boolean = false
 )
