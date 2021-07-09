@@ -521,7 +521,7 @@ public class Crawler {
                                 "end time of Crawler: {}",
                         lastIntervalEnd, lastIntervalEnd.plus(length), to);
 
-                sleepTime = getSleepTime(lastIntervalEnd.plus(length), Instant.now()); // TODO: we need to start from the beginning I guess
+                sleepTime = getSleepTime(lastIntervalEnd.plus(length), lagNow); // TODO: we need to start from the beginning I guess
 
                 return null;
             }
