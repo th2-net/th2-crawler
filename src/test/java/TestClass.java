@@ -24,6 +24,7 @@ import com.exactpro.th2.crawler.Crawler;
 import com.exactpro.th2.crawler.CrawlerConfiguration;
 import com.exactpro.th2.crawler.dataservice.grpc.*;
 import com.exactpro.th2.crawler.exception.UnexpectedDataServiceException;
+import com.exactpro.th2.crawler.util.CrawlerTime;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import com.exactpro.th2.dataprovider.grpc.EventData;
 import com.exactpro.th2.dataprovider.grpc.EventSearchRequest;
@@ -33,6 +34,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import util.CrawlerTimeTestImpl;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -49,21 +51,21 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-
 public class TestClass {
 
     private final DataServiceService dataServiceMock = mock(DataServiceService.class);
     private final DataProviderService dataProviderMock = mock(DataProviderService.class);
     private final CradleStorage storageMock = mock(CradleStorage.class);
     private final IntervalsWorker intervalsWorkerMock = mock(IntervalsWorker.class);
+    private final CrawlerTime crawlerTimeMock = mock(CrawlerTimeTestImpl.class);
+
+    private Crawler crawler;
 
     private List<Interval> intervals;
     private List<StreamResponse> searchEventResponse;
 
-    CrawlerConfiguration configuration = new CrawlerConfiguration("2021-06-16T12:00:00.00Z", "2021-06-16T15:00:00.00Z", "test_crawler",
-            "EVENTS", "PT1H", 10, ChronoUnit.NANOS, 1, 10, 5, ChronoUnit.MINUTES);
-
-    Crawler crawler;
+    private CrawlerConfiguration configuration = new CrawlerConfiguration("2021-06-16T12:00:00.00Z", null, "test_crawler",
+            "EVENTS", "PT1H", 1, ChronoUnit.NANOS, 1, 10, 5, ChronoUnit.MINUTES, true);
 
     @BeforeEach
     private void prepare() throws IOException {
@@ -176,7 +178,7 @@ public class TestClass {
             return interval;
         });
 
-        crawler = new Crawler(storageMock, dataServiceMock, dataProviderMock, configuration);
+        crawler = new Crawler(storageMock, dataServiceMock, dataProviderMock, configuration, new CrawlerTimeTestImpl());
     }
 
     private List<StreamResponse> addEvents() {
@@ -213,6 +215,8 @@ public class TestClass {
         });
 
         crawler.process();
+
+        // TODO: how to check logger message here?
     }
 
     @Test

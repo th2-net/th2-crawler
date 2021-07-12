@@ -35,6 +35,8 @@ import com.exactpro.th2.crawler.dataservice.grpc.MessageDataRequest;
 import com.exactpro.th2.crawler.dataservice.grpc.MessageResponse;
 import com.exactpro.th2.crawler.exception.UnexpectedDataServiceException;
 import com.exactpro.th2.crawler.exception.ConfigurationException;
+import com.exactpro.th2.crawler.util.CrawlerTime;
+import com.exactpro.th2.crawler.util.impl.CrawlerTimeImpl;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import com.exactpro.th2.dataprovider.grpc.EventData;
 import com.exactpro.th2.dataprovider.grpc.EventSearchRequest;
@@ -68,6 +70,8 @@ public class Crawler {
     private final Instant from;
     private Instant to;
 
+    private CrawlerTime crawlerTime;
+
     private final Duration defaultIntervalLength;
 
     private long numberOfEvents;
@@ -92,6 +96,14 @@ public class Crawler {
     private Interval interval;
 
     public Crawler(@NotNull CradleStorage storage, @NotNull DataServiceService dataService,
+                   @NotNull DataProviderService dataProviderService, @NotNull CrawlerConfiguration configuration,
+                   CrawlerTime crawlerTime) {
+        this(storage, dataService, dataProviderService, configuration);
+
+        this.crawlerTime = crawlerTime;
+    }
+
+    public Crawler(@NotNull CradleStorage storage, @NotNull DataServiceService dataService,
                    @NotNull DataProviderService dataProviderService, @NotNull CrawlerConfiguration configuration) {
         this.intervalsWorker = Objects.requireNonNull(storage, "Cradle storage cannot be null").getIntervalsWorker();
         this.dataService = Objects.requireNonNull(dataService, "Data service cannot be null");
@@ -100,7 +112,8 @@ public class Crawler {
         this.from = Instant.parse(configuration.getFrom());
         this.floatingToTime = configuration.getTo() == null;
         this.workAlone = configuration.getWorkAlone();
-        this.to = floatingToTime ? Instant.now() : Instant.parse(configuration.getTo());
+        this.crawlerTime = new CrawlerTimeImpl();
+        this.to = floatingToTime ? crawlerTime.now() : Instant.parse(configuration.getTo());
         this.defaultIntervalLength = Duration.parse(configuration.getDefaultLength());
         this.numberOfEvents = this.numberOfMessages = 0L;
         this.sleepTime = configuration.getDelay() * 1000;
@@ -424,7 +437,7 @@ public class Crawler {
 
         for (Interval interval : intervals) {
             boolean lastUpdateCheck = interval.getLastUpdateDateTime()
-                    .isBefore(Instant.now().minus(configuration.getLastUpdateOffset(), configuration.getLastUpdateOffsetUnit()));
+                    .isBefore(crawlerTime.now().minus(configuration.getLastUpdateOffset(), configuration.getLastUpdateOffsetUnit()));
 
             intervalsNumber++;
 
@@ -458,7 +471,7 @@ public class Crawler {
 
     private Interval getOrCreateInterval(String name, String version, String type) throws IOException {
 
-        Instant lagNow = Instant.now().minus(configuration.getToLag(), configuration.getToLagOffsetUnit());
+        Instant lagNow = crawlerTime.now().minus(configuration.getToLag(), configuration.getToLagOffsetUnit());
 
         if (floatingToTime) {
             this.to = lagNow;
@@ -548,7 +561,7 @@ public class Crawler {
         Interval newInterval = Interval.builder()
                 .startTime(from)
                 .endTime(to)
-                .lastUpdateTime(Instant.now())
+                .lastUpdateTime(crawlerTime.now())
                 .crawlerName(name)
                 .crawlerVersion(version)
                 .crawlerType(type)
