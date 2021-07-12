@@ -84,6 +84,44 @@ spec:
         cpu: 50m
 ```
 
+## Links
+
+The **crawler** required the following links:
++ link to the **data provider** working in the gRPC mode
++ link to the **data service**
+
+Links example:
+
+```yaml
+apiVersion: th2.exactpro.com/v1
+kind: Th2Link
+metadata:
+  name: crawler-links
+spec:
+  boxes-relation:
+    router-grpc:
+    - name: crawler-to-data-provider
+      from:
+        strategy: filter
+        box: crawler
+        pin: to_data_provider
+      to:
+        service-class: com.exactpro.th2.dataprovider.grpc.DataProviderService
+        strategy: robin
+        box: data-provider
+        pin: server
+    - name: crawler-to-data-serivce
+      from:
+        strategy: filter
+        box: crawler
+        pin: to_data_service
+      to:
+        service-class: com.exactpro.th2.crawler.dataservice.grpc.DataServiceService
+        strategy: robin
+        box: data-service
+        pin: server
+```
+
 ### Important notes
 
 Crawler takes events/messages from intervals with startTimestamps >= "from" and < "to" of intervals.
