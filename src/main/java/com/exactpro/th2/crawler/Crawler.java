@@ -75,6 +75,7 @@ public class Crawler {
 
     private final boolean floatingToTime;
     private final boolean workAlone;
+    private boolean reachedTo;
 
     private long sleepTime;
 
@@ -135,6 +136,9 @@ public class Crawler {
         interval = getOrCreateInterval(dataServiceName, dataServiceVersion, crawlerType);
 
         if (interval != null) {
+
+            if (!floatingToTime && interval.getEndTime().equals(to))
+                reachedTo = true;
 
             boolean restartPod;
             SendingReport report;
@@ -430,11 +434,11 @@ public class Crawler {
 
             boolean floatingAndMultiple = floatingToTime && !workAlone && !interval.isProcessed() && lastUpdateCheck;
             boolean floatingAndAlone = floatingToTime && workAlone && !interval.isProcessed();
-            boolean fixedAndMultiple = !floatingToTime && !workAlone && !interval.isProcessed() || lastUpdateCheck;
-            boolean fixedAndAlone = !floatingToTime && workAlone && !interval.isProcessed() || lastUpdateCheck;
+            boolean fixedAndMultiple = !floatingToTime && !workAlone && !interval.isProcessed() && lastUpdateCheck;
+            boolean fixedAndAlone = !floatingToTime && workAlone && (!interval.isProcessed() || lastUpdateCheck);
 
 
-            if (foundInterval == null && (floatingAndMultiple || floatingAndAlone || fixedAndMultiple || fixedAndAlone)) {
+            if (foundInterval == null && (reachedTo || floatingToTime) && (floatingAndMultiple || floatingAndAlone || fixedAndMultiple || fixedAndAlone)) {
                 if (interval.isProcessed()) {
                     interval = intervalsWorker.setIntervalProcessed(interval, false);
                 }
