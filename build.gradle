@@ -41,7 +41,8 @@ dependencies {
     // the library for interaction with infra API
     implementation 'com.exactpro.th2:common:3.16.2'
 
-    implementation "com.exactpro.th2:grpc-crawler-data-service:${grpcCrawlerVersion}"
+    //implementation "com.exactpro.th2:grpc-crawler-data-service:${grpcCrawlerVersion}"
+    implementation "com.exactpro.th2:grpc-crawler-data-service:0.0.1-map_message_ids-1031106036-SNAPSHOT"
 
     // Logging. All versions are specified in BOM dependency
     implementation "org.slf4j:slf4j-log4j12"

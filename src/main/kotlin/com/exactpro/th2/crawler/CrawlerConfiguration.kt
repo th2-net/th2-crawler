@@ -17,6 +17,7 @@
 package com.exactpro.th2.crawler
 
 import com.fasterxml.jackson.annotation.JsonProperty
+import org.intellij.lang.annotations.RegExp
 import java.time.temporal.ChronoUnit
 
 class CrawlerConfiguration(
@@ -43,5 +44,7 @@ class CrawlerConfiguration(
     @JsonProperty
     val toLagOffsetUnit: ChronoUnit = ChronoUnit.HOURS,
     @JsonProperty
-    val workAlone: Boolean = false
+    val workAlone: Boolean = false,
+    @JsonProperty
+    val sessionAliases: Array<String>
 )
