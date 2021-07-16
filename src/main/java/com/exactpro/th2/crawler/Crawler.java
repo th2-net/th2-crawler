@@ -71,6 +71,7 @@ public class Crawler {
     private long numberOfEvents;
     private long numberOfMessages;
 
+    // TODO: make RegExp and dynamically acquire new sessionAliases
     private String[] sessionAliases;
 
     private final boolean floatingToTime;
@@ -406,11 +407,13 @@ public class Crawler {
                     String alias = messageData.getMessageId().getConnectionId().getSessionAlias();
 
                     if (messageData.getMessageId().equals(responseIds.get(alias))) {
-                        String id = messageData.getMessageId().toString(); // FIXME toString() might not suit here
+                        //String id = messageData.getMessageId().getConnectionId().getSessionAlias(); // FIXME id needs to be renamed to sessionAlias in Cradle if doing so
+                        String id = MessageUtils.toJson(messageData.getMessageId(), true);
                         Instant timestamp = Instant.ofEpochSecond(messageData.getTimestamp().getSeconds(), messageData.getTimestamp().getNanos());
                         Direction direction = Direction.valueOf(messageData.getDirection().toString());
                         long sequence = messageData.getMessageId().getSequence();
 
+                        // FIXME: if only id field will be left, no parameters but id will be needed
                         message = new RecoveryState.InnerMessage(id, timestamp, direction, sequence);
 
                         recoveryStateMessages.put(alias, message);
