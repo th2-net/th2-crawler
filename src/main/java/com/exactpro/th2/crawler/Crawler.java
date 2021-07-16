@@ -51,6 +51,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 
@@ -164,9 +165,16 @@ public class Crawler {
 
             } else if (MESSAGES.equals(interval.getCrawlerType())) {
                 Map<String, RecoveryState.InnerMessage> lastProcessedMessages = interval.getRecoveryState().getLastProcessedMessages();
-                Map<String, MessageID> startIds = null;
+                Map<String, MessageID> startIds;
 
+                MessageID.Builder builder = MessageID.newBuilder();
 
+                List<MessageID> ids = lastProcessedMessages.values().stream()
+                        .map(innerMessage -> MessageUtils.fromJson(builder, innerMessage.getId()))
+                        .map(MessageID.Builder::build)
+                        .collect(Collectors.toList());
+
+                startIds = ids.stream().collect(Collectors.toMap(messageID -> messageID.getConnectionId().getSessionAlias(), Function.identity()));
 
                 report = sendMessages(crawlerId, info, batchSize, startIds);
             } else {
@@ -255,10 +263,6 @@ public class Crawler {
                 break;
             }
 
-            numberOfEvents += events.size() + diff; // FIXME
-
-            diff = batchSize - events.size();
-
             EventData lastEvent = events.get(events.size() - 1);
 
             resumeId = lastEvent.getEventId();
@@ -278,8 +282,16 @@ public class Crawler {
 
                 RecoveryState.InnerEvent event = null;
 
+                EventID responseId = response.getId();
+
+                long processedEventsCount = events.stream().takeWhile(eventData -> eventData.getEventId().equals(responseId)).count();
+
+                numberOfEvents += processedEventsCount + diff;
+
+                diff = batchSize - processedEventsCount;
+
                 for (EventData eventData: events) {
-                    if (eventData.getEventId().equals(response.getId())) {
+                    if (eventData.getEventId().equals(responseId)) {
                         Instant startTimeStamp = Instant.ofEpochSecond(eventData.getStartTimestamp().getSeconds(),
                                 eventData.getStartTimestamp().getNanos());
                         String id = eventData.getEventId().getId();
@@ -357,10 +369,6 @@ public class Crawler {
                 break;
             }
 
-            numberOfMessages += messages.size() + diff; // FIXME
-
-            diff = batchSize - messages.size();
-
             if (resumeIds != null)
                 resumeIds.clear();
 
@@ -377,18 +385,28 @@ public class Crawler {
             }
 
             if (!response.getIdsMap().isEmpty()) {
-                Map<String, MessageID> ids = response.getIdsMap();
+                Map<String, MessageID> responseIds = response.getIdsMap();
                 RecoveryState oldState = interval.getRecoveryState();
 
                 RecoveryState.InnerMessage message = null;
                 Map<String, RecoveryState.InnerMessage> recoveryStateMessages = new HashMap<>();
 
+                long processedMessagesCount = 0L;
+
+                for (MessageID messageID : responseIds.values()) {
+                    processedMessagesCount += messages.stream().takeWhile(eventData -> eventData.getMessageId().equals(messageID)).count();
+                }
+
+                numberOfMessages += processedMessagesCount + diff;
+
+                diff = batchSize - processedMessagesCount;
+
                 for (MessageData messageData : messages) {
 
                     String alias = messageData.getMessageId().getConnectionId().getSessionAlias();
 
-                    if (messageData.getMessageId().equals(ids.get(alias))) {
-                        String id = messageData.getMessageId().toString();
+                    if (messageData.getMessageId().equals(responseIds.get(alias))) {
+                        String id = messageData.getMessageId().toString(); // FIXME toString() might not suit here
                         Instant timestamp = Instant.ofEpochSecond(messageData.getTimestamp().getSeconds(), messageData.getTimestamp().getNanos());
                         Direction direction = Direction.valueOf(messageData.getDirection().toString());
                         long sequence = messageData.getMessageId().getSequence();
