@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
+package com.exactpro.th2.crawler;
+
 import com.exactpro.cradle.CradleStorage;
 import com.exactpro.cradle.intervals.Interval;
 import com.exactpro.cradle.intervals.IntervalsWorker;
 import com.exactpro.cradle.intervals.RecoveryState;
 import com.exactpro.cradle.utils.UpdateNotAppliedException;
 import com.exactpro.th2.common.grpc.EventID;
-import com.exactpro.th2.crawler.Crawler;
-import com.exactpro.th2.crawler.CrawlerConfiguration;
 import com.exactpro.th2.crawler.dataservice.grpc.*;
 import com.exactpro.th2.crawler.exception.UnexpectedDataServiceException;
 import com.exactpro.th2.crawler.util.CrawlerTime;
@@ -34,7 +34,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import util.CrawlerTimeTestImpl;
+import com.exactpro.th2.crawler.util.CrawlerTimeTestImpl;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -63,9 +63,10 @@ public class TestClass {
 
     private List<Interval> intervals;
     private List<StreamResponse> searchEventResponse;
+    private String[] aliases = new String[] {"alias1", "alias2"};
 
     private CrawlerConfiguration configuration = new CrawlerConfiguration("2021-06-16T12:00:00.00Z", null, "test_crawler",
-            "EVENTS", "PT1H", 1, ChronoUnit.NANOS, 1, 10, 5, ChronoUnit.MINUTES, true);
+            "EVENTS", "PT1H", 1, ChronoUnit.NANOS, 1, 10, 5, ChronoUnit.MINUTES, true, aliases);
 
     @BeforeEach
     private void prepare() throws IOException {
@@ -201,6 +202,14 @@ public class TestClass {
     }
 
     @Test
+    @DisplayName("Creating intervals")
+    public void create() throws IOException, UnexpectedDataServiceException {
+        for (int i = 0; i < 100; i++) {
+            crawler.process();
+        }
+    }
+
+    @Test
     @DisplayName("Requiring handshake, getting the same name and version")
     public void handshakeNeededSame() throws IOException, UnexpectedDataServiceException {
 
@@ -238,4 +247,6 @@ public class TestClass {
 
         Assertions.assertThrows(UnexpectedDataServiceException.class, () -> crawler.process());
     }
+
+    // TODO: Crawler continues processing from RecoveryState
 }

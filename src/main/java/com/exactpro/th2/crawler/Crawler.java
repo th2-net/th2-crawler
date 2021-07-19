@@ -72,7 +72,7 @@ public class Crawler {
     private long numberOfMessages;
 
     // TODO: make RegExp and dynamically acquire new sessionAliases
-    private String[] sessionAliases;
+    private List<String> sessionAliases;
 
     private final boolean floatingToTime;
     private final boolean workAlone;
@@ -80,10 +80,10 @@ public class Crawler {
 
     private long sleepTime;
 
-    private String crawlerType;
-    private int batchSize;
-    private DataServiceInfo info;
-    private CrawlerId crawlerId;
+    private final String crawlerType;
+    private final int batchSize;
+    private final DataServiceInfo info;
+    private final CrawlerId crawlerId;
 
     private static final String EVENTS = "EVENTS";
     private static final String MESSAGES = "MESSAGES";
@@ -107,8 +107,11 @@ public class Crawler {
         this.defaultIntervalLength = Duration.parse(configuration.getDefaultLength());
         this.numberOfEvents = this.numberOfMessages = 0L;
         this.sleepTime = configuration.getDelay() * 1000;
-        //this.sessionAliases = Pattern.compile(configuration.getSessionAliasPattern());
-        this.sessionAliases = configuration.getSessionAliases();
+        this.crawlerType = configuration.getType();
+        this.batchSize = configuration.getBatchSize();
+        this.crawlerId = CrawlerId.newBuilder().setName(configuration.getName()).build();
+        info = dataService.crawlerConnect(CrawlerInfo.newBuilder().setId(crawlerId).build());
+        this.sessionAliases = new ArrayList<>(Arrays.asList(configuration.getSessionAliases()));
         this.crawlerTime = Objects.requireNonNull(crawlerTime, "Crawler time cannot be null");
 
         prepare();
@@ -120,10 +123,6 @@ public class Crawler {
     }
 
     private void prepare() {
-        String crawlerName = configuration.getName();
-        crawlerType = configuration.getType();
-        batchSize = configuration.getBatchSize();
-
         if (!(EVENTS.equals(crawlerType) || MESSAGES.equals(crawlerType))) {
             throw new ConfigurationException("Type must be either EVENTS or MESSAGES");
         }
@@ -132,12 +131,7 @@ public class Crawler {
             throw new IllegalArgumentException("Distance between \"from\" and \"to\" parameters cannot be less" +
                     "than default length of intervals");
 
-        crawlerId = CrawlerId.newBuilder().setName(crawlerName).build();
-        CrawlerInfo crawlerInfo = CrawlerInfo.newBuilder().setId(crawlerId).build();
-
         LOGGER.info("Crawler started working");
-
-        info = dataService.crawlerConnect(crawlerInfo);
     }
 
     public Duration process() throws IOException, UnexpectedDataServiceException {
@@ -195,6 +189,15 @@ public class Crawler {
                             previousState.getLastProcessedMessages(),
                             numberOfEvents,
                             previousState.getLastNumberOfMessages());
+
+                    interval = intervalsWorker.updateRecoveryState(interval, state);
+                } else if (MESSAGES.equals(interval.getCrawlerType())) {
+                    RecoveryState state = new RecoveryState(
+                            previousState.getLastProcessedEvent(),
+                            null,
+                            previousState.getLastNumberOfEvents(),
+                            numberOfMessages
+                    );
 
                     interval = intervalsWorker.updateRecoveryState(interval, state);
                 }
@@ -444,12 +447,11 @@ public class Crawler {
     private Map<String, MessageID> getLastMessagesWithAliases(List<MessageData> messages) {
         Map<String, MessageID> result = new HashMap<>();
 
-        List<String> aliases = messages.stream().filter(MessageData::hasMessageId)
+        Set<String> aliases = messages.stream().filter(MessageData::hasMessageId)
                 .map(MessageData::getMessageId)
                 .map(MessageID::getConnectionId)
                 .map(ConnectionID::getSessionAlias)
-                .distinct()
-                .collect(Collectors.toList());
+                .collect(Collectors.toSet());
 
         for (String alias : aliases) {
 
