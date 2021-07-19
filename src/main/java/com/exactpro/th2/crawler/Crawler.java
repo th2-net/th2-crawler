@@ -165,8 +165,19 @@ public class Crawler {
                 MessageID.Builder builder = MessageID.newBuilder();
 
                 List<MessageID> ids = lastProcessedMessages.values().stream()
-                        .map(innerMessage -> MessageUtils.fromJson(builder, innerMessage.getId()))
-                        .map(MessageID.Builder::build)
+                        .map(innerMessage -> {
+                            com.exactpro.th2.common.grpc.Direction direction;
+
+                            if (innerMessage.getDirection().equals(Direction.FIRST))
+                                direction = com.exactpro.th2.common.grpc.Direction.FIRST;
+                            else
+                                direction = com.exactpro.th2.common.grpc.Direction.SECOND;
+
+                            return builder.setSequence(innerMessage.getSequence())
+                                    .setConnectionId(ConnectionID.newBuilder().setSessionAlias(innerMessage.getSessionAlias()).build())
+                                    .setDirection(direction)
+                                    .build();
+                        })
                         .collect(Collectors.toList());
 
                 startIds = ids.stream().collect(Collectors.toMap(messageID -> messageID.getConnectionId().getSessionAlias(), Function.identity()));
@@ -408,21 +419,13 @@ public class Crawler {
                 for (MessageData messageData : messages) {
 
                     String alias = messageData.getMessageId().getConnectionId().getSessionAlias();
+                    Instant timestamp = Instant.ofEpochSecond(messageData.getTimestamp().getSeconds(), messageData.getTimestamp().getNanos());
+                    Direction direction = Direction.valueOf(messageData.getDirection().toString());
+                    long sequence = messageData.getMessageId().getSequence();
 
-                    if (messageData.getMessageId().equals(responseIds.get(alias))) {
-                        //String id = messageData.getMessageId().getConnectionId().getSessionAlias(); // FIXME id needs to be renamed to sessionAlias in Cradle if doing so
-                        String id = MessageUtils.toJson(messageData.getMessageId(), true);
-                        Instant timestamp = Instant.ofEpochSecond(messageData.getTimestamp().getSeconds(), messageData.getTimestamp().getNanos());
-                        Direction direction = Direction.valueOf(messageData.getDirection().toString());
-                        long sequence = messageData.getMessageId().getSequence();
+                    message = new RecoveryState.InnerMessage(alias, timestamp, direction, sequence);
 
-                        // FIXME: if only id field will be left, no parameters but id will be needed
-                        message = new RecoveryState.InnerMessage(id, timestamp, direction, sequence);
-
-                        recoveryStateMessages.put(alias, message);
-
-                        break;
-                    }
+                    recoveryStateMessages.put(alias, message);
                 }
 
                 if (message != null) {
