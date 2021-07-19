@@ -42,6 +42,14 @@ The default value is **1**.
 Allowed values are described [here](https://docs.oracle.com/en/java/javase/11/docs/api/java.base/java/time/temporal/ChronoUnit.html) in **Enum Constants** block.
 The default value is **HOURS**.
 
+**workAlone: true** - flag that indicates if Crawler works alone or there are a few Crawlers
+processing the same intervals.
+
+**sessionAliases: alias1** - aliases that Crawler will search messages by.
+
+**sessionAliasesPattern: alias1|alias2** - pattern for processing messages with aliases
+that will match this pattern.
+
 ## Example of infra-schema
 
 schema component description example (crawler.yml):

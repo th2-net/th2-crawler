@@ -40,6 +40,7 @@ import com.exactpro.th2.crawler.util.CrawlerTime;
 import com.exactpro.th2.crawler.util.impl.CrawlerTimeImpl;
 import com.exactpro.th2.dataprovider.grpc.*;
 import com.google.protobuf.BoolValue;
+import com.google.protobuf.Empty;
 import com.google.protobuf.Int32Value;
 import com.google.protobuf.Timestamp;
 import org.jetbrains.annotations.NotNull;
@@ -52,6 +53,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 
@@ -71,8 +73,8 @@ public class Crawler {
     private long numberOfEvents;
     private long numberOfMessages;
 
-    // TODO: make RegExp and dynamically acquire new sessionAliases
-    private List<String> sessionAliases;
+    private Set<String> sessionAliases;
+    private final Pattern sessionAliasesPattern;
 
     private final boolean floatingToTime;
     private final boolean workAlone;
@@ -111,7 +113,8 @@ public class Crawler {
         this.batchSize = configuration.getBatchSize();
         this.crawlerId = CrawlerId.newBuilder().setName(configuration.getName()).build();
         info = dataService.crawlerConnect(CrawlerInfo.newBuilder().setId(crawlerId).build());
-        this.sessionAliases = new ArrayList<>(Arrays.asList(configuration.getSessionAliases()));
+        this.sessionAliases = configuration.getSessionAliases() == null ? null : configuration.getSessionAliases();
+        this.sessionAliasesPattern = configuration.getSessionAliasesPattern() == null ? null : Pattern.compile(configuration.getSessionAliasesPattern());
         this.crawlerTime = Objects.requireNonNull(crawlerTime, "Crawler time cannot be null");
 
         prepare();
@@ -182,7 +185,17 @@ public class Crawler {
 
                 startIds = ids.stream().collect(Collectors.toMap(messageID -> messageID.getConnectionId().getSessionAlias(), Function.identity()));
 
-                report = sendMessages(crawlerId, info, batchSize, startIds);
+                List<String> newAliases = dataProviderService.getMessageStreams(Empty.getDefaultInstance())
+                        .getListStringList().stream()
+                        .filter(sessionAliasesPattern.asPredicate())
+                        .collect(Collectors.toList());
+
+                boolean foundNewAliases = newAliases.removeAll(sessionAliases);
+
+                if (foundNewAliases)
+                    sendMessages(crawlerId, info, batchSize, null, newAliases, from, interval.getStartTime());
+
+                report = sendMessages(crawlerId, info, batchSize, startIds, sessionAliases, interval.getStartTime(), interval.getEndTime());
             } else {
                 throw new ConfigurationException("Type must be either EVENTS or MESSAGES");
             }
@@ -249,7 +262,6 @@ public class Crawler {
 
             searchBuilder
                     .setMetadataOnly(BoolValue.newBuilder().setValue(false).build())
-                    .setSearchDirection(TimeRelation.NEXT)
                     .setStartTimestamp(fromTimestamp)
                     .setEndTimestamp(toTimestamp)
                     .setResultCountLimit(Int32Value.of(batchSize));
@@ -333,12 +345,14 @@ public class Crawler {
         return new SendingReport(CrawlerAction.NONE, dataServiceName, dataServiceVersion);
     }
 
-    private SendingReport sendMessages(CrawlerId crawlerId, DataServiceInfo dataServiceInfo, int batchSize, Map<String, MessageID> startIds) throws IOException {
+    private SendingReport sendMessages(CrawlerId crawlerId, DataServiceInfo dataServiceInfo, int batchSize, Map<String,
+            MessageID> startIds, Collection<String> aliases, Instant from, Instant to) throws IOException {
+
         Map<String, MessageID> resumeIds = startIds;
         MessageResponse response;
         boolean search = true;
-        Timestamp fromTimestamp = MessageUtils.toTimestamp(interval.getStartTime());
-        Timestamp toTimestamp = MessageUtils.toTimestamp(interval.getEndTime());
+        Timestamp fromTimestamp = MessageUtils.toTimestamp(from);
+        Timestamp toTimestamp = MessageUtils.toTimestamp(to);
 
         long diff = 0L;
 
@@ -353,11 +367,10 @@ public class Crawler {
             MessageSearchRequest request;
 
             searchBuilder
-                    .setSearchDirection(TimeRelation.NEXT)
                     .setStartTimestamp(fromTimestamp)
                     .setEndTimestamp(toTimestamp)
                     .setResultCountLimit(Int32Value.of(batchSize))
-                    .setStream(StringList.newBuilder().addListString("alias").build());
+                    .setStream(StringList.newBuilder().addAllListString(aliases).build());
 
             if (resumeIds == null)
                 request = searchBuilder.build();
