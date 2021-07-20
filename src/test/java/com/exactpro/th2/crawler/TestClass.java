@@ -24,7 +24,6 @@ import com.exactpro.cradle.utils.UpdateNotAppliedException;
 import com.exactpro.th2.common.grpc.EventID;
 import com.exactpro.th2.crawler.dataservice.grpc.*;
 import com.exactpro.th2.crawler.exception.UnexpectedDataServiceException;
-import com.exactpro.th2.crawler.util.CrawlerTime;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import com.exactpro.th2.dataprovider.grpc.EventData;
 import com.exactpro.th2.dataprovider.grpc.EventSearchRequest;
@@ -33,13 +32,14 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 import com.exactpro.th2.crawler.util.CrawlerTimeTestImpl;
 
 import java.io.IOException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -53,27 +53,29 @@ import static org.mockito.Mockito.when;
 
 public class TestClass {
 
+    private final String name = "test_crawler";
+    private final String version = "1";
+
     private final DataServiceService dataServiceMock = mock(DataServiceService.class);
     private final DataProviderService dataProviderMock = mock(DataProviderService.class);
     private final CradleStorage storageMock = mock(CradleStorage.class);
     private final IntervalsWorker intervalsWorkerMock = mock(IntervalsWorker.class);
-    private final CrawlerTime crawlerTimeMock = mock(CrawlerTimeTestImpl.class);
 
     private Crawler crawler;
 
     private List<Interval> intervals;
     private List<StreamResponse> searchEventResponse;
-    private String[] aliases = new String[] {"alias1", "alias2"};
 
-    private CrawlerConfiguration configuration = new CrawlerConfiguration("2021-06-16T12:00:00.00Z", null, "test_crawler",
-            "EVENTS", "PT1H", 1, ChronoUnit.NANOS, 1, 10, 5, ChronoUnit.MINUTES, true, aliases);
+    private final String[] aliases = new String[] {"alias1", "alias2"};
+
+    private final CrawlerConfiguration configuration = new CrawlerConfiguration("2021-06-16T12:00:00.00Z", null, name,
+            "EVENTS", "PT1H", 1, ChronoUnit.NANOS, 1, 10, 5,
+            ChronoUnit.MINUTES, true, new HashSet<>(Arrays.asList(aliases)), null);
 
     @BeforeEach
     private void prepare() throws IOException {
         intervals = new ArrayList<>();
         searchEventResponse = addEvents();
-
-        ArgumentCaptor<EventSearchRequest> eventSearchRequestCaptor = ArgumentCaptor.forClass(EventSearchRequest.class);
 
         when(dataProviderMock.getEvent(any(EventID.class)))
                 .thenReturn(EventData.newBuilder().setEventId(toEventID("2")).setEventName("0.0.1|ProviderTest|"+Instant.now()).build());
@@ -104,7 +106,7 @@ public class TestClass {
         }).collect(Collectors.toList()).iterator());
 
         when(dataServiceMock.crawlerConnect(any(CrawlerInfo.class)))
-                .thenReturn(DataServiceInfo.newBuilder().setEventId(toEventID("3")).setName("test_crawler").setVersion("v1.2").build());
+                .thenReturn(DataServiceInfo.newBuilder().setEventId(toEventID("3")).setName(name).setVersion(version).build());
 
         when(dataServiceMock.sendEvent(any(EventDataRequest.class))).then(invocation -> {
                     EventDataRequest request = invocation.getArgument(0);
@@ -210,30 +212,11 @@ public class TestClass {
     }
 
     @Test
-    @DisplayName("Requiring handshake, getting the same name and version")
-    public void handshakeNeededSame() throws IOException, UnexpectedDataServiceException {
-
-        when(dataServiceMock.sendEvent(any(EventDataRequest.class))).then(invocation -> {
-            EventDataRequest request = invocation.getArgument(0);
-
-            List<EventData> events = request.getEventDataList();
-
-            EventID eventID = events.get(events.size() - 1).getEventId();
-
-            return EventResponse.newBuilder().setId(eventID).setStatus(Status.newBuilder().setHandshakeRequired(true).build()).build();
-        });
-
-        crawler.process();
-
-        // TODO: how to check logger message here?
-    }
-
-    @Test
     @DisplayName("Requiring handshake, getting other name and version")
     public void handshakeNeededAnother() {
 
         when(dataServiceMock.crawlerConnect(any(CrawlerInfo.class)))
-                .thenReturn(DataServiceInfo.newBuilder().setEventId(toEventID("3")).setName("another_crawler").setVersion("v1.2").build());
+                .thenReturn(DataServiceInfo.newBuilder().setEventId(toEventID("3")).setName("another_crawler").setVersion(version).build());
 
         when(dataServiceMock.sendEvent(any(EventDataRequest.class))).then(invocation -> {
             EventDataRequest request = invocation.getArgument(0);
