@@ -113,7 +113,7 @@ public class Crawler {
         this.batchSize = configuration.getBatchSize();
         this.crawlerId = CrawlerId.newBuilder().setName(configuration.getName()).build();
         info = dataService.crawlerConnect(CrawlerInfo.newBuilder().setId(crawlerId).build());
-        this.sessionAliases = configuration.getSessionAliases() == null ? null : configuration.getSessionAliases();
+        this.sessionAliases = configuration.getSessionAliases() == null ? new HashSet<>() : configuration.getSessionAliases();
         this.sessionAliasesPattern = configuration.getSessionAliasesPattern() == null ? null : Pattern.compile(configuration.getSessionAliasesPattern());
         this.crawlerTime = Objects.requireNonNull(crawlerTime, "Crawler time cannot be null");
 
@@ -185,16 +185,18 @@ public class Crawler {
 
                 startIds = ids.stream().collect(Collectors.toMap(messageID -> messageID.getConnectionId().getSessionAlias(), Function.identity()));
 
-                List<String> newAliases = dataProviderService.getMessageStreams(Empty.getDefaultInstance())
-                        .getListStringList().stream()
-                        .filter(sessionAliasesPattern.asPredicate())
-                        .collect(Collectors.toList());
+                if (sessionAliasesPattern != null) {
+                    List<String> newAliases = dataProviderService.getMessageStreams(Empty.getDefaultInstance())
+                            .getListStringList().stream()
+                            .filter(sessionAliasesPattern.asPredicate())
+                            .collect(Collectors.toList());
 
-                boolean foundNewAliases = newAliases.removeAll(sessionAliases);
-                sessionAliases.addAll(newAliases);
+                    boolean foundNewAliases = newAliases.removeAll(sessionAliases);
+                    sessionAliases.addAll(newAliases);
 
-                if (foundNewAliases) {
-                    sendMessages(crawlerId, info, batchSize, null, newAliases, from, interval.getStartTime());
+                    if (foundNewAliases) {
+                        sendMessages(crawlerId, info, batchSize, null, newAliases, from, interval.getStartTime());
+                    }
                 }
 
                 report = sendMessages(crawlerId, info, batchSize, startIds, sessionAliases, interval.getStartTime(), interval.getEndTime());
