@@ -191,9 +191,11 @@ public class Crawler {
                         .collect(Collectors.toList());
 
                 boolean foundNewAliases = newAliases.removeAll(sessionAliases);
+                sessionAliases.addAll(newAliases);
 
-                if (foundNewAliases)
+                if (foundNewAliases) {
                     sendMessages(crawlerId, info, batchSize, null, newAliases, from, interval.getStartTime());
+                }
 
                 report = sendMessages(crawlerId, info, batchSize, startIds, sessionAliases, interval.getStartTime(), interval.getEndTime());
             } else {
