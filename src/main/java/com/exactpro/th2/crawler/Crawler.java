@@ -113,7 +113,7 @@ public class Crawler {
         this.batchSize = configuration.getBatchSize();
         this.crawlerId = CrawlerId.newBuilder().setName(configuration.getName()).build();
         info = dataService.crawlerConnect(CrawlerInfo.newBuilder().setId(crawlerId).build());
-        this.sessionAliases = configuration.getSessionAliases() == null ? new HashSet<>() : configuration.getSessionAliases();
+        this.sessionAliases = configuration.getSessionAliases();
         this.sessionAliasesPattern = configuration.getSessionAliasesPattern() == null ? null : Pattern.compile(configuration.getSessionAliasesPattern());
         this.crawlerTime = Objects.requireNonNull(crawlerTime, "Crawler time cannot be null");
 
@@ -171,7 +171,7 @@ public class Crawler {
                         .map(innerMessage -> {
                             com.exactpro.th2.common.grpc.Direction direction;
 
-                            if (innerMessage.getDirection().equals(Direction.FIRST))
+                            if (innerMessage.getDirection() == Direction.FIRST)
                                 direction = com.exactpro.th2.common.grpc.Direction.FIRST;
                             else
                                 direction = com.exactpro.th2.common.grpc.Direction.SECOND;
@@ -186,17 +186,7 @@ public class Crawler {
                 startIds = ids.stream().collect(Collectors.toMap(messageID -> messageID.getConnectionId().getSessionAlias(), Function.identity()));
 
                 if (sessionAliasesPattern != null) {
-                    List<String> newAliases = dataProviderService.getMessageStreams(Empty.getDefaultInstance())
-                            .getListStringList().stream()
-                            .filter(sessionAliasesPattern.asPredicate())
-                            .collect(Collectors.toList());
-
-                    boolean foundNewAliases = newAliases.removeAll(sessionAliases);
-                    sessionAliases.addAll(newAliases);
-
-                    if (foundNewAliases) {
-                        sendMessages(crawlerId, info, batchSize, null, newAliases, from, interval.getStartTime());
-                    }
+                    sendMessagesWithNewAliases();
                 }
 
                 report = sendMessages(crawlerId, info, batchSize, startIds, sessionAliases, interval.getStartTime(), interval.getEndTime());
@@ -487,6 +477,21 @@ public class Crawler {
         }
 
         return result;
+    }
+
+    // FIXME: make work with corresponding intervals
+    private void sendMessagesWithNewAliases() throws IOException {
+        List<String> newAliases = dataProviderService.getMessageStreams(Empty.getDefaultInstance())
+                .getListStringList().stream()
+                .filter(sessionAliasesPattern.asPredicate())
+                .collect(Collectors.toList());
+
+        boolean foundNewAliases = newAliases.removeAll(sessionAliases);
+        sessionAliases.addAll(newAliases);
+
+        if (foundNewAliases) {
+            sendMessages(crawlerId, info, batchSize, null, newAliases, from, interval.getStartTime());
+        }
     }
 
     private SendingReport handshake(CrawlerId crawlerId, DataServiceInfo dataServiceInfo) {

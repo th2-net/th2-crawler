@@ -25,7 +25,6 @@ import com.exactpro.th2.common.metrics.readiness
 import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.exactpro.th2.crawler.CrawlerConfiguration
 import com.exactpro.th2.crawler.dataservice.grpc.DataServiceService
-import com.exactpro.th2.crawler.exception.FailedUpdateException
 import com.exactpro.th2.crawler.exception.UnexpectedDataServiceException
 import com.exactpro.th2.dataprovider.grpc.DataProviderService
 import mu.KotlinLogging
