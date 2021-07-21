@@ -112,7 +112,7 @@ public class Crawler {
         this.crawlerType = configuration.getType();
         this.batchSize = configuration.getBatchSize();
         this.crawlerId = CrawlerId.newBuilder().setName(configuration.getName()).build();
-        info = dataService.crawlerConnect(CrawlerInfo.newBuilder().setId(crawlerId).build());
+        this.info = dataService.crawlerConnect(CrawlerInfo.newBuilder().setId(crawlerId).build());
         this.sessionAliases = configuration.getSessionAliases();
         this.sessionAliasesPattern = configuration.getSessionAliasesPattern() == null ? null : Pattern.compile(configuration.getSessionAliasesPattern());
         this.crawlerTime = Objects.requireNonNull(crawlerTime, "Crawler time cannot be null");
@@ -163,27 +163,29 @@ public class Crawler {
 
             } else if (MESSAGES.equals(interval.getCrawlerType())) {
                 Map<String, RecoveryState.InnerMessage> lastProcessedMessages = interval.getRecoveryState().getLastProcessedMessages();
-                Map<String, MessageID> startIds;
+                Map<String, MessageID> startIds = null;
 
                 MessageID.Builder builder = MessageID.newBuilder();
 
-                List<MessageID> ids = lastProcessedMessages.values().stream()
-                        .map(innerMessage -> {
-                            com.exactpro.th2.common.grpc.Direction direction;
+                if (lastProcessedMessages != null) {
+                    List<MessageID> ids = lastProcessedMessages.values().stream()
+                            .map(innerMessage -> {
+                                com.exactpro.th2.common.grpc.Direction direction;
 
-                            if (innerMessage.getDirection() == Direction.FIRST)
-                                direction = com.exactpro.th2.common.grpc.Direction.FIRST;
-                            else
-                                direction = com.exactpro.th2.common.grpc.Direction.SECOND;
+                                if (innerMessage.getDirection() == Direction.FIRST)
+                                    direction = com.exactpro.th2.common.grpc.Direction.FIRST;
+                                else
+                                    direction = com.exactpro.th2.common.grpc.Direction.SECOND;
 
-                            return builder.setSequence(innerMessage.getSequence())
-                                    .setConnectionId(ConnectionID.newBuilder().setSessionAlias(innerMessage.getSessionAlias()).build())
-                                    .setDirection(direction)
-                                    .build();
-                        })
-                        .collect(Collectors.toList());
+                                return builder.setSequence(innerMessage.getSequence())
+                                        .setConnectionId(ConnectionID.newBuilder().setSessionAlias(innerMessage.getSessionAlias()).build())
+                                        .setDirection(direction)
+                                        .build();
+                            })
+                            .collect(Collectors.toList());
 
-                startIds = ids.stream().collect(Collectors.toMap(messageID -> messageID.getConnectionId().getSessionAlias(), Function.identity()));
+                    startIds = ids.stream().collect(Collectors.toMap(messageID -> messageID.getConnectionId().getSessionAlias(), Function.identity()));
+                }
 
                 if (sessionAliasesPattern != null) {
                     sendMessagesWithNewAliases();
