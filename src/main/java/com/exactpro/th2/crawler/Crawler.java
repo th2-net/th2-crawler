@@ -237,7 +237,6 @@ public class Crawler {
         return Duration.of(configuration.getDelay(), ChronoUnit.SECONDS);
     }
 
-
     private SendingReport sendEvents(CrawlerId crawlerId, DataServiceInfo dataServiceInfo, int batchSize, EventID startId) throws IOException {
         EventResponse response;
         EventID resumeId = startId;
@@ -412,8 +411,7 @@ public class Crawler {
                 Map<String, MessageID> responseIds = response.getIdsMap();
                 RecoveryState oldState = interval.getRecoveryState();
 
-                RecoveryState.InnerMessage message = null;
-                Map<String, RecoveryState.InnerMessage> recoveryStateMessages = new HashMap<>();
+                Map<String, RecoveryState.InnerMessage> recoveryStateMessages;
 
                 long processedMessagesCount = 0L;
 
@@ -425,19 +423,9 @@ public class Crawler {
 
                 diff = batchSize - processedMessagesCount;
 
-                for (MessageData messageData : messages) {
+                recoveryStateMessages = mapAliasesWithMessages(messages);
 
-                    String alias = messageData.getMessageId().getConnectionId().getSessionAlias();
-                    Instant timestamp = Instant.ofEpochSecond(messageData.getTimestamp().getSeconds(), messageData.getTimestamp().getNanos());
-                    Direction direction = Direction.valueOf(messageData.getDirection().toString());
-                    long sequence = messageData.getMessageId().getSequence();
-
-                    message = new RecoveryState.InnerMessage(alias, timestamp, direction, sequence);
-
-                    recoveryStateMessages.put(alias, message);
-                }
-
-                if (message != null) {
+                if (!recoveryStateMessages.isEmpty()) {
                     Map<String, RecoveryState.InnerMessage> lastProcessedMessages = oldState.getLastProcessedMessages();
 
                     lastProcessedMessages.putAll(recoveryStateMessages);
@@ -446,7 +434,7 @@ public class Crawler {
                             oldState.getLastNumberOfEvents(),
                             numberOfMessages);
 
-                    interval = intervalsWorker.updateRecoveryState(interval, newState);
+                    interval = intervalsWorker.updateRecoveryState(interval, newState); // FIXME: update in the correct interval!
                 }
             }
 
@@ -454,6 +442,25 @@ public class Crawler {
         }
 
         return new SendingReport(CrawlerAction.NONE, dataServiceName, dataServiceVersion);
+    }
+
+    private Map<String, RecoveryState.InnerMessage> mapAliasesWithMessages(Collection<MessageData> messages) {
+        RecoveryState.InnerMessage message;
+        Map<String, RecoveryState.InnerMessage> result = new HashMap<>();
+
+        for (MessageData messageData : messages) {
+
+            String alias = messageData.getMessageId().getConnectionId().getSessionAlias();
+            Instant timestamp = Instant.ofEpochSecond(messageData.getTimestamp().getSeconds(), messageData.getTimestamp().getNanos());
+            Direction direction = Direction.valueOf(messageData.getDirection().toString());
+            long sequence = messageData.getMessageId().getSequence();
+
+            message = new RecoveryState.InnerMessage(alias, timestamp, direction, sequence);
+
+            result.put(alias, message);
+        }
+
+        return result;
     }
 
     private Map<String, MessageID> getLastMessagesWithAliases(List<MessageData> messages) {
@@ -472,7 +479,6 @@ public class Crawler {
                     if (alias.equals(message.getMessageId().getConnectionId().getSessionAlias())) {
                         MessageID id = message.getMessageId();
                         result.put(id.getConnectionId().getSessionAlias(), id);
-
                     }
                 }
             }
@@ -481,7 +487,7 @@ public class Crawler {
         return result;
     }
 
-    // FIXME: make work with corresponding intervals
+    // FIXME: use correct intervals here
     private void sendMessagesWithNewAliases() throws IOException {
         List<String> newAliases = dataProviderService.getMessageStreams(Empty.getDefaultInstance())
                 .getListStringList().stream()
