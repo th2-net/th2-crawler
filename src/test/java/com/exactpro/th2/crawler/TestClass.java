@@ -27,6 +27,7 @@ import com.exactpro.th2.crawler.exception.UnexpectedDataServiceException;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import com.exactpro.th2.dataprovider.grpc.EventData;
 import com.exactpro.th2.dataprovider.grpc.EventSearchRequest;
+import com.exactpro.th2.dataprovider.grpc.MessageSearchRequest;
 import com.exactpro.th2.dataprovider.grpc.StreamResponse;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,6 +50,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 public class TestClass {
@@ -204,16 +206,24 @@ public class TestClass {
     }
 
     @Test
-    @DisplayName("Creating intervals")
-    public void create() throws IOException, UnexpectedDataServiceException {
-        for (int i = 0; i < 100; i++) {
-            crawler.process();
+    @DisplayName("Calling method process()")
+    public void processMethodCall() throws IOException, UnexpectedDataServiceException {
+        crawler.process();
+
+        verify(intervalsWorkerMock).getIntervals(any(Instant.class), any(Instant.class), anyString(), anyString(), anyString());
+        verify(intervalsWorkerMock).storeInterval(any(Interval.class));
+
+        if (configuration.getType().equals("EVENTS")) {
+            verify(dataProviderMock).searchEvents(any(EventSearchRequest.class));
+        } else if (configuration.getType().equals("MESSAGES")) {
+            verify(dataProviderMock).searchMessages(any(MessageSearchRequest.class));
         }
     }
 
     @Test
     @DisplayName("Requiring handshake, getting other name and version")
     public void handshakeNeededAnother() {
+        crawler = new Crawler(storageMock, dataServiceMock, dataProviderMock, configuration, new CrawlerTimeTestImpl());
 
         when(dataServiceMock.crawlerConnect(any(CrawlerInfo.class)))
                 .thenReturn(DataServiceInfo.newBuilder().setEventId(toEventID("3")).setName("another_crawler").setVersion(version).build());
@@ -230,6 +240,4 @@ public class TestClass {
 
         Assertions.assertThrows(UnexpectedDataServiceException.class, () -> crawler.process());
     }
-
-    // TODO: Crawler continues processing from RecoveryState
 }
