@@ -426,13 +426,19 @@ public class Crawler {
                 recoveryStateMessages = mapAliasesWithMessages(messages);
 
                 if (!recoveryStateMessages.isEmpty()) {
-                    Map<String, RecoveryState.InnerMessage> lastProcessedMessages = oldState.getLastProcessedMessages();
+                    RecoveryState newState;
 
-                    lastProcessedMessages.putAll(recoveryStateMessages);
+                    if (oldState != null) {
+                        Map<String, RecoveryState.InnerMessage> lastProcessedMessages = oldState.getLastProcessedMessages();
 
-                    RecoveryState newState = new RecoveryState(oldState.getLastProcessedEvent(), lastProcessedMessages,
-                            oldState.getLastNumberOfEvents(),
-                            numberOfMessages);
+                        lastProcessedMessages.putAll(recoveryStateMessages);
+
+                        newState = new RecoveryState(oldState.getLastProcessedEvent(), lastProcessedMessages,
+                                oldState.getLastNumberOfEvents(),
+                                numberOfMessages);
+                    } else {
+                        newState = new RecoveryState(null, recoveryStateMessages, 0, numberOfMessages);
+                    }
 
                     interval = intervalsWorker.updateRecoveryState(interval, newState); // FIXME: update in the correct interval!
                 }
