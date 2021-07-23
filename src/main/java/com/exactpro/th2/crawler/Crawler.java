@@ -428,8 +428,9 @@ public class Crawler {
                 if (!recoveryStateMessages.isEmpty()) {
                     RecoveryState newState;
 
-                    if (oldState != null) {
-                        Map<String, RecoveryState.InnerMessage> lastProcessedMessages = oldState.getLastProcessedMessages();
+                    Map<String, RecoveryState.InnerMessage> lastProcessedMessages = oldState.getLastProcessedMessages();
+
+                    if (lastProcessedMessages != null) {
 
                         lastProcessedMessages.putAll(recoveryStateMessages);
 
