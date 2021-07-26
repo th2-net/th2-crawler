@@ -21,12 +21,16 @@ import com.exactpro.cradle.intervals.Interval;
 import com.exactpro.cradle.intervals.IntervalsWorker;
 import com.exactpro.cradle.intervals.RecoveryState;
 import com.exactpro.cradle.utils.UpdateNotAppliedException;
+import com.exactpro.th2.common.grpc.ConnectionID;
+import com.exactpro.th2.common.grpc.Direction;
 import com.exactpro.th2.common.grpc.EventID;
+import com.exactpro.th2.common.grpc.MessageID;
 import com.exactpro.th2.crawler.dataservice.grpc.*;
 import com.exactpro.th2.crawler.exception.UnexpectedDataServiceException;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import com.exactpro.th2.dataprovider.grpc.EventData;
 import com.exactpro.th2.dataprovider.grpc.EventSearchRequest;
+import com.exactpro.th2.dataprovider.grpc.MessageData;
 import com.exactpro.th2.dataprovider.grpc.MessageSearchRequest;
 import com.exactpro.th2.dataprovider.grpc.StreamResponse;
 import org.junit.jupiter.api.Assertions;
@@ -63,16 +67,10 @@ public class TestClass {
     private final CradleStorage storageMock = mock(CradleStorage.class);
     private final IntervalsWorker intervalsWorkerMock = mock(IntervalsWorker.class);
 
-    private Crawler crawler;
-
     private List<Interval> intervals;
     private List<StreamResponse> searchEventResponse;
 
     private final String[] aliases = new String[] {"alias1", "alias2"};
-
-    private final CrawlerConfiguration configuration = new CrawlerConfiguration("2021-06-16T12:00:00.00Z", null, name,
-            "EVENTS", "PT1H", 1, ChronoUnit.NANOS, 1, 10, 5,
-            ChronoUnit.MINUTES, true, new HashSet<>(Arrays.asList(aliases)), null);
 
     @BeforeEach
     private void prepare() throws IOException {
@@ -182,11 +180,12 @@ public class TestClass {
 
             return interval;
         });
-
-        crawler = new Crawler(storageMock, dataServiceMock, dataProviderMock, configuration, new CrawlerTimeTestImpl());
     }
 
     private List<StreamResponse> addEvents() {
+        CrawlerConfiguration configuration = new CrawlerConfiguration("2021-06-16T12:00:00.00Z", null, name,
+                "EVENTS", "PT1H", 1, ChronoUnit.NANOS, 1, 10, 5,
+                ChronoUnit.MINUTES, true, new HashSet<>(), null);
 
         List<StreamResponse> responses = new ArrayList<>();
 
@@ -208,6 +207,12 @@ public class TestClass {
     @Test
     @DisplayName("Calling method process()")
     public void processMethodCall() throws IOException, UnexpectedDataServiceException {
+        CrawlerConfiguration configuration = new CrawlerConfiguration("2021-06-16T12:00:00.00Z", null, name,
+                "EVENTS", "PT1H", 1, ChronoUnit.NANOS, 1, 10, 5,
+                ChronoUnit.MINUTES, true, new HashSet<>(), null);
+
+        Crawler crawler = new Crawler(storageMock, dataServiceMock, dataProviderMock, configuration, new CrawlerTimeTestImpl());
+
         crawler.process();
 
         verify(intervalsWorkerMock).getIntervals(any(Instant.class), any(Instant.class), anyString(), anyString(), anyString());
@@ -223,7 +228,11 @@ public class TestClass {
     @Test
     @DisplayName("Requiring handshake, getting other name and version")
     public void handshakeNeededAnother() {
-        crawler = new Crawler(storageMock, dataServiceMock, dataProviderMock, configuration, new CrawlerTimeTestImpl());
+        CrawlerConfiguration configuration = new CrawlerConfiguration("2021-06-16T12:00:00.00Z", null, name,
+                "EVENTS", "PT1H", 1, ChronoUnit.NANOS, 1, 10, 5,
+                ChronoUnit.MINUTES, true, new HashSet<>(), null);
+
+        Crawler crawler = new Crawler(storageMock, dataServiceMock, dataProviderMock, configuration, new CrawlerTimeTestImpl());
 
         when(dataServiceMock.crawlerConnect(any(CrawlerInfo.class)))
                 .thenReturn(DataServiceInfo.newBuilder().setEventId(toEventID("3")).setName("another_crawler").setVersion(version).build());
@@ -238,6 +247,40 @@ public class TestClass {
             return EventResponse.newBuilder().setId(eventID).setStatus(Status.newBuilder().setHandshakeRequired(true).build()).build();
         });
 
-        Assertions.assertThrows(UnexpectedDataServiceException.class, () -> crawler.process());
+        Assertions.assertThrows(UnexpectedDataServiceException.class, crawler::process);
     }
+
+    @Test
+    @DisplayName("Crawler's actions when a data service fails")
+    public void dataServiceFail() {
+        CrawlerConfiguration configuration = new CrawlerConfiguration("2021-06-16T12:00:00.00Z", null, name,
+                "MESSAGES", "PT1H", 1, ChronoUnit.NANOS, 1, 10, 5,
+                ChronoUnit.MINUTES, true, new HashSet<>(Arrays.asList(aliases)), null);
+
+        Crawler crawler = new Crawler(storageMock, dataServiceMock, dataProviderMock, configuration, new CrawlerTimeTestImpl());
+
+        String exceptionMessage = "Test exception";
+
+        when(dataProviderMock.searchMessages(any(MessageSearchRequest.class))).then(invocation -> {
+            List<StreamResponse> responses = new ArrayList<>();
+
+            StreamResponse response = StreamResponse.newBuilder()
+                    .setMessage(MessageData.newBuilder()
+                            .setDirectionValue(1).setBody("").setMessageId(MessageID.newBuilder()
+                                    .setDirection(Direction.FIRST).setConnectionId(ConnectionID.newBuilder()
+                                            .setSessionAlias("alias1").build()).setSequence(1).build())).build();
+
+            responses.add(response);
+
+            return responses.iterator();
+        });
+
+        when(dataServiceMock.crawlerConnect(any(CrawlerInfo.class)))
+                .thenReturn(DataServiceInfo.newBuilder().setEventId(toEventID("3")).setName("another_crawler").setVersion(version).build());
+
+        when(dataServiceMock.sendMessage(any(MessageDataRequest.class))).thenThrow(new RuntimeException(exceptionMessage));
+
+        Assertions.assertThrows(RuntimeException.class, crawler::process, exceptionMessage);
+    }
+
 }
