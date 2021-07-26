@@ -94,7 +94,7 @@ fun main(args: Array<String>) {
         while (!Thread.currentThread().isInterrupted) {
             val sleepTime = crawler.process()
 
-            Thread.sleep(sleepTime.toSeconds())
+            Thread.sleep(sleepTime.toMillis())
         }
 
         LOGGER.info { "Crawler is going to shutdown" }
