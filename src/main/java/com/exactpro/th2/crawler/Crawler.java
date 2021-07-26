@@ -234,7 +234,7 @@ public class Crawler {
 
         }
 
-        return Duration.of(configuration.getDelay(), ChronoUnit.SECONDS);
+        return Duration.of(sleepTime, ChronoUnit.MILLIS);
     }
 
     private SendingReport sendEvents(CrawlerId crawlerId, DataServiceInfo dataServiceInfo, int batchSize, EventID startId) throws IOException {
@@ -611,7 +611,6 @@ public class Crawler {
                             LOGGER.info("Failed to create new interval from: {}, to: {} as it is too early now. Wait for {}",
                                     lastIntervalEnd, lastIntervalEnd.plus(length), Duration.ofMillis(sleepTime));
                         }
-
 
                         return null;
 
