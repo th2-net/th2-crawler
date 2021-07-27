@@ -65,10 +65,6 @@ fun main(args: Array<String>) {
 
         val cradleManager = factory.cradleManager
 
-        factory.grpcConfiguration.retryConfiguration.maxMethodRetriesTimeout = 3000
-        factory.grpcConfiguration.retryConfiguration.minMethodRetriesTimeout = 2000
-        factory.grpcConfiguration.retryConfiguration.setMaxAttempts(50)
-
         val grpcRouter = factory.grpcRouter
 
         resources += grpcRouter
