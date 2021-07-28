@@ -224,6 +224,8 @@ public class Crawler {
 
                 numberOfEvents = 0L;
                 numberOfMessages = 0L;
+
+                LOGGER.info("Interval from {}, to {} was processed successfully", interval.getStartTime(), interval.getEndTime());
             }
 
             if (restartPod) {
