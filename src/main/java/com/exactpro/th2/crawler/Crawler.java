@@ -432,9 +432,10 @@ public class Crawler {
                 if (!recoveryStateMessages.isEmpty()) {
                     RecoveryState newState;
 
-                    Map<String, RecoveryState.InnerMessage> lastProcessedMessages = oldState.getLastProcessedMessages();
+                    Map<String, RecoveryState.InnerMessage> oldLastProcessedMessages = oldState.getLastProcessedMessages();
 
-                    if (lastProcessedMessages != null) {
+                    if (oldLastProcessedMessages != null) {
+                        Map<String, RecoveryState.InnerMessage> lastProcessedMessages = new HashMap<>(oldLastProcessedMessages);
 
                         lastProcessedMessages.putAll(recoveryStateMessages);
 
@@ -444,8 +445,6 @@ public class Crawler {
                     } else {
                         newState = new RecoveryState(null, recoveryStateMessages, 0, numberOfMessages);
                     }
-
-                    LOGGER.info("Trying to update interval {} with state {}", interval, newState);
 
                     interval = intervalsWorker.updateRecoveryState(interval, newState); // FIXME: update in the correct interval!
                 }
@@ -557,7 +556,6 @@ public class Crawler {
                 }
 
                 LOGGER.info("Crawler got interval from: {}, to: {}", interval.getStartTime(), interval.getEndTime());
-                LOGGER.info("Interval: {}", interval);
 
                 foundInterval = interval;
             }
