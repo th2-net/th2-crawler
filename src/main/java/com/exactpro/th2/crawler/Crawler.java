@@ -557,6 +557,7 @@ public class Crawler {
                 }
 
                 LOGGER.info("Crawler got interval from: {}, to: {}", interval.getStartTime(), interval.getEndTime());
+                LOGGER.info("Interval: {}", interval);
 
                 foundInterval = interval;
             }
