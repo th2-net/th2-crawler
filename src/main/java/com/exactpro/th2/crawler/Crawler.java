@@ -83,6 +83,7 @@ public class Crawler {
     private long sleepTime;
 
     private final String crawlerType;
+    private final String crawlerName;
     private final int batchSize;
     private final DataServiceInfo info;
     private final CrawlerId crawlerId;
@@ -110,8 +111,9 @@ public class Crawler {
         this.numberOfEvents = this.numberOfMessages = 0L;
         this.sleepTime = configuration.getDelay() * 1000;
         this.crawlerType = configuration.getType();
+        this.crawlerName = configuration.getName();
         this.batchSize = configuration.getBatchSize();
-        this.crawlerId = CrawlerId.newBuilder().setName(configuration.getName()).build();
+        this.crawlerId = CrawlerId.newBuilder().setName(crawlerName).build();
         this.info = dataService.crawlerConnect(CrawlerInfo.newBuilder().setId(crawlerId).build());
         this.sessionAliases = configuration.getSessionAliases();
         this.sessionAliasesPattern = configuration.getSessionAliasesPattern() == null ? null : Pattern.compile(configuration.getSessionAliasesPattern());
@@ -442,6 +444,8 @@ public class Crawler {
                     } else {
                         newState = new RecoveryState(null, recoveryStateMessages, 0, numberOfMessages);
                     }
+
+                    LOGGER.info("Trying to update interval {} with state {}", interval, newState);
 
                     interval = intervalsWorker.updateRecoveryState(interval, newState); // FIXME: update in the correct interval!
                 }
