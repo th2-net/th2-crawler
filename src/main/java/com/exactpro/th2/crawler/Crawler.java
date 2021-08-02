@@ -555,7 +555,8 @@ public class Crawler {
                     interval = intervalsWorker.setIntervalProcessed(interval, false);
                 }
 
-                LOGGER.info("Crawler got interval from: {}, to: {}", interval.getStartTime(), interval.getEndTime());
+                LOGGER.info("Crawler got interval from: {}, to: {} with Recovery state {}",
+                        interval.getStartTime(), interval.getEndTime(), interval.getRecoveryState());
 
                 foundInterval = interval;
             }
