@@ -279,8 +279,14 @@ public class Crawler {
                 if (r.hasEvent()) {
                     EventData event = r.getEvent();
 
-                    if (!event.getStartTimestamp().equals(toTimestamp))
+                    if (!event.getStartTimestamp().equals(toTimestamp)) {
                         events.add(event);
+
+                        if (LOGGER.isDebugEnabled()) {
+                            LOGGER.debug("Got event {}", MessageUtils.toJson(event, true));
+                        }
+                    }
+
                 }
             }
 
@@ -386,8 +392,14 @@ public class Crawler {
                 if (r.hasMessage()) {
                     MessageData message = r.getMessage();
 
-                    if (!message.getTimestamp().equals(toTimestamp))
+                    if (!message.getTimestamp().equals(toTimestamp)) {
                         messages.add(message);
+
+                        if (LOGGER.isDebugEnabled()) {
+                            LOGGER.debug("Got message {}", MessageUtils.toJson(message, true));
+                        }
+                    }
+
                 }
             }
 
