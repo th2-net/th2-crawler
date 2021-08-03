@@ -550,17 +550,14 @@ public class Crawler {
             boolean lastUpdateCheck = interval.getLastUpdateDateTime()
                     .isBefore(crawlerTime.now().minus(configuration.getLastUpdateOffset(), configuration.getLastUpdateOffsetUnit()));
 
-            boolean lookBackCheck = interval.getStartTime()
-                    .isAfter(crawlerTime.now().minus(configuration.getLookBackTime(), configuration.getLookBackOffsetUnit()));
-
             intervalsNumber++;
 
             if (LOGGER.isDebugEnabled()) {
                 LOGGER.debug("Interval from Cassandra from {}, to {}", interval.getStartTime(), interval.getEndTime());
             }
 
-            boolean floatingAndMultiple = floatingToTime && !workAlone && !interval.isProcessed() && lastUpdateCheck && lookBackCheck;
-            boolean floatingAndAlone = floatingToTime && workAlone && !interval.isProcessed() && lookBackCheck;
+            boolean floatingAndMultiple = floatingToTime && !workAlone && !interval.isProcessed() && lastUpdateCheck;
+            boolean floatingAndAlone = floatingToTime && workAlone && !interval.isProcessed();
             boolean fixedAndMultiple = !floatingToTime && !workAlone && !interval.isProcessed() && lastUpdateCheck;
             boolean fixedAndAlone = !floatingToTime && workAlone && (!interval.isProcessed() || lastUpdateCheck);
 
