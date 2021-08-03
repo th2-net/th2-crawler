@@ -44,6 +44,10 @@ class CrawlerConfiguration(
     @JsonProperty
     val toLagOffsetUnit: ChronoUnit = ChronoUnit.HOURS,
     @JsonProperty
+    val lookBackTime: Int = 1,
+    @JsonProperty
+    val lookBackOffsetUnit: ChronoUnit = ChronoUnit.DAYS,
+    @JsonProperty
     val workAlone: Boolean = false,
     @JsonProperty
     val sessionAliases: Set<String> = emptySet(),
