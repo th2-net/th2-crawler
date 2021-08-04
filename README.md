@@ -1,9 +1,11 @@
 # Crawler (0.0.1)
 
 ## Overview
-This component sends events/messages to data services for further processing.
+This component sends events/messages to **crawler data services** for further processing via **gRPC**.
 It requests events/messages for the certain time intervals using rpt-data-provider.
-Those intervals are processed periodically, and new ones are written to Cradle if necessary. 
+Those intervals are processed periodically, and new ones are written to Cradle if necessary.
+
+The **crawler data services** must implement the [crawler data service gRPC service](https://github.com/th2-net/th2-grpc-crawler-data-service).
 
 ## Configuration parameters
 
@@ -87,8 +89,8 @@ spec:
 ## Links
 
 The **crawler** required the following links:
-+ link to the **data provider** working in the gRPC mode
-+ link to the **data service**
++ gRPC link to the **data provider** working in the gRPC mode
++ gRPC link to the **crawler data service**
 
 Links example:
 
