@@ -353,6 +353,7 @@ public class Crawler {
     private SendingReport sendMessages(CrawlerId crawlerId, DataServiceInfo dataServiceInfo, int batchSize, Map<String,
             MessageID> startIds, Collection<String> aliases, Instant from, Instant to) throws IOException {
 
+        // залогировать, что отправляется запрос на сообщзения
         Map<String, MessageID> resumeIds = startIds;
         MessageResponse response;
         boolean search = true;
@@ -382,6 +383,8 @@ public class Crawler {
             else
                 request = searchBuilder.addAllMessageId(resumeIds.values()).build();
 
+            if (LOGGER.isDebugEnabled())
+                LOGGER.debug("Requesting messages. Request: " + MessageUtils.toJson(request, true));
             Iterator<StreamResponse> messagesIterator = dataProviderService.searchMessages(request);
 
             List<MessageData> messages = new ArrayList<>();
