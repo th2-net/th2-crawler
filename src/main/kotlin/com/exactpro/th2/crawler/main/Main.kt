@@ -24,7 +24,7 @@ import com.exactpro.th2.common.metrics.liveness
 import com.exactpro.th2.common.metrics.readiness
 import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.exactpro.th2.crawler.CrawlerConfiguration
-import com.exactpro.th2.crawler.dataservice.grpc.DataServiceService
+import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService
 import com.exactpro.th2.crawler.exception.FailedUpdateException
 import com.exactpro.th2.crawler.exception.UnexpectedDataServiceException
 import com.exactpro.th2.dataprovider.grpc.DataProviderService
@@ -70,7 +70,7 @@ fun main(args: Array<String>) {
 
         resources += grpcRouter
 
-        val dataService = grpcRouter.getService(DataServiceService::class.java)
+        val dataProcessor = grpcRouter.getService(DataProcessorService::class.java)
         val dataProviderService = grpcRouter.getService(DataProviderService::class.java)
 
         val configuration = factory.getCustomConfiguration(CrawlerConfiguration::class.java)
@@ -82,7 +82,7 @@ fun main(args: Array<String>) {
 
         val crawler = Crawler(
             cradleManager.storage,
-            dataService,
+            dataProcessor,
             dataProviderService,
             configuration
         )
@@ -106,7 +106,7 @@ fun main(args: Array<String>) {
         Thread.currentThread().interrupt()
         exitProcess(1)
     } catch (ex: UnexpectedDataServiceException) {
-        LOGGER.info("Data service changed its name and/or version", ex)
+        LOGGER.info("Data processor changed its name and/or version", ex)
         exitProcess(0)
     } catch (ex: UpdateNotAppliedException) {
         LOGGER.info("Failed to update some fields of table with intervals", ex)
