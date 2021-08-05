@@ -66,14 +66,14 @@ public class Crawler {
     private final Instant from;
     private Instant to;
 
-    private CrawlerTime crawlerTime;
+    private final CrawlerTime crawlerTime;
 
     private final Duration defaultIntervalLength;
 
     private long numberOfEvents;
     private long numberOfMessages;
 
-    private Set<String> sessionAliases;
+    private final Set<String> sessionAliases;
     private final Pattern sessionAliasesPattern;
 
     private final boolean floatingToTime;
@@ -105,7 +105,6 @@ public class Crawler {
         this.from = Instant.parse(configuration.getFrom());
         this.floatingToTime = configuration.getTo() == null;
         this.workAlone = configuration.getWorkAlone();
-        this.crawlerTime = new CrawlerTimeImpl();
         this.to = floatingToTime ? crawlerTime.now() : Instant.parse(configuration.getTo());
         this.defaultIntervalLength = Duration.parse(configuration.getDefaultLength());
         this.numberOfEvents = this.numberOfMessages = 0L;
@@ -179,7 +178,8 @@ public class Crawler {
                                 else
                                     direction = com.exactpro.th2.common.grpc.Direction.SECOND;
 
-                                return builder.setSequence(innerMessage.getSequence())
+                                return builder
+                                        .setSequence(innerMessage.getSequence())
                                         .setConnectionId(ConnectionID.newBuilder().setSessionAlias(innerMessage.getSessionAlias()).build())
                                         .setDirection(direction)
                                         .build();
@@ -411,7 +411,10 @@ public class Crawler {
             if (resumeIds != null)
                 resumeIds.clear();
 
-            resumeIds = getLastMessagesWithAliases(messages);
+            resumeIds = messages.stream()
+                    .filter(MessageData::hasMessageId)
+                    .map(MessageData::getMessageId)
+                    .collect(Collectors.toMap(messageID -> messageID.getConnectionId().getSessionAlias(), Function.identity()));
 
             MessageDataRequest messageRequest = messageDataBuilder.setId(crawlerId).addAllMessageData(messages).build();
 
@@ -482,30 +485,6 @@ public class Crawler {
             message = new RecoveryState.InnerMessage(alias, timestamp, direction, sequence);
 
             result.put(alias, message);
-        }
-
-        return result;
-    }
-
-    private Map<String, MessageID> getLastMessagesWithAliases(List<MessageData> messages) {
-        Map<String, MessageID> result = new HashMap<>();
-
-        Set<String> aliases = messages.stream().filter(MessageData::hasMessageId)
-                .map(MessageData::getMessageId)
-                .map(MessageID::getConnectionId)
-                .map(ConnectionID::getSessionAlias)
-                .collect(Collectors.toSet());
-
-        for (String alias : aliases) {
-
-            for (MessageData message : messages) {
-                if (message.hasMessageId()) {
-                    if (alias.equals(message.getMessageId().getConnectionId().getSessionAlias())) {
-                        MessageID id = message.getMessageId();
-                        result.put(id.getConnectionId().getSessionAlias(), id);
-                    }
-                }
-            }
         }
 
         return result;
