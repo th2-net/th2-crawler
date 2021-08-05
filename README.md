@@ -1,11 +1,11 @@
-# Crawler (0.0.1)
+# Crawler (0.0.3)
 
 ## Overview
-This component sends events/messages to **crawler data services** for further processing via **gRPC**.
+This component sends events/messages to **crawler data processor** for further processing via **gRPC**.
 It requests events/messages for the certain time intervals using rpt-data-provider.
 Those intervals are processed periodically, and new ones are written to Cradle if necessary.
 
-The **crawler data services** must implement the [crawler data service gRPC service](https://github.com/th2-net/th2-grpc-crawler-data-service).
+The **crawler data processor** must implement the [crawler data processor gRPC service](https://github.com/th2-net/th2-grpc-crawler-data-processor).
 
 ## Configuration parameters
 
@@ -17,7 +17,7 @@ The Crawler does not process the data after this point in time. **If it is not s
 
 **type: _EVENTS_** - the type of data the Crawler processes. Allowed values are **EVENTS**, **MESSAGES**. The default value is **EVENTS**.
 
-**name: _CrawlerName_** - the Crawler's name to allow data service to identify it. **Required parameter**
+**name: _CrawlerName_** - the Crawler's name to allow data processor to identify it. **Required parameter**
 
 **defaultLength: _PT10M_** - the step that the Crawler will use to create intervals.
 It uses the Java Duration format. You can read more about it [here](https://docs.oracle.com/javase/8/docs/api/java/time/Duration.html#parse-java.lang.CharSequence-).
@@ -33,7 +33,7 @@ The default value is **HOURS**
 **delay: _10_** - the delay in seconds between the Crawler has processed the current interval and starts processing the next one.
 The default value is **10**
 
-**batchSize: 500** - the size of data chunks the Crawler requests from the data provider and feeds to the data service.
+**batchSize: 500** - the size of data chunks the Crawler requests from the data provider and feeds to the data processor.
 The default value is **300**
 
 **toLag: _5_** - the offset from the real time. When the interval's higher bound is greater than the **current time - toLag**
@@ -72,7 +72,7 @@ spec:
     pins:
       - name: to_data_provider
         connection-type: grpc
-      - name: to_data_service
+      - name: to_data_processor
         connection-type: grpc
     extended-settings:
       service:
@@ -90,7 +90,7 @@ spec:
 
 The **crawler** required the following links:
 + gRPC link to the **data provider** working in the gRPC mode
-+ gRPC link to the **crawler data service**
++ gRPC link to the **crawler data processor**
 
 Links example:
 
@@ -116,9 +116,9 @@ spec:
       from:
         strategy: filter
         box: crawler
-        pin: to_data_service
+        pin: to_data_processor
       to:
-        service-class: com.exactpro.th2.crawler.dataservice.grpc.DataServiceService
+        service-class: com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService
         strategy: robin
         box: data-service
         pin: server

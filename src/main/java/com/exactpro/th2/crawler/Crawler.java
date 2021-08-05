@@ -25,14 +25,14 @@ import com.exactpro.th2.common.event.EventUtils;
 import com.exactpro.th2.common.grpc.EventID;
 import com.exactpro.th2.common.grpc.MessageID;
 import com.exactpro.th2.common.message.MessageUtils;
-import com.exactpro.th2.crawler.dataservice.grpc.CrawlerId;
-import com.exactpro.th2.crawler.dataservice.grpc.CrawlerInfo;
-import com.exactpro.th2.crawler.dataservice.grpc.DataServiceInfo;
-import com.exactpro.th2.crawler.dataservice.grpc.DataServiceService;
-import com.exactpro.th2.crawler.dataservice.grpc.EventDataRequest;
-import com.exactpro.th2.crawler.dataservice.grpc.EventResponse;
-import com.exactpro.th2.crawler.dataservice.grpc.MessageDataRequest;
-import com.exactpro.th2.crawler.dataservice.grpc.MessageResponse;
+import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId;
+import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerInfo;
+import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorInfo;
+import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService;
+import com.exactpro.th2.crawler.dataprocessor.grpc.EventDataRequest;
+import com.exactpro.th2.crawler.dataprocessor.grpc.EventResponse;
+import com.exactpro.th2.crawler.dataprocessor.grpc.MessageDataRequest;
+import com.exactpro.th2.crawler.dataprocessor.grpc.MessageResponse;
 import com.exactpro.th2.crawler.exception.UnexpectedDataServiceException;
 import com.exactpro.th2.crawler.exception.ConfigurationException;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
@@ -60,7 +60,7 @@ import java.util.Objects;
 
 
 public class Crawler {
-    private final DataServiceService dataService;
+    private final DataProcessorService dataProcessor;
     private final DataProviderService dataProviderService;
     private final IntervalsWorker intervalsWorker;
     private final CrawlerConfiguration configuration;
@@ -84,10 +84,10 @@ public class Crawler {
 
     private Interval interval;
 
-    public Crawler(@NotNull CradleStorage storage, @NotNull DataServiceService dataService,
+    public Crawler(@NotNull CradleStorage storage, @NotNull DataProcessorService dataProcessor,
                    @NotNull DataProviderService dataProviderService, @NotNull CrawlerConfiguration configuration) {
         this.intervalsWorker = Objects.requireNonNull(storage, "Cradle storage cannot be null").getIntervalsWorker();
-        this.dataService = Objects.requireNonNull(dataService, "Data service cannot be null");
+        this.dataProcessor = Objects.requireNonNull(dataProcessor, "Data processor cannot be null");
         this.dataProviderService = Objects.requireNonNull(dataProviderService, "Data provider service cannot be null");
         this.configuration = Objects.requireNonNull(configuration, "Crawler configuration cannot be null");
         this.from = Instant.parse(configuration.getFrom());
@@ -116,7 +116,7 @@ public class Crawler {
 
         LOGGER.info("Crawler started working");
 
-        DataServiceInfo info = dataService.crawlerConnect(crawlerInfo);
+        DataProcessorInfo info = dataProcessor.crawlerConnect(crawlerInfo);
 
         while (!Thread.currentThread().isInterrupted()) {
 
@@ -181,15 +181,15 @@ public class Crawler {
         }
     }
 
-    private SendingReport sendEvents(CrawlerId crawlerId, DataServiceInfo dataServiceInfo, int batchSize, EventID startId) throws IOException {
+    private SendingReport sendEvents(CrawlerId crawlerId, DataProcessorInfo dataProcessorInfo, int batchSize, EventID startId) throws IOException {
         EventResponse response;
         EventID resumeId = startId;
         boolean search = true;
         Timestamp fromTimestamp = MessageUtils.toTimestamp(interval.getStartTime());
         Timestamp toTimestamp = MessageUtils.toTimestamp(interval.getEndTime());
 
-        String dataServiceName = dataServiceInfo.getName();
-        String dataServiceVersion = dataServiceInfo.getVersion();
+        String dataServiceName = dataProcessorInfo.getName();
+        String dataServiceVersion = dataProcessorInfo.getVersion();
 
         while (search) {
 
@@ -236,11 +236,11 @@ public class Crawler {
 
             EventDataRequest eventRequest = dataRequestBuilder.setId(crawlerId).addAllEventData(events).build();
 
-            response = dataService.sendEvent(eventRequest);
+            response = dataProcessor.sendEvent(eventRequest);
 
             if (response.hasStatus()) {
                 if (response.getStatus().getHandshakeRequired()) {
-                    return handshake(crawlerId, dataServiceInfo);
+                    return handshake(crawlerId, dataProcessorInfo);
                 }
             }
 
@@ -277,15 +277,15 @@ public class Crawler {
         return new SendingReport(CrawlerAction.NONE, dataServiceName, dataServiceVersion);
     }
 
-    private SendingReport sendMessages(CrawlerId crawlerId, DataServiceInfo dataServiceInfo, int batchSize) throws IOException {
+    private SendingReport sendMessages(CrawlerId crawlerId, DataProcessorInfo dataProcessorInfo, int batchSize) throws IOException {
         MessageID resumeId = null;
         MessageResponse response;
         boolean search = true;
         Timestamp fromTimestamp = MessageUtils.toTimestamp(interval.getStartTime());
         Timestamp toTimestamp = MessageUtils.toTimestamp(interval.getEndTime());
 
-        String dataServiceName = dataServiceInfo.getName();
-        String dataServiceVersion = dataServiceInfo.getVersion();
+        String dataServiceName = dataProcessorInfo.getName();
+        String dataServiceVersion = dataProcessorInfo.getVersion();
 
         while (search) {
 
@@ -333,11 +333,11 @@ public class Crawler {
 
             MessageDataRequest messageRequest = messageDataBuilder.setId(crawlerId).addAllMessageData(messages).build();
 
-            response = dataService.sendMessage(messageRequest);
+            response = dataProcessor.sendMessage(messageRequest);
 
             if (response.hasStatus()) {
                 if (response.getStatus().getHandshakeRequired()) {
-                    return handshake(crawlerId, dataServiceInfo);
+                    return handshake(crawlerId, dataProcessorInfo);
                 }
             }
 
@@ -383,13 +383,13 @@ public class Crawler {
         return new SendingReport(CrawlerAction.NONE, dataServiceName, dataServiceVersion);
     }
 
-    private SendingReport handshake(CrawlerId crawlerId, DataServiceInfo dataServiceInfo) {
-        DataServiceInfo info = dataService.crawlerConnect(CrawlerInfo.newBuilder().setId(crawlerId).build());
+    private SendingReport handshake(CrawlerId crawlerId, DataProcessorInfo dataProcessorInfo) {
+        DataProcessorInfo info = dataProcessor.crawlerConnect(CrawlerInfo.newBuilder().setId(crawlerId).build());
 
         String dataServiceName = info.getName();
         String dataServiceVersion = info.getVersion();
 
-        if (dataServiceName.equals(dataServiceInfo.getName()) && dataServiceVersion.equals(dataServiceInfo.getVersion())) {
+        if (dataServiceName.equals(dataProcessorInfo.getName()) && dataServiceVersion.equals(dataProcessorInfo.getVersion())) {
             LOGGER.info("Got the same name ({}) and version ({}) from repeated crawlerConnect", dataServiceName, dataServiceVersion);
             return new SendingReport(CrawlerAction.CONTINUE, dataServiceName, dataServiceVersion);
         } else {
