@@ -20,7 +20,7 @@ import com.exactpro.cradle.CradleStorage;
 import com.exactpro.cradle.Direction;
 import com.exactpro.cradle.intervals.Interval;
 import com.exactpro.cradle.intervals.IntervalsWorker;
-import com.exactpro.cradle.intervals.RecoveryState;
+import com.exactpro.th2.crawler.state.RecoveryState;
 import com.exactpro.th2.common.event.EventUtils;
 import com.exactpro.th2.common.grpc.ConnectionID;
 import com.exactpro.th2.common.grpc.EventID;
@@ -153,7 +153,11 @@ public class Crawler {
             SendingReport report;
 
             if (EVENTS.equals(interval.getCrawlerType())) {
-                RecoveryState.InnerEvent lastProcessedEvent = interval.getRecoveryState().getLastProcessedEvent();
+                RecoveryState.InnerEvent lastProcessedEvent;
+                RecoveryState state = RecoveryState.getStateFromJson(interval.getRecoveryState());
+
+                lastProcessedEvent = state == null ? null : state.getLastProcessedEvent();
+
                 EventID startId = null;
 
                 if (lastProcessedEvent != null) {
@@ -163,7 +167,11 @@ public class Crawler {
                 report = sendEvents(crawlerId, info, batchSize, startId);
 
             } else if (MESSAGES.equals(interval.getCrawlerType())) {
-                Map<String, RecoveryState.InnerMessage> lastProcessedMessages = interval.getRecoveryState().getLastProcessedMessages();
+                Map<String, RecoveryState.InnerMessage> lastProcessedMessages;
+                RecoveryState state = RecoveryState.getStateFromJson(interval.getRecoveryState());
+
+                lastProcessedMessages = state == null ? null : state.getLastProcessedMessages();
+
                 Map<String, MessageID> startIds = null;
 
                 MessageID.Builder builder = MessageID.newBuilder();
@@ -203,25 +211,45 @@ public class Crawler {
             if (report.action == CrawlerAction.NONE) {
                 interval = intervalsWorker.setIntervalProcessed(interval, true);
 
-                RecoveryState previousState = interval.getRecoveryState();
+                RecoveryState previousState = RecoveryState.getStateFromJson(interval.getRecoveryState());
 
                 if (EVENTS.equals(interval.getCrawlerType())) {
-                    RecoveryState state = new RecoveryState(
-                            null,
-                            previousState.getLastProcessedMessages(),
-                            numberOfEvents,
-                            previousState.getLastNumberOfMessages());
+                    RecoveryState state;
 
-                    interval = intervalsWorker.updateRecoveryState(interval, state);
+                    if (previousState == null) {
+                        state = new RecoveryState(
+                                null,
+                                null,
+                                numberOfEvents,
+                                0);
+                    } else {
+                        state = new RecoveryState(
+                                null,
+                                previousState.getLastProcessedMessages(),
+                                numberOfEvents,
+                                previousState.getLastNumberOfMessages());
+                    }
+
+                    interval = intervalsWorker.updateRecoveryState(interval, state.convertToJson());
                 } else if (MESSAGES.equals(interval.getCrawlerType())) {
-                    RecoveryState state = new RecoveryState(
-                            previousState.getLastProcessedEvent(),
-                            null,
-                            previousState.getLastNumberOfEvents(),
-                            numberOfMessages
-                    );
+                    RecoveryState state;
 
-                    interval = intervalsWorker.updateRecoveryState(interval, state);
+                    if (previousState == null) {
+                        state = new RecoveryState(
+                                null,
+                                null,
+                                0,
+                                numberOfMessages
+                        );
+                    } else {
+                        state = new RecoveryState(
+                                previousState.getLastProcessedEvent(),
+                                null,
+                                previousState.getLastNumberOfEvents(),
+                                numberOfMessages);
+                    }
+
+                    interval = intervalsWorker.updateRecoveryState(interval, state.convertToJson());
                 }
 
                 numberOfEvents = 0L;
@@ -310,7 +338,7 @@ public class Crawler {
             }
 
             if (response.hasId()) {
-                RecoveryState oldState = interval.getRecoveryState();
+                RecoveryState oldState = RecoveryState.getStateFromJson(interval.getRecoveryState());
 
                 RecoveryState.InnerEvent event = null;
 
@@ -334,13 +362,23 @@ public class Crawler {
                 }
 
                 if (event != null) {
-                    RecoveryState newState = new RecoveryState(
-                            event,
-                            oldState.getLastProcessedMessages(),
-                            numberOfEvents,
-                            oldState.getLastNumberOfMessages());
+                    RecoveryState newState;
 
-                    interval = intervalsWorker.updateRecoveryState(interval, newState);
+                    if (oldState == null) {
+                        newState = new RecoveryState(
+                                event,
+                                null,
+                                numberOfEvents,
+                                0);
+                    } else {
+                        newState = new RecoveryState(
+                                event,
+                                oldState.getLastProcessedMessages(),
+                                numberOfEvents,
+                                oldState.getLastNumberOfMessages());
+                    }
+
+                    interval = intervalsWorker.updateRecoveryState(interval, newState.convertToJson());
                 }
             }
 
@@ -428,7 +466,7 @@ public class Crawler {
 
             if (!response.getIdsMap().isEmpty()) {
                 Map<String, MessageID> responseIds = response.getIdsMap();
-                RecoveryState oldState = interval.getRecoveryState();
+                RecoveryState oldState = RecoveryState.getStateFromJson(interval.getRecoveryState());
 
                 Map<String, RecoveryState.InnerMessage> recoveryStateMessages;
 
@@ -447,21 +485,29 @@ public class Crawler {
                 if (!recoveryStateMessages.isEmpty()) {
                     RecoveryState newState;
 
-                    Map<String, RecoveryState.InnerMessage> oldLastProcessedMessages = oldState.getLastProcessedMessages();
+                    Map<String, RecoveryState.InnerMessage> oldLastProcessedMessages;
 
-                    if (oldLastProcessedMessages != null) {
-                        Map<String, RecoveryState.InnerMessage> lastProcessedMessages = new HashMap<>(oldLastProcessedMessages);
+                    if (oldState == null) {
+                        oldLastProcessedMessages = new HashMap<>();
+                    } else {
+                        oldLastProcessedMessages = oldState.getLastProcessedMessages();
+                    }
 
-                        lastProcessedMessages.putAll(recoveryStateMessages);
+                    Map<String, RecoveryState.InnerMessage> lastProcessedMessages = new HashMap<>(oldLastProcessedMessages);
 
+                    lastProcessedMessages.putAll(recoveryStateMessages);
+
+                    if (oldState == null) {
+                        newState = new RecoveryState(null, lastProcessedMessages,
+                                0,
+                                numberOfMessages);
+                    } else {
                         newState = new RecoveryState(oldState.getLastProcessedEvent(), lastProcessedMessages,
                                 oldState.getLastNumberOfEvents(),
                                 numberOfMessages);
-                    } else {
-                        newState = new RecoveryState(null, recoveryStateMessages, 0, numberOfMessages);
                     }
 
-                    interval = intervalsWorker.updateRecoveryState(interval, newState); // FIXME: update in the correct interval!
+                    interval = intervalsWorker.updateRecoveryState(interval, newState.convertToJson()); // FIXME: update in the correct interval!
                 }
             }
 
@@ -656,7 +702,7 @@ public class Crawler {
                 .crawlerVersion(version)
                 .crawlerType(type)
                 .processed(false)
-                .recoveryState(new RecoveryState(null, null, 0, 0))
+                .recoveryState(new RecoveryState(null, null, 0, 0).convertToJson())
                 .build();
 
         boolean intervalStored = intervalsWorker.storeInterval(newInterval);
