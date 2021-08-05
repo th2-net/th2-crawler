@@ -1,4 +1,4 @@
-# Crawler (0.0.2)
+# Crawler (0.0.3)
 
 ## Overview
 This component sends events/messages to **crawler data processor** for further processing via **gRPC**.
