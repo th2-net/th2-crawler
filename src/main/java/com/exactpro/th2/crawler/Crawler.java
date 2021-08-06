@@ -259,7 +259,7 @@ public class Crawler {
 
     private SendingReport sendEvents(EventsInfo info) throws IOException {
         EventResponse response;
-        Interval interval =info.interval;
+        Interval interval = info.interval;
         EventID resumeId = info.startId;
         boolean search = true;
         Timestamp fromTimestamp = MessageUtils.toTimestamp(info.from);
@@ -278,24 +278,7 @@ public class Crawler {
             Iterator<StreamResponse> eventsIterator = CrawlerUtils.searchEvents(dataProviderService::searchEvents,
                     new CrawlerUtils.EventsSearchInfo<>(eventRequestBuilder, fromTimestamp, toTimestamp, batchSize, resumeId));
 
-            List<EventData> events = new ArrayList<>();
-
-            while (eventsIterator.hasNext()) {
-                StreamResponse r = eventsIterator.next();
-
-                if (r.hasEvent()) {
-                    EventData event = r.getEvent();
-
-                    if (!event.getStartTimestamp().equals(toTimestamp)) {
-                        events.add(event);
-
-                        if (LOGGER.isDebugEnabled()) {
-                            LOGGER.debug("Got event {}", MessageUtils.toJson(event, true));
-                        }
-                    }
-
-                }
-            }
+            List<EventData> events = CrawlerUtils.collectEvents(eventsIterator, toTimestamp);
 
             if (events.isEmpty()) {
                 LOGGER.info("No more events in interval from: {}, to: {}", interval.getStartTime(), interval.getEndTime());
@@ -388,23 +371,7 @@ public class Crawler {
             Iterator<StreamResponse> messagesIterator = CrawlerUtils.searchMessages(dataProviderService::searchMessages,
                     new CrawlerUtils.MessagesSearchInfo<>(messageDataBuilder, fromTimestamp, toTimestamp, batchSize, resumeIds, info.aliases));
 
-            List<MessageData> messages = new ArrayList<>();
-
-            while (messagesIterator.hasNext()) {
-                StreamResponse r = messagesIterator.next();
-
-                if (r.hasMessage()) {
-                    MessageData message = r.getMessage();
-
-                    if (!message.getTimestamp().equals(toTimestamp)) {
-                        messages.add(message);
-
-                        if (LOGGER.isDebugEnabled()) {
-                            LOGGER.debug("Got message {}", MessageUtils.toJson(message, true));
-                        }
-                    }
-                }
-            }
+            List<MessageData> messages = CrawlerUtils.collectMessages(messagesIterator, toTimestamp);
 
             if (messages.isEmpty()) {
                 LOGGER.info("No more messages in interval from: {}, to: {}", interval.getStartTime(), interval.getEndTime());
