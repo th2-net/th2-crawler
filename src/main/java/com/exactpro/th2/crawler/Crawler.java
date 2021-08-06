@@ -37,9 +37,9 @@ import com.exactpro.th2.crawler.dataservice.grpc.MessageResponse;
 import com.exactpro.th2.crawler.exception.UnexpectedDataServiceException;
 import com.exactpro.th2.crawler.exception.ConfigurationException;
 import com.exactpro.th2.crawler.util.CrawlerTime;
+import com.exactpro.th2.crawler.util.CrawlerUtils;
 import com.exactpro.th2.crawler.util.impl.CrawlerTimeImpl;
 import com.exactpro.th2.dataprovider.grpc.*;
-import com.google.protobuf.BoolValue;
 import com.google.protobuf.Empty;
 import com.google.protobuf.Int32Value;
 import com.google.protobuf.Timestamp;
@@ -93,7 +93,7 @@ public class Crawler {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(Crawler.class);
 
-    private Interval interval;
+    private Interval interval; // FIXME: make local and as a parameter
 
     public Crawler(@NotNull CradleStorage storage, @NotNull DataServiceService dataService,
                    @NotNull DataProviderService dataProviderService, @NotNull CrawlerConfiguration configuration,
@@ -164,7 +164,7 @@ public class Crawler {
                     startId = EventUtils.toEventID(lastProcessedEvent.getId());
                 }
 
-                report = sendEvents(crawlerId, info, batchSize, startId);
+                report = sendEvents(new EventsInfo(crawlerId, info, batchSize, startId, interval.getStartTime(), interval.getEndTime()));
 
             } else if (MESSAGES.equals(interval.getCrawlerType())) {
                 Map<String, RecoveryState.InnerMessage> lastProcessedMessages;
@@ -194,14 +194,15 @@ public class Crawler {
                             })
                             .collect(Collectors.toList());
 
-                    startIds = ids.stream().collect(Collectors.toMap(messageID -> messageID.getConnectionId().getSessionAlias(), Function.identity()));
+                    startIds = ids.stream().collect(Collectors.toMap(messageID -> messageID.getConnectionId().getSessionAlias(),
+                            Function.identity(), (messageID, messageID2) -> messageID2));
                 }
 
                 if (sessionAliasesPattern != null) {
                     sendMessagesWithNewAliases();
                 }
 
-                report = sendMessages(crawlerId, info, batchSize, startIds, sessionAliases, interval.getStartTime(), interval.getEndTime());
+                report = sendMessages(new MessagesInfo(crawlerId, info, batchSize, startIds, sessionAliases, interval.getStartTime(), interval.getEndTime()));
             } else {
                 throw new ConfigurationException("Type must be either EVENTS or MESSAGES");
             }
@@ -269,36 +270,25 @@ public class Crawler {
         return Duration.of(sleepTime, ChronoUnit.MILLIS);
     }
 
-    private SendingReport sendEvents(CrawlerId crawlerId, DataServiceInfo dataServiceInfo, int batchSize, EventID startId) throws IOException {
+    private SendingReport sendEvents(EventsInfo info) throws IOException {
         EventResponse response;
-        EventID resumeId = startId;
+        EventID resumeId = info.startId;
         boolean search = true;
-        Timestamp fromTimestamp = MessageUtils.toTimestamp(interval.getStartTime());
-        Timestamp toTimestamp = MessageUtils.toTimestamp(interval.getEndTime());
+        Timestamp fromTimestamp = MessageUtils.toTimestamp(info.from);
+        Timestamp toTimestamp = MessageUtils.toTimestamp(info.to);
 
         long diff = 0L;
 
-        String dataServiceName = dataServiceInfo.getName();
-        String dataServiceVersion = dataServiceInfo.getVersion();
+        String dataServiceName = info.dataServiceInfo.getName();
+        String dataServiceVersion = info.dataServiceInfo.getVersion();
 
         while (search) {
 
-            EventDataRequest.Builder dataRequestBuilder = EventDataRequest.newBuilder();
-            EventSearchRequest.Builder searchBuilder = EventSearchRequest.newBuilder();
-            EventSearchRequest request;
+            EventDataRequest.Builder eventRequestBuilder = EventDataRequest.newBuilder();
 
-            searchBuilder
-                    .setMetadataOnly(BoolValue.newBuilder().setValue(false).build())
-                    .setStartTimestamp(fromTimestamp)
-                    .setEndTimestamp(toTimestamp)
-                    .setResultCountLimit(Int32Value.of(batchSize));
+            Iterator<StreamResponse> eventsIterator = CrawlerUtils.searchEvents(dataProviderService::searchEvents,
+                    new CrawlerUtils.EventsSearchInfo<>(eventRequestBuilder, fromTimestamp, toTimestamp, batchSize, resumeId));
 
-            if (resumeId == null)
-                request = searchBuilder.build();
-            else
-                request = searchBuilder.setResumeFromId(resumeId).build();
-
-            Iterator<StreamResponse> eventsIterator = dataProviderService.searchEvents(request);
             List<EventData> events = new ArrayList<>();
 
             while (eventsIterator.hasNext()) {
@@ -327,13 +317,13 @@ public class Crawler {
 
             resumeId = lastEvent.getEventId();
 
-            EventDataRequest eventRequest = dataRequestBuilder.setId(crawlerId).addAllEventData(events).build();
+            EventDataRequest eventRequest = eventRequestBuilder.setId(crawlerId).addAllEventData(events).build();
 
             response = dataService.sendEvent(eventRequest);
 
             if (response.hasStatus()) {
                 if (response.getStatus().getHandshakeRequired()) {
-                    return handshake(crawlerId, dataServiceInfo);
+                    return handshake(crawlerId, info.dataServiceInfo);
                 }
             }
 
@@ -388,10 +378,9 @@ public class Crawler {
         return new SendingReport(CrawlerAction.NONE, dataServiceName, dataServiceVersion);
     }
 
-    private SendingReport sendMessages(CrawlerId crawlerId, DataServiceInfo dataServiceInfo, int batchSize, Map<String,
-            MessageID> startIds, Collection<String> aliases, Instant from, Instant to) throws IOException {
+    private SendingReport sendMessages(MessagesInfo info) throws IOException {
 
-        Map<String, MessageID> resumeIds = startIds;
+        Map<String, MessageID> resumeIds = info.startIds;
         MessageResponse response;
         boolean search = true;
         Timestamp fromTimestamp = MessageUtils.toTimestamp(from);
@@ -399,28 +388,15 @@ public class Crawler {
 
         long diff = 0L;
 
-        String dataServiceName = dataServiceInfo.getName();
-        String dataServiceVersion = dataServiceInfo.getVersion();
+        String dataServiceName = info.dataServiceInfo.getName();
+        String dataServiceVersion = info.dataServiceInfo.getVersion();
 
         while (search) {
 
             MessageDataRequest.Builder messageDataBuilder = MessageDataRequest.newBuilder();
-            MessageSearchRequest.Builder searchBuilder = MessageSearchRequest.newBuilder();
 
-            MessageSearchRequest request;
-
-            searchBuilder
-                    .setStartTimestamp(fromTimestamp)
-                    .setEndTimestamp(toTimestamp)
-                    .setResultCountLimit(Int32Value.of(batchSize))
-                    .setStream(StringList.newBuilder().addAllListString(aliases).build());
-
-            if (resumeIds == null)
-                request = searchBuilder.build();
-            else
-                request = searchBuilder.addAllMessageId(resumeIds.values()).build();
-
-            Iterator<StreamResponse> messagesIterator = dataProviderService.searchMessages(request);
+            Iterator<StreamResponse> messagesIterator = CrawlerUtils.searchMessages(dataProviderService::searchMessages,
+                    new CrawlerUtils.MessagesSearchInfo<>(messageDataBuilder, fromTimestamp, toTimestamp, batchSize, resumeIds, info.aliases));
 
             List<MessageData> messages = new ArrayList<>();
 
@@ -437,7 +413,6 @@ public class Crawler {
                             LOGGER.debug("Got message {}", MessageUtils.toJson(message, true));
                         }
                     }
-
                 }
             }
 
@@ -452,7 +427,8 @@ public class Crawler {
             resumeIds = messages.stream()
                     .filter(MessageData::hasMessageId)
                     .map(MessageData::getMessageId)
-                    .collect(Collectors.toMap(messageID -> messageID.getConnectionId().getSessionAlias(), Function.identity()));
+                    .collect(Collectors.toMap(messageID -> messageID.getConnectionId().getSessionAlias(),
+                            Function.identity(), (messageID, messageID2) -> messageID2));
 
             MessageDataRequest messageRequest = messageDataBuilder.setId(crawlerId).addAllMessageData(messages).build();
 
@@ -460,7 +436,7 @@ public class Crawler {
 
             if (response.hasStatus()) {
                 if (response.getStatus().getHandshakeRequired()) {
-                    return handshake(crawlerId, dataServiceInfo);
+                    return handshake(crawlerId, info.dataServiceInfo);
                 }
             }
 
@@ -480,7 +456,17 @@ public class Crawler {
 
                 diff = batchSize - processedMessagesCount;
 
-                recoveryStateMessages = mapAliasesWithMessages(messages);
+                recoveryStateMessages = messages.stream()
+                        .map(messageData -> {
+                            String alias = messageData.getMessageId().getConnectionId().getSessionAlias();
+                            Instant timestamp = Instant.ofEpochSecond(messageData.getTimestamp().getSeconds(), messageData.getTimestamp().getNanos());
+                            Direction direction = Direction.valueOf(messageData.getDirection().toString());
+                            long sequence = messageData.getMessageId().getSequence();
+
+                            return new RecoveryState.InnerMessage(alias, timestamp, direction, sequence);
+                        })
+                        .collect(Collectors.toMap(RecoveryState.InnerMessage::getSessionAlias,
+                                Function.identity(), (messageID, messageID2) -> messageID2));
 
                 if (!recoveryStateMessages.isEmpty()) {
                     RecoveryState newState;
@@ -517,25 +503,6 @@ public class Crawler {
         return new SendingReport(CrawlerAction.NONE, dataServiceName, dataServiceVersion);
     }
 
-    private Map<String, RecoveryState.InnerMessage> mapAliasesWithMessages(Collection<MessageData> messages) {
-        RecoveryState.InnerMessage message;
-        Map<String, RecoveryState.InnerMessage> result = new HashMap<>();
-
-        for (MessageData messageData : messages) {
-
-            String alias = messageData.getMessageId().getConnectionId().getSessionAlias();
-            Instant timestamp = Instant.ofEpochSecond(messageData.getTimestamp().getSeconds(), messageData.getTimestamp().getNanos());
-            Direction direction = Direction.valueOf(messageData.getDirection().toString());
-            long sequence = messageData.getMessageId().getSequence();
-
-            message = new RecoveryState.InnerMessage(alias, timestamp, direction, sequence);
-
-            result.put(alias, message);
-        }
-
-        return result;
-    }
-
     // FIXME: use correct intervals here
     private void sendMessagesWithNewAliases() throws IOException {
         List<String> newAliases = dataProviderService.getMessageStreams(Empty.getDefaultInstance())
@@ -547,7 +514,7 @@ public class Crawler {
         sessionAliases.addAll(newAliases);
 
         if (foundNewAliases) {
-            sendMessages(crawlerId, info, batchSize, null, newAliases, from, interval.getStartTime());
+            sendMessages(new MessagesInfo(crawlerId, info, batchSize, null, newAliases, from, interval.getStartTime()));
         }
     }
 
@@ -744,6 +711,46 @@ public class Crawler {
         private GetIntervalReport(Interval foundInterval, Interval lastInterval) {
             this.foundInterval = foundInterval;
             this.lastInterval = lastInterval;
+        }
+    }
+
+    private static class EventsInfo {
+        private final CrawlerId crawlerId;
+        private final DataServiceInfo dataServiceInfo;
+        private final int batchSize;
+        private final EventID startId;
+        private final Instant from;
+        private final Instant to;
+
+        public EventsInfo(CrawlerId crawlerId, DataServiceInfo dataServiceInfo,
+                          int batchSize, EventID startId, Instant from, Instant to) {
+            this.crawlerId = crawlerId;
+            this.dataServiceInfo = dataServiceInfo;
+            this.batchSize = batchSize;
+            this.startId = startId;
+            this.from = from;
+            this.to = to;
+        }
+    }
+
+    private static class MessagesInfo {
+        private final CrawlerId crawlerId;
+        private final DataServiceInfo dataServiceInfo;
+        private final int batchSize;
+        private final Map<String, MessageID> startIds;
+        private final Collection<String> aliases;
+        private final Instant from;
+        private final Instant to;
+
+        public MessagesInfo(CrawlerId crawlerId, DataServiceInfo dataServiceInfo, int batchSize, Map<String,
+                MessageID> startIds, Collection<String> aliases, Instant from, Instant to) {
+            this.crawlerId = crawlerId;
+            this.dataServiceInfo = dataServiceInfo;
+            this.batchSize = batchSize;
+            this.startIds = startIds;
+            this.aliases = aliases;
+            this.from = from;
+            this.to = to;
         }
     }
 
