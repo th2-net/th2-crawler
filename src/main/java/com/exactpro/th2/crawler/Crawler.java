@@ -93,8 +93,6 @@ public class Crawler {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(Crawler.class);
 
-    private Interval interval; // FIXME: make local and as a parameter
-
     public Crawler(@NotNull CradleStorage storage, @NotNull DataServiceService dataService,
                    @NotNull DataProviderService dataProviderService, @NotNull CrawlerConfiguration configuration,
                    CrawlerTime crawlerTime) {
@@ -142,7 +140,7 @@ public class Crawler {
         String dataServiceName = info.getName();
         String dataServiceVersion = info.getVersion();
 
-        interval = getOrCreateInterval(dataServiceName, dataServiceVersion, crawlerType);
+        Interval interval = getOrCreateInterval(dataServiceName, dataServiceVersion, crawlerType);
 
         if (interval != null) {
 
@@ -164,7 +162,7 @@ public class Crawler {
                     startId = EventUtils.toEventID(lastProcessedEvent.getId());
                 }
 
-                report = sendEvents(new EventsInfo(crawlerId, info, batchSize, startId, interval.getStartTime(), interval.getEndTime()));
+                report = sendEvents(new EventsInfo(interval, crawlerId, info, batchSize, startId, interval.getStartTime(), interval.getEndTime()));
 
             } else if (MESSAGES.equals(interval.getCrawlerType())) {
                 Map<String, RecoveryState.InnerMessage> lastProcessedMessages;
@@ -199,10 +197,10 @@ public class Crawler {
                 }
 
                 if (sessionAliasesPattern != null) {
-                    sendMessagesWithNewAliases();
+                    sendMessagesWithNewAliases(interval);
                 }
 
-                report = sendMessages(new MessagesInfo(crawlerId, info, batchSize, startIds, sessionAliases, interval.getStartTime(), interval.getEndTime()));
+                report = sendMessages(new MessagesInfo(interval, crawlerId, info, batchSize, startIds, sessionAliases, interval.getStartTime(), interval.getEndTime()));
             } else {
                 throw new ConfigurationException("Type must be either EVENTS or MESSAGES");
             }
@@ -272,6 +270,7 @@ public class Crawler {
 
     private SendingReport sendEvents(EventsInfo info) throws IOException {
         EventResponse response;
+        Interval interval =info.interval;
         EventID resumeId = info.startId;
         boolean search = true;
         Timestamp fromTimestamp = MessageUtils.toTimestamp(info.from);
@@ -379,7 +378,7 @@ public class Crawler {
     }
 
     private SendingReport sendMessages(MessagesInfo info) throws IOException {
-
+        Interval interval = info.interval;
         Map<String, MessageID> resumeIds = info.startIds;
         MessageResponse response;
         boolean search = true;
@@ -504,7 +503,7 @@ public class Crawler {
     }
 
     // FIXME: use correct intervals here
-    private void sendMessagesWithNewAliases() throws IOException {
+    private void sendMessagesWithNewAliases(Interval interval) throws IOException {
         List<String> newAliases = dataProviderService.getMessageStreams(Empty.getDefaultInstance())
                 .getListStringList().stream()
                 .filter(sessionAliasesPattern.asPredicate())
@@ -514,7 +513,7 @@ public class Crawler {
         sessionAliases.addAll(newAliases);
 
         if (foundNewAliases) {
-            sendMessages(new MessagesInfo(crawlerId, info, batchSize, null, newAliases, from, interval.getStartTime()));
+            sendMessages(new MessagesInfo(interval, crawlerId, info, batchSize, null, newAliases, from, interval.getStartTime()));
         }
     }
 
@@ -715,6 +714,7 @@ public class Crawler {
     }
 
     private static class EventsInfo {
+        private final Interval interval;
         private final CrawlerId crawlerId;
         private final DataServiceInfo dataServiceInfo;
         private final int batchSize;
@@ -722,8 +722,9 @@ public class Crawler {
         private final Instant from;
         private final Instant to;
 
-        public EventsInfo(CrawlerId crawlerId, DataServiceInfo dataServiceInfo,
+        public EventsInfo(Interval interval, CrawlerId crawlerId, DataServiceInfo dataServiceInfo,
                           int batchSize, EventID startId, Instant from, Instant to) {
+            this.interval = interval;
             this.crawlerId = crawlerId;
             this.dataServiceInfo = dataServiceInfo;
             this.batchSize = batchSize;
@@ -734,6 +735,7 @@ public class Crawler {
     }
 
     private static class MessagesInfo {
+        private final Interval interval;
         private final CrawlerId crawlerId;
         private final DataServiceInfo dataServiceInfo;
         private final int batchSize;
@@ -742,8 +744,9 @@ public class Crawler {
         private final Instant from;
         private final Instant to;
 
-        public MessagesInfo(CrawlerId crawlerId, DataServiceInfo dataServiceInfo, int batchSize, Map<String,
+        public MessagesInfo(Interval interval, CrawlerId crawlerId, DataServiceInfo dataServiceInfo, int batchSize, Map<String,
                 MessageID> startIds, Collection<String> aliases, Instant from, Instant to) {
+            this.interval = interval;
             this.crawlerId = crawlerId;
             this.dataServiceInfo = dataServiceInfo;
             this.batchSize = batchSize;
