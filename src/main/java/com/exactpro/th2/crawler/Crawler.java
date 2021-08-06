@@ -41,7 +41,6 @@ import com.exactpro.th2.crawler.util.CrawlerUtils;
 import com.exactpro.th2.crawler.util.impl.CrawlerTimeImpl;
 import com.exactpro.th2.dataprovider.grpc.*;
 import com.google.protobuf.Empty;
-import com.google.protobuf.Int32Value;
 import com.google.protobuf.Timestamp;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -67,11 +66,7 @@ public class Crawler {
     private Instant to;
 
     private final CrawlerTime crawlerTime;
-
     private final Duration defaultIntervalLength;
-
-    private long numberOfEvents;
-    private long numberOfMessages;
 
     private final Set<String> sessionAliases;
     private final Pattern sessionAliasesPattern;
@@ -83,7 +78,6 @@ public class Crawler {
     private long sleepTime;
 
     private final String crawlerType;
-    private final String crawlerName;
     private final int batchSize;
     private final DataServiceInfo info;
     private final CrawlerId crawlerId;
@@ -105,12 +99,10 @@ public class Crawler {
         this.workAlone = configuration.getWorkAlone();
         this.to = floatingToTime ? crawlerTime.now() : Instant.parse(configuration.getTo());
         this.defaultIntervalLength = Duration.parse(configuration.getDefaultLength());
-        this.numberOfEvents = this.numberOfMessages = 0L;
         this.sleepTime = configuration.getDelay() * 1000;
         this.crawlerType = configuration.getType();
-        this.crawlerName = configuration.getName();
         this.batchSize = configuration.getBatchSize();
-        this.crawlerId = CrawlerId.newBuilder().setName(crawlerName).build();
+        this.crawlerId = CrawlerId.newBuilder().setName(configuration.getName()).build();
         this.info = dataService.crawlerConnect(CrawlerInfo.newBuilder().setId(crawlerId).build());
         this.sessionAliases = configuration.getSessionAliases();
         this.sessionAliasesPattern = configuration.getSessionAliasesPattern() == null ? null : Pattern.compile(configuration.getSessionAliasesPattern());
@@ -148,7 +140,7 @@ public class Crawler {
                 reachedTo = true;
 
             boolean restartPod;
-            SendingReport report;
+            SendingReport sendingReport;
 
             if (EVENTS.equals(interval.getCrawlerType())) {
                 RecoveryState.InnerEvent lastProcessedEvent;
@@ -162,7 +154,8 @@ public class Crawler {
                     startId = EventUtils.toEventID(lastProcessedEvent.getId());
                 }
 
-                report = sendEvents(new EventsInfo(interval, crawlerId, info, batchSize, startId, interval.getStartTime(), interval.getEndTime()));
+                sendingReport = sendEvents(new EventsInfo(interval, crawlerId, info, batchSize, startId,
+                        interval.getStartTime(), interval.getEndTime()));
 
             } else if (MESSAGES.equals(interval.getCrawlerType())) {
                 Map<String, RecoveryState.InnerMessage> lastProcessedMessages;
@@ -200,14 +193,13 @@ public class Crawler {
                     sendMessagesWithNewAliases(interval);
                 }
 
-                report = sendMessages(new MessagesInfo(interval, crawlerId, info, batchSize, startIds, sessionAliases, interval.getStartTime(), interval.getEndTime()));
+                sendingReport = sendMessages(new MessagesInfo(interval, crawlerId, info, batchSize, startIds,
+                        sessionAliases, interval.getStartTime(), interval.getEndTime()));
             } else {
                 throw new ConfigurationException("Type must be either EVENTS or MESSAGES");
             }
 
-            restartPod = report.action == CrawlerAction.STOP;
-
-            if (report.action == CrawlerAction.NONE) {
+            if (sendingReport.action == CrawlerAction.NONE) {
                 interval = intervalsWorker.setIntervalProcessed(interval, true);
 
                 RecoveryState previousState = RecoveryState.getStateFromJson(interval.getRecoveryState());
@@ -219,13 +211,13 @@ public class Crawler {
                         state = new RecoveryState(
                                 null,
                                 null,
-                                numberOfEvents,
+                                sendingReport.numberOfEvents,
                                 0);
                     } else {
                         state = new RecoveryState(
                                 null,
                                 previousState.getLastProcessedMessages(),
-                                numberOfEvents,
+                                sendingReport.numberOfEvents,
                                 previousState.getLastNumberOfMessages());
                     }
 
@@ -238,29 +230,26 @@ public class Crawler {
                                 null,
                                 null,
                                 0,
-                                numberOfMessages
+                                sendingReport.numberOfMessages
                         );
                     } else {
                         state = new RecoveryState(
                                 previousState.getLastProcessedEvent(),
                                 null,
                                 previousState.getLastNumberOfEvents(),
-                                numberOfMessages);
+                                sendingReport.numberOfMessages);
                     }
 
                     interval = intervalsWorker.updateRecoveryState(interval, state.convertToJson());
                 }
 
-                numberOfEvents = 0L;
-                numberOfMessages = 0L;
-
                 LOGGER.info("Interval from {}, to {} was processed successfully", interval.getStartTime(), interval.getEndTime());
             }
 
-            if (restartPod) {
+            if (sendingReport.action == CrawlerAction.STOP) {
                 throw new UnexpectedDataServiceException("Need to restart Crawler because of changed name and/or version of data-service. " +
                         "Old name: "+dataServiceName+", old version: "+dataServiceVersion+". " +
-                        "New name: "+report.newName+", new version: "+report.newVersion);
+                        "New name: "+sendingReport.newName+", new version: "+sendingReport.newVersion);
             }
 
         }
@@ -275,6 +264,7 @@ public class Crawler {
         boolean search = true;
         Timestamp fromTimestamp = MessageUtils.toTimestamp(info.from);
         Timestamp toTimestamp = MessageUtils.toTimestamp(info.to);
+        long numberOfEvents = 0L;
 
         long diff = 0L;
 
@@ -322,7 +312,7 @@ public class Crawler {
 
             if (response.hasStatus()) {
                 if (response.getStatus().getHandshakeRequired()) {
-                    return handshake(crawlerId, info.dataServiceInfo);
+                    return handshake(crawlerId, info.dataServiceInfo, numberOfEvents, 0);
                 }
             }
 
@@ -374,7 +364,7 @@ public class Crawler {
             search = events.size() == batchSize;
         }
 
-        return new SendingReport(CrawlerAction.NONE, dataServiceName, dataServiceVersion);
+        return new SendingReport(CrawlerAction.NONE, dataServiceName, dataServiceVersion, numberOfEvents, 0);
     }
 
     private SendingReport sendMessages(MessagesInfo info) throws IOException {
@@ -384,6 +374,7 @@ public class Crawler {
         boolean search = true;
         Timestamp fromTimestamp = MessageUtils.toTimestamp(from);
         Timestamp toTimestamp = MessageUtils.toTimestamp(to);
+        long numberOfMessages = 0L;
 
         long diff = 0L;
 
@@ -435,7 +426,7 @@ public class Crawler {
 
             if (response.hasStatus()) {
                 if (response.getStatus().getHandshakeRequired()) {
-                    return handshake(crawlerId, info.dataServiceInfo);
+                    return handshake(crawlerId, info.dataServiceInfo, 0, numberOfMessages);
                 }
             }
 
@@ -499,7 +490,7 @@ public class Crawler {
             search = messages.size() == batchSize;
         }
 
-        return new SendingReport(CrawlerAction.NONE, dataServiceName, dataServiceVersion);
+        return new SendingReport(CrawlerAction.NONE, dataServiceName, dataServiceVersion, 0, numberOfMessages);
     }
 
     // FIXME: use correct intervals here
@@ -517,7 +508,7 @@ public class Crawler {
         }
     }
 
-    private SendingReport handshake(CrawlerId crawlerId, DataServiceInfo dataServiceInfo) {
+    private SendingReport handshake(CrawlerId crawlerId, DataServiceInfo dataServiceInfo, long numberOfEvents, long numberOfMessages) {
         DataServiceInfo info = dataService.crawlerConnect(CrawlerInfo.newBuilder().setId(crawlerId).build());
 
         String dataServiceName = info.getName();
@@ -525,10 +516,10 @@ public class Crawler {
 
         if (dataServiceName.equals(dataServiceInfo.getName()) && dataServiceVersion.equals(dataServiceInfo.getVersion())) {
             LOGGER.info("Got the same name ({}) and version ({}) from repeated crawlerConnect", dataServiceName, dataServiceVersion);
-            return new SendingReport(CrawlerAction.CONTINUE, dataServiceName, dataServiceVersion);
+            return new SendingReport(CrawlerAction.CONTINUE, dataServiceName, dataServiceVersion, numberOfEvents, numberOfMessages);
         } else {
             LOGGER.info("Got another name ({}) or version ({}) from repeated crawlerConnect, restarting component", dataServiceName, dataServiceVersion);
-            return new SendingReport(CrawlerAction.STOP, dataServiceName, dataServiceVersion);
+            return new SendingReport(CrawlerAction.STOP, dataServiceName, dataServiceVersion, numberOfEvents, numberOfMessages);
         }
     }
 
@@ -695,11 +686,16 @@ public class Crawler {
         private final CrawlerAction action;
         private final String newName;
         private final String newVersion;
+        private final long numberOfEvents;
+        private final long numberOfMessages;
 
-        private SendingReport(CrawlerAction action, String newName, String newVersion) {
+
+        private SendingReport(CrawlerAction action, String newName, String newVersion, long numberOfEvents, long numberOfMessages) {
             this.action = action;
             this.newName = newName;
             this.newVersion = newVersion;
+            this.numberOfEvents = numberOfEvents;
+            this.numberOfMessages = numberOfMessages;
         }
     }
 
