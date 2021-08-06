@@ -22,15 +22,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 
-// TODO: use functional interface
 public class CrawlerUtils {
     private static final Logger LOGGER = LoggerFactory.getLogger(CrawlerUtils.class);
 
 
     public static <T> Iterator<StreamResponse> searchEvents(Function<EventSearchRequest, Iterator<StreamResponse>> function,
-                                                            EventsSearchInfo<T> info) {
+                                                            EventsSearchInfo info) {
 
-        EventSearchRequest.Builder eventSearchBuilder = (EventSearchRequest.Builder) info.searchBuilder;
+        EventSearchRequest.Builder eventSearchBuilder = info.searchBuilder;
         EventSearchRequest request;
 
         eventSearchBuilder
@@ -48,9 +47,9 @@ public class CrawlerUtils {
     }
 
     public static <T> Iterator<StreamResponse> searchMessages(Function<MessageSearchRequest, Iterator<StreamResponse>> function,
-                                                            MessagesSearchInfo<T> info) {
+                                                            MessagesSearchInfo info) {
 
-        MessageSearchRequest.Builder messageSearchBuilder = (MessageSearchRequest.Builder) info.searchBuilder;
+        MessageSearchRequest.Builder messageSearchBuilder = info.searchBuilder;
         MessageSearchRequest request;
 
         messageSearchBuilder
@@ -111,14 +110,14 @@ public class CrawlerUtils {
         return messages;
     }
 
-    public static class EventsSearchInfo<BuilderT> {
-        private final BuilderT searchBuilder;
+    public static class EventsSearchInfo {
+        private final EventSearchRequest.Builder searchBuilder;
         private final Timestamp from;
         private final Timestamp to;
         private final int batchSize;
         private final EventID resumeId;
 
-        public EventsSearchInfo(BuilderT searchBuilder, Timestamp from, Timestamp to, int batchSize, EventID resumeId) {
+        public EventsSearchInfo(EventSearchRequest.Builder searchBuilder, Timestamp from, Timestamp to, int batchSize, EventID resumeId) {
             this.searchBuilder = searchBuilder;
             this.from = from;
             this.to = to;
@@ -127,15 +126,15 @@ public class CrawlerUtils {
         }
     }
 
-    public static class MessagesSearchInfo<BuilderT> {
-        private final BuilderT searchBuilder;
+    public static class MessagesSearchInfo {
+        private final MessageSearchRequest.Builder searchBuilder;
         private final Timestamp from;
         private final Timestamp to;
         private final int batchSize;
         private final Map<String, MessageID> resumeIds;
         private final Collection<String> aliases;
 
-        public MessagesSearchInfo(BuilderT searchBuilder, Timestamp from, Timestamp to, int batchSize,
+        public MessagesSearchInfo(MessageSearchRequest.Builder searchBuilder, Timestamp from, Timestamp to, int batchSize,
                                   Map<String, MessageID> resumeIds, Collection<String> aliases) {
             this.searchBuilder = searchBuilder;
             this.from = from;

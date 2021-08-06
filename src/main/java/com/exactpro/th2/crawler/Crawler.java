@@ -273,10 +273,11 @@ public class Crawler {
 
         while (search) {
 
+            EventSearchRequest.Builder searchBuilder = EventSearchRequest.newBuilder();
             EventDataRequest.Builder eventRequestBuilder = EventDataRequest.newBuilder();
 
             Iterator<StreamResponse> eventsIterator = CrawlerUtils.searchEvents(dataProviderService::searchEvents,
-                    new CrawlerUtils.EventsSearchInfo<>(eventRequestBuilder, fromTimestamp, toTimestamp, batchSize, resumeId));
+                    new CrawlerUtils.EventsSearchInfo(searchBuilder, fromTimestamp, toTimestamp, batchSize, resumeId));
 
             List<EventData> events = CrawlerUtils.collectEvents(eventsIterator, toTimestamp);
 
@@ -366,10 +367,11 @@ public class Crawler {
 
         while (search) {
 
+            MessageSearchRequest.Builder searchBuilder = MessageSearchRequest.newBuilder();
             MessageDataRequest.Builder messageDataBuilder = MessageDataRequest.newBuilder();
 
             Iterator<StreamResponse> messagesIterator = CrawlerUtils.searchMessages(dataProviderService::searchMessages,
-                    new CrawlerUtils.MessagesSearchInfo<>(messageDataBuilder, fromTimestamp, toTimestamp, batchSize, resumeIds, info.aliases));
+                    new CrawlerUtils.MessagesSearchInfo(searchBuilder, fromTimestamp, toTimestamp, batchSize, resumeIds, info.aliases));
 
             List<MessageData> messages = CrawlerUtils.collectMessages(messagesIterator, toTimestamp);
 

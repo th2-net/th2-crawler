@@ -19,7 +19,7 @@ package com.exactpro.th2.crawler;
 import com.exactpro.cradle.CradleStorage;
 import com.exactpro.cradle.intervals.Interval;
 import com.exactpro.cradle.intervals.IntervalsWorker;
-import com.exactpro.cradle.intervals.RecoveryState;
+import com.exactpro.th2.crawler.state.RecoveryState;
 import com.exactpro.cradle.utils.UpdateNotAppliedException;
 import com.exactpro.th2.common.grpc.ConnectionID;
 import com.exactpro.th2.common.grpc.Direction;
@@ -122,9 +122,9 @@ public class TestClass {
 
         when(intervalsWorkerMock.getIntervals(any(Instant.class), any(Instant.class), anyString(), anyString(), anyString())).thenReturn(intervals);
 
-        when(intervalsWorkerMock.updateRecoveryState(any(Interval.class), any(RecoveryState.class))).then(invocation -> {
+        when(intervalsWorkerMock.updateRecoveryState(any(Interval.class), anyString())).then(invocation -> {
             Interval interval = invocation.getArgument(0);
-            RecoveryState state = invocation.getArgument(1);
+            RecoveryState state = RecoveryState.getStateFromJson(invocation.getArgument(1));
 
             List<Interval> intervalList = intervals.stream().filter(i -> i.getStartTime().equals(interval.getStartTime())
                     && i.getCrawlerName().equals(interval.getCrawlerName())
@@ -137,7 +137,7 @@ public class TestClass {
                 throw new UpdateNotAppliedException("Failed to update recovery state at interval from "
                         +interval.getStartTime()+", to "+interval.getEndTime());
 
-            interval.setRecoveryState(state);
+            interval.setRecoveryState(state.convertToJson());
             interval.setLastUpdateDateTime(Instant.now());
 
             return interval;
