@@ -395,14 +395,14 @@ public class Crawler {
                 if (r.hasMessage()) {
                     MessageData message = r.getMessage();
 
-                    if (!message.getTimestamp().equals(toTimestamp)) {
-                        messages.add(message);
-
-                        if (LOGGER.isDebugEnabled()) {
-                            LOGGER.debug("Got message {}", MessageUtils.toJson(message, true));
-                        }
+                    if (message.getTimestamp().equals(toTimestamp))
+                        LOGGER.debug("Message with sequence: {} has timestamp that equals to right bound of the interval: {}," +
+                                        " not using the message", message.getMessageId().getSequence(), toTimestamp);
+                    
+                    messages.add(message);
+                    if (LOGGER.isDebugEnabled()) {
+                        LOGGER.debug("Got message {}", MessageUtils.toJson(message, true));
                     }
-
                 }
             }
 
