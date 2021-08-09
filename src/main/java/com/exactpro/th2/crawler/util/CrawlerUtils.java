@@ -26,7 +26,7 @@ public class CrawlerUtils {
     private static final Logger LOGGER = LoggerFactory.getLogger(CrawlerUtils.class);
 
 
-    public static <T> Iterator<StreamResponse> searchEvents(Function<EventSearchRequest, Iterator<StreamResponse>> function,
+    public static Iterator<StreamResponse> searchEvents(Function<EventSearchRequest, Iterator<StreamResponse>> function,
                                                             EventsSearchInfo info) {
 
         EventSearchRequest.Builder eventSearchBuilder = info.searchBuilder;
@@ -46,7 +46,7 @@ public class CrawlerUtils {
         return function.apply(request);
     }
 
-    public static <T> Iterator<StreamResponse> searchMessages(Function<MessageSearchRequest, Iterator<StreamResponse>> function,
+    public static Iterator<StreamResponse> searchMessages(Function<MessageSearchRequest, Iterator<StreamResponse>> function,
                                                             MessagesSearchInfo info) {
 
         MessageSearchRequest.Builder messageSearchBuilder = info.searchBuilder;
