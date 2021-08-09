@@ -134,130 +134,128 @@ public class Crawler {
 
         FetchIntervalReport fetchIntervalReport = getOrCreateInterval(dataServiceName, dataServiceVersion, crawlerType);
 
-        if (fetchIntervalReport != null) {
-            Interval interval = fetchIntervalReport.interval;
+        Interval interval = fetchIntervalReport.interval;
 
-            if (interval != null) {
+        if (interval != null) {
 
-                if (!floatingToTime && interval.getEndTime().equals(to))
-                    reachedTo = true;
+            if (!floatingToTime && interval.getEndTime().equals(to))
+                reachedTo = true;
 
-                SendingReport sendingReport;
+            SendingReport sendingReport;
+
+            if (EVENTS.equals(interval.getCrawlerType())) {
+                RecoveryState.InnerEvent lastProcessedEvent;
+                RecoveryState state = RecoveryState.getStateFromJson(interval.getRecoveryState());
+
+                lastProcessedEvent = state == null ? null : state.getLastProcessedEvent();
+
+                EventID startId = null;
+
+                if (lastProcessedEvent != null) {
+                    startId = EventUtils.toEventID(lastProcessedEvent.getId());
+                }
+
+                sendingReport = sendEvents(new EventsInfo(interval, crawlerId, info, batchSize, startId,
+                        interval.getStartTime(), interval.getEndTime()));
+
+            } else if (MESSAGES.equals(interval.getCrawlerType())) {
+                Map<String, RecoveryState.InnerMessage> lastProcessedMessages;
+                RecoveryState state = RecoveryState.getStateFromJson(interval.getRecoveryState());
+
+                lastProcessedMessages = state == null ? null : state.getLastProcessedMessages();
+
+                Map<String, MessageID> startIds = null;
+
+                MessageID.Builder builder = MessageID.newBuilder();
+
+                if (lastProcessedMessages != null) {
+                    List<MessageID> ids = lastProcessedMessages.values().stream()
+                            .map(innerMessage -> {
+                                com.exactpro.th2.common.grpc.Direction direction;
+
+                                if (innerMessage.getDirection() == Direction.FIRST)
+                                    direction = com.exactpro.th2.common.grpc.Direction.FIRST;
+                                else
+                                    direction = com.exactpro.th2.common.grpc.Direction.SECOND;
+
+                                return builder
+                                        .setSequence(innerMessage.getSequence())
+                                        .setConnectionId(ConnectionID.newBuilder().setSessionAlias(innerMessage.getSessionAlias()).build())
+                                        .setDirection(direction)
+                                        .build();
+                            })
+                            .collect(Collectors.toList());
+
+                    startIds = ids.stream().collect(Collectors.toMap(messageID -> messageID.getConnectionId().getSessionAlias(),
+                            Function.identity(), (messageID, messageID2) -> messageID2));
+                }
+
+                if (sessionAliasesPattern != null) {
+                    sendMessagesWithNewAliases(interval);
+                }
+
+                sendingReport = sendMessages(new MessagesInfo(interval, crawlerId, info, batchSize, startIds,
+                        sessionAliases, interval.getStartTime(), interval.getEndTime()));
+            } else {
+                throw new ConfigurationException("Type must be either EVENTS or MESSAGES");
+            }
+
+            if (sendingReport.action == CrawlerAction.NONE) {
+                interval = intervalsWorker.setIntervalProcessed(interval, true);
+
+                RecoveryState previousState = RecoveryState.getStateFromJson(interval.getRecoveryState());
 
                 if (EVENTS.equals(interval.getCrawlerType())) {
-                    RecoveryState.InnerEvent lastProcessedEvent;
-                    RecoveryState state = RecoveryState.getStateFromJson(interval.getRecoveryState());
+                    RecoveryState state;
 
-                    lastProcessedEvent = state == null ? null : state.getLastProcessedEvent();
-
-                    EventID startId = null;
-
-                    if (lastProcessedEvent != null) {
-                        startId = EventUtils.toEventID(lastProcessedEvent.getId());
+                    if (previousState == null) {
+                        state = new RecoveryState(
+                                null,
+                                null,
+                                sendingReport.numberOfEvents,
+                                0);
+                    } else {
+                        state = new RecoveryState(
+                                null,
+                                previousState.getLastProcessedMessages(),
+                                sendingReport.numberOfEvents,
+                                previousState.getLastNumberOfMessages());
                     }
 
-                    sendingReport = sendEvents(new EventsInfo(interval, crawlerId, info, batchSize, startId,
-                            interval.getStartTime(), interval.getEndTime()));
-
+                    interval = intervalsWorker.updateRecoveryState(interval, state.convertToJson());
                 } else if (MESSAGES.equals(interval.getCrawlerType())) {
-                    Map<String, RecoveryState.InnerMessage> lastProcessedMessages;
-                    RecoveryState state = RecoveryState.getStateFromJson(interval.getRecoveryState());
+                    RecoveryState state;
 
-                    lastProcessedMessages = state == null ? null : state.getLastProcessedMessages();
-
-                    Map<String, MessageID> startIds = null;
-
-                    MessageID.Builder builder = MessageID.newBuilder();
-
-                    if (lastProcessedMessages != null) {
-                        List<MessageID> ids = lastProcessedMessages.values().stream()
-                                .map(innerMessage -> {
-                                    com.exactpro.th2.common.grpc.Direction direction;
-
-                                    if (innerMessage.getDirection() == Direction.FIRST)
-                                        direction = com.exactpro.th2.common.grpc.Direction.FIRST;
-                                    else
-                                        direction = com.exactpro.th2.common.grpc.Direction.SECOND;
-
-                                    return builder
-                                            .setSequence(innerMessage.getSequence())
-                                            .setConnectionId(ConnectionID.newBuilder().setSessionAlias(innerMessage.getSessionAlias()).build())
-                                            .setDirection(direction)
-                                            .build();
-                                })
-                                .collect(Collectors.toList());
-
-                        startIds = ids.stream().collect(Collectors.toMap(messageID -> messageID.getConnectionId().getSessionAlias(),
-                                Function.identity(), (messageID, messageID2) -> messageID2));
+                    if (previousState == null) {
+                        state = new RecoveryState(
+                                null,
+                                null,
+                                0,
+                                sendingReport.numberOfMessages
+                        );
+                    } else {
+                        state = new RecoveryState(
+                                previousState.getLastProcessedEvent(),
+                                null,
+                                previousState.getLastNumberOfEvents(),
+                                sendingReport.numberOfMessages);
                     }
 
-                    if (sessionAliasesPattern != null) {
-                        sendMessagesWithNewAliases(interval);
-                    }
-
-                    sendingReport = sendMessages(new MessagesInfo(interval, crawlerId, info, batchSize, startIds,
-                            sessionAliases, interval.getStartTime(), interval.getEndTime()));
-                } else {
-                    throw new ConfigurationException("Type must be either EVENTS or MESSAGES");
+                    interval = intervalsWorker.updateRecoveryState(interval, state.convertToJson());
                 }
 
-                if (sendingReport.action == CrawlerAction.NONE) {
-                    interval = intervalsWorker.setIntervalProcessed(interval, true);
-
-                    RecoveryState previousState = RecoveryState.getStateFromJson(interval.getRecoveryState());
-
-                    if (EVENTS.equals(interval.getCrawlerType())) {
-                        RecoveryState state;
-
-                        if (previousState == null) {
-                            state = new RecoveryState(
-                                    null,
-                                    null,
-                                    sendingReport.numberOfEvents,
-                                    0);
-                        } else {
-                            state = new RecoveryState(
-                                    null,
-                                    previousState.getLastProcessedMessages(),
-                                    sendingReport.numberOfEvents,
-                                    previousState.getLastNumberOfMessages());
-                        }
-
-                        interval = intervalsWorker.updateRecoveryState(interval, state.convertToJson());
-                    } else if (MESSAGES.equals(interval.getCrawlerType())) {
-                        RecoveryState state;
-
-                        if (previousState == null) {
-                            state = new RecoveryState(
-                                    null,
-                                    null,
-                                    0,
-                                    sendingReport.numberOfMessages
-                            );
-                        } else {
-                            state = new RecoveryState(
-                                    previousState.getLastProcessedEvent(),
-                                    null,
-                                    previousState.getLastNumberOfEvents(),
-                                    sendingReport.numberOfMessages);
-                        }
-
-                        interval = intervalsWorker.updateRecoveryState(interval, state.convertToJson());
-                    }
-
-                    LOGGER.info("Interval from {}, to {} was processed successfully", interval.getStartTime(), interval.getEndTime());
-                }
-
-                if (sendingReport.action == CrawlerAction.STOP) {
-                    throw new UnexpectedDataServiceException("Need to restart Crawler because of changed name and/or version of data-service. " +
-                            "Old name: "+dataServiceName+", old version: "+dataServiceVersion+". " +
-                            "New name: "+sendingReport.newName+", new version: "+sendingReport.newVersion);
-                }
-
+                LOGGER.info("Interval from {}, to {} was processed successfully", interval.getStartTime(), interval.getEndTime());
             }
+
+            if (sendingReport.action == CrawlerAction.STOP) {
+                throw new UnexpectedDataServiceException("Need to restart Crawler because of changed name and/or version of data-service. " +
+                        "Old name: "+dataServiceName+", old version: "+dataServiceVersion+". " +
+                        "New name: "+sendingReport.newName+", new version: "+sendingReport.newVersion);
+            }
+
         }
 
-        long sleepTime = fetchIntervalReport == null ? defaultSleepTime : fetchIntervalReport.sleepTime;
+        long sleepTime = fetchIntervalReport.sleepTime;
 
         return Duration.of(sleepTime, ChronoUnit.MILLIS);
     }
