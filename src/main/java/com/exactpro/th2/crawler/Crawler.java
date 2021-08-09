@@ -75,7 +75,7 @@ public class Crawler {
     private final boolean workAlone;
     private boolean reachedTo;
 
-    private long sleepTime;
+    private final long defaultSleepTime;
 
     private final String crawlerType;
     private final int batchSize;
@@ -99,7 +99,7 @@ public class Crawler {
         this.workAlone = configuration.getWorkAlone();
         this.to = floatingToTime ? crawlerTime.now() : Instant.parse(configuration.getTo());
         this.defaultIntervalLength = Duration.parse(configuration.getDefaultLength());
-        this.sleepTime = configuration.getDelay() * 1000;
+        this.defaultSleepTime = configuration.getDelay() * 1000;
         this.crawlerType = configuration.getType();
         this.batchSize = configuration.getBatchSize();
         this.crawlerId = CrawlerId.newBuilder().setName(configuration.getName()).build();
@@ -132,127 +132,132 @@ public class Crawler {
         String dataServiceName = info.getName();
         String dataServiceVersion = info.getVersion();
 
-        Interval interval = getOrCreateInterval(dataServiceName, dataServiceVersion, crawlerType);
+        FetchIntervalReport fetchIntervalReport = getOrCreateInterval(dataServiceName, dataServiceVersion, crawlerType);
 
-        if (interval != null) {
+        if (fetchIntervalReport != null) {
+            Interval interval = fetchIntervalReport.interval;
 
-            if (!floatingToTime && interval.getEndTime().equals(to))
-                reachedTo = true;
+            if (interval != null) {
 
-            boolean restartPod;
-            SendingReport sendingReport;
+                if (!floatingToTime && interval.getEndTime().equals(to))
+                    reachedTo = true;
 
-            if (EVENTS.equals(interval.getCrawlerType())) {
-                RecoveryState.InnerEvent lastProcessedEvent;
-                RecoveryState state = RecoveryState.getStateFromJson(interval.getRecoveryState());
-
-                lastProcessedEvent = state == null ? null : state.getLastProcessedEvent();
-
-                EventID startId = null;
-
-                if (lastProcessedEvent != null) {
-                    startId = EventUtils.toEventID(lastProcessedEvent.getId());
-                }
-
-                sendingReport = sendEvents(new EventsInfo(interval, crawlerId, info, batchSize, startId,
-                        interval.getStartTime(), interval.getEndTime()));
-
-            } else if (MESSAGES.equals(interval.getCrawlerType())) {
-                Map<String, RecoveryState.InnerMessage> lastProcessedMessages;
-                RecoveryState state = RecoveryState.getStateFromJson(interval.getRecoveryState());
-
-                lastProcessedMessages = state == null ? null : state.getLastProcessedMessages();
-
-                Map<String, MessageID> startIds = null;
-
-                MessageID.Builder builder = MessageID.newBuilder();
-
-                if (lastProcessedMessages != null) {
-                    List<MessageID> ids = lastProcessedMessages.values().stream()
-                            .map(innerMessage -> {
-                                com.exactpro.th2.common.grpc.Direction direction;
-
-                                if (innerMessage.getDirection() == Direction.FIRST)
-                                    direction = com.exactpro.th2.common.grpc.Direction.FIRST;
-                                else
-                                    direction = com.exactpro.th2.common.grpc.Direction.SECOND;
-
-                                return builder
-                                        .setSequence(innerMessage.getSequence())
-                                        .setConnectionId(ConnectionID.newBuilder().setSessionAlias(innerMessage.getSessionAlias()).build())
-                                        .setDirection(direction)
-                                        .build();
-                            })
-                            .collect(Collectors.toList());
-
-                    startIds = ids.stream().collect(Collectors.toMap(messageID -> messageID.getConnectionId().getSessionAlias(),
-                            Function.identity(), (messageID, messageID2) -> messageID2));
-                }
-
-                if (sessionAliasesPattern != null) {
-                    sendMessagesWithNewAliases(interval);
-                }
-
-                sendingReport = sendMessages(new MessagesInfo(interval, crawlerId, info, batchSize, startIds,
-                        sessionAliases, interval.getStartTime(), interval.getEndTime()));
-            } else {
-                throw new ConfigurationException("Type must be either EVENTS or MESSAGES");
-            }
-
-            if (sendingReport.action == CrawlerAction.NONE) {
-                interval = intervalsWorker.setIntervalProcessed(interval, true);
-
-                RecoveryState previousState = RecoveryState.getStateFromJson(interval.getRecoveryState());
+                SendingReport sendingReport;
 
                 if (EVENTS.equals(interval.getCrawlerType())) {
-                    RecoveryState state;
+                    RecoveryState.InnerEvent lastProcessedEvent;
+                    RecoveryState state = RecoveryState.getStateFromJson(interval.getRecoveryState());
 
-                    if (previousState == null) {
-                        state = new RecoveryState(
-                                null,
-                                null,
-                                sendingReport.numberOfEvents,
-                                0);
-                    } else {
-                        state = new RecoveryState(
-                                null,
-                                previousState.getLastProcessedMessages(),
-                                sendingReport.numberOfEvents,
-                                previousState.getLastNumberOfMessages());
+                    lastProcessedEvent = state == null ? null : state.getLastProcessedEvent();
+
+                    EventID startId = null;
+
+                    if (lastProcessedEvent != null) {
+                        startId = EventUtils.toEventID(lastProcessedEvent.getId());
                     }
 
-                    interval = intervalsWorker.updateRecoveryState(interval, state.convertToJson());
+                    sendingReport = sendEvents(new EventsInfo(interval, crawlerId, info, batchSize, startId,
+                            interval.getStartTime(), interval.getEndTime()));
+
                 } else if (MESSAGES.equals(interval.getCrawlerType())) {
-                    RecoveryState state;
+                    Map<String, RecoveryState.InnerMessage> lastProcessedMessages;
+                    RecoveryState state = RecoveryState.getStateFromJson(interval.getRecoveryState());
 
-                    if (previousState == null) {
-                        state = new RecoveryState(
-                                null,
-                                null,
-                                0,
-                                sendingReport.numberOfMessages
-                        );
-                    } else {
-                        state = new RecoveryState(
-                                previousState.getLastProcessedEvent(),
-                                null,
-                                previousState.getLastNumberOfEvents(),
-                                sendingReport.numberOfMessages);
+                    lastProcessedMessages = state == null ? null : state.getLastProcessedMessages();
+
+                    Map<String, MessageID> startIds = null;
+
+                    MessageID.Builder builder = MessageID.newBuilder();
+
+                    if (lastProcessedMessages != null) {
+                        List<MessageID> ids = lastProcessedMessages.values().stream()
+                                .map(innerMessage -> {
+                                    com.exactpro.th2.common.grpc.Direction direction;
+
+                                    if (innerMessage.getDirection() == Direction.FIRST)
+                                        direction = com.exactpro.th2.common.grpc.Direction.FIRST;
+                                    else
+                                        direction = com.exactpro.th2.common.grpc.Direction.SECOND;
+
+                                    return builder
+                                            .setSequence(innerMessage.getSequence())
+                                            .setConnectionId(ConnectionID.newBuilder().setSessionAlias(innerMessage.getSessionAlias()).build())
+                                            .setDirection(direction)
+                                            .build();
+                                })
+                                .collect(Collectors.toList());
+
+                        startIds = ids.stream().collect(Collectors.toMap(messageID -> messageID.getConnectionId().getSessionAlias(),
+                                Function.identity(), (messageID, messageID2) -> messageID2));
                     }
 
-                    interval = intervalsWorker.updateRecoveryState(interval, state.convertToJson());
+                    if (sessionAliasesPattern != null) {
+                        sendMessagesWithNewAliases(interval);
+                    }
+
+                    sendingReport = sendMessages(new MessagesInfo(interval, crawlerId, info, batchSize, startIds,
+                            sessionAliases, interval.getStartTime(), interval.getEndTime()));
+                } else {
+                    throw new ConfigurationException("Type must be either EVENTS or MESSAGES");
                 }
 
-                LOGGER.info("Interval from {}, to {} was processed successfully", interval.getStartTime(), interval.getEndTime());
-            }
+                if (sendingReport.action == CrawlerAction.NONE) {
+                    interval = intervalsWorker.setIntervalProcessed(interval, true);
 
-            if (sendingReport.action == CrawlerAction.STOP) {
-                throw new UnexpectedDataServiceException("Need to restart Crawler because of changed name and/or version of data-service. " +
-                        "Old name: "+dataServiceName+", old version: "+dataServiceVersion+". " +
-                        "New name: "+sendingReport.newName+", new version: "+sendingReport.newVersion);
-            }
+                    RecoveryState previousState = RecoveryState.getStateFromJson(interval.getRecoveryState());
 
+                    if (EVENTS.equals(interval.getCrawlerType())) {
+                        RecoveryState state;
+
+                        if (previousState == null) {
+                            state = new RecoveryState(
+                                    null,
+                                    null,
+                                    sendingReport.numberOfEvents,
+                                    0);
+                        } else {
+                            state = new RecoveryState(
+                                    null,
+                                    previousState.getLastProcessedMessages(),
+                                    sendingReport.numberOfEvents,
+                                    previousState.getLastNumberOfMessages());
+                        }
+
+                        interval = intervalsWorker.updateRecoveryState(interval, state.convertToJson());
+                    } else if (MESSAGES.equals(interval.getCrawlerType())) {
+                        RecoveryState state;
+
+                        if (previousState == null) {
+                            state = new RecoveryState(
+                                    null,
+                                    null,
+                                    0,
+                                    sendingReport.numberOfMessages
+                            );
+                        } else {
+                            state = new RecoveryState(
+                                    previousState.getLastProcessedEvent(),
+                                    null,
+                                    previousState.getLastNumberOfEvents(),
+                                    sendingReport.numberOfMessages);
+                        }
+
+                        interval = intervalsWorker.updateRecoveryState(interval, state.convertToJson());
+                    }
+
+                    LOGGER.info("Interval from {}, to {} was processed successfully", interval.getStartTime(), interval.getEndTime());
+                }
+
+                if (sendingReport.action == CrawlerAction.STOP) {
+                    throw new UnexpectedDataServiceException("Need to restart Crawler because of changed name and/or version of data-service. " +
+                            "Old name: "+dataServiceName+", old version: "+dataServiceVersion+". " +
+                            "New name: "+sendingReport.newName+", new version: "+sendingReport.newVersion);
+                }
+
+            }
         }
+
+        long sleepTime = fetchIntervalReport == null ? defaultSleepTime : fetchIntervalReport.sleepTime;
 
         return Duration.of(sleepTime, ChronoUnit.MILLIS);
     }
@@ -532,7 +537,7 @@ public class Crawler {
         return new GetIntervalReport(foundInterval, lastInterval);
     }
 
-    private Interval getOrCreateInterval(String name, String version, String type) throws IOException {
+    private FetchIntervalReport getOrCreateInterval(String name, String version, String type) throws IOException {
 
         Instant lagNow = crawlerTime.now().minus(configuration.getToLag(), configuration.getToLagOffsetUnit());
 
@@ -542,8 +547,7 @@ public class Crawler {
 
         if (lagNow.isBefore(from)) {
             LOGGER.info("Current time with lag: {} is before \"from\" time of Crawler: {}", lagNow, from);
-            sleepTime = getSleepTime(lagNow, from);
-            return null;
+            return new FetchIntervalReport(null, getSleepTime(lagNow, from));
         }
 
         Iterable<Interval> intervals = intervalsWorker.getIntervals(from, to, name, version, type);
@@ -554,7 +558,7 @@ public class Crawler {
         GetIntervalReport getReport = getInterval(intervals);
 
         if (getReport.foundInterval != null)
-            return getReport.foundInterval;
+            return new FetchIntervalReport(getReport.foundInterval, defaultSleepTime);
         else
             lastInterval = getReport.lastInterval;
 
@@ -574,14 +578,16 @@ public class Crawler {
                 } else {
                     if (floatingToTime) {
 
-                        sleepTime = getSleepTime(lastIntervalEnd.plus(length), to);
+                        long sleepTime = getSleepTime(lastIntervalEnd.plus(length), to);
 
                         if (LOGGER.isInfoEnabled()) {
                             LOGGER.info("Failed to create new interval from: {}, to: {} as it is too early now. Wait for {}",
-                                    lastIntervalEnd, lastIntervalEnd.plus(length), Duration.ofMillis(sleepTime));
+                                    lastIntervalEnd,
+                                    lastIntervalEnd.plus(length),
+                                    Duration.ofMillis(sleepTime));
                         }
 
-                        return null;
+                        return new FetchIntervalReport(null, sleepTime);
 
                     }
                     newIntervalEnd = to;
@@ -593,23 +599,23 @@ public class Crawler {
                 if (!floatingToTime) {
                     LOGGER.info("All intervals between {} and {} were fully processed less than {} {} ago",
                             from, to, configuration.getLastUpdateOffset(), configuration.getLastUpdateOffsetUnit());
-                    return null;
+                    return new FetchIntervalReport(null, defaultSleepTime);
                 }
 
                 LOGGER.info("Failed to create new interval from: {}, to: {} as the end of the last interval is after " +
                                 "end time of Crawler: {}",
                         lastIntervalEnd, lastIntervalEnd.plus(length), to);
 
-                sleepTime = getSleepTime(lastIntervalEnd.plus(length), lagNow); // TODO: we need to start from the beginning I guess
-
-                return null;
+                return new FetchIntervalReport(null, getSleepTime(lastIntervalEnd.plus(length), lagNow)); // TODO: we need to start from the beginning I guess
             }
         } else {
             return createAndStoreInterval(from, from.plus(length), name, version, type, lagNow);
         }
     }
 
-    private Interval createAndStoreInterval(Instant from, Instant to, String name, String version, String type, Instant lagTime) throws IOException {
+    private FetchIntervalReport createAndStoreInterval(Instant from, Instant to, String name, String version, String type, Instant lagTime) throws IOException {
+
+        long sleepTime = defaultSleepTime;
 
         if (lagTime.isBefore(to)) {
             sleepTime = getSleepTime(lagTime, to);
@@ -617,7 +623,7 @@ public class Crawler {
             LOGGER.info("It is too early now to create new interval from: {}, to: {}. " +
                     "Falling asleep for {} seconds", from, to, sleepTime);
 
-            return null;
+            return new FetchIntervalReport(null, sleepTime);
         }
 
         Interval newInterval = Interval.builder()
@@ -637,14 +643,12 @@ public class Crawler {
             LOGGER.info("Failed to store new interval from {} to {}. Trying to get or create an interval again.",
                     from, to);
 
-            sleepTime = 0L; // setting to 0 in order to try again immediately
-
-            return null;
+            return new FetchIntervalReport(null, 0L); // setting sleepTime to 0 in order to try again immediately
         }
 
         LOGGER.info("Crawler created interval from: {}, to: {}", newInterval.getStartTime(), newInterval.getEndTime());
 
-        return newInterval;
+        return new FetchIntervalReport(newInterval, sleepTime);
     }
 
     private long getSleepTime(Instant from, Instant to) {
@@ -687,7 +691,7 @@ public class Crawler {
         private final Instant from;
         private final Instant to;
 
-        public EventsInfo(Interval interval, CrawlerId crawlerId, DataServiceInfo dataServiceInfo,
+        private EventsInfo(Interval interval, CrawlerId crawlerId, DataServiceInfo dataServiceInfo,
                           int batchSize, EventID startId, Instant from, Instant to) {
             this.interval = interval;
             this.crawlerId = crawlerId;
@@ -709,7 +713,7 @@ public class Crawler {
         private final Instant from;
         private final Instant to;
 
-        public MessagesInfo(Interval interval, CrawlerId crawlerId, DataServiceInfo dataServiceInfo, int batchSize, Map<String,
+        private MessagesInfo(Interval interval, CrawlerId crawlerId, DataServiceInfo dataServiceInfo, int batchSize, Map<String,
                 MessageID> startIds, Collection<String> aliases, Instant from, Instant to) {
             this.interval = interval;
             this.crawlerId = crawlerId;
@@ -719,6 +723,16 @@ public class Crawler {
             this.aliases = aliases;
             this.from = from;
             this.to = to;
+        }
+    }
+
+    private static class FetchIntervalReport {
+        private final Interval interval;
+        private final long sleepTime;
+
+        private FetchIntervalReport(Interval interval, long sleepTime) {
+            this.interval = interval;
+            this.sleepTime = sleepTime;
         }
     }
 
