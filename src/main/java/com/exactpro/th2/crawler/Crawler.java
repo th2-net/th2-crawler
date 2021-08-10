@@ -433,23 +433,17 @@ public class Crawler {
                 if (!recoveryStateMessages.isEmpty()) {
                     RecoveryState newState;
 
-                    Map<String, RecoveryState.InnerMessage> oldLastProcessedMessages;
-
                     if (oldState == null) {
-                        oldLastProcessedMessages = new HashMap<>();
-                    } else {
-                        oldLastProcessedMessages = oldState.getLastProcessedMessages();
-                    }
+                        Map<String, RecoveryState.InnerMessage> lastProcessedMessages = new HashMap<>(recoveryStateMessages);
 
-                    Map<String, RecoveryState.InnerMessage> lastProcessedMessages = new HashMap<>(oldLastProcessedMessages);
-
-                    lastProcessedMessages.putAll(recoveryStateMessages);
-
-                    if (oldState == null) {
                         newState = new RecoveryState(null, lastProcessedMessages,
                                 0,
                                 numberOfMessages);
                     } else {
+                        Map<String, RecoveryState.InnerMessage> lastProcessedMessages = new HashMap<>(oldState.getLastProcessedMessages());
+
+                        lastProcessedMessages.putAll(recoveryStateMessages);
+
                         newState = new RecoveryState(oldState.getLastProcessedEvent(), lastProcessedMessages,
                                 oldState.getLastNumberOfEvents(),
                                 numberOfMessages);
