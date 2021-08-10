@@ -39,8 +39,12 @@ import com.exactpro.th2.crawler.exception.ConfigurationException;
 import com.exactpro.th2.crawler.util.CrawlerTime;
 import com.exactpro.th2.crawler.util.CrawlerUtils;
 import com.exactpro.th2.crawler.util.impl.CrawlerTimeImpl;
-import com.exactpro.th2.dataprovider.grpc.*;
-import com.google.protobuf.Empty;
+import com.exactpro.th2.dataprovider.grpc.DataProviderService;
+import com.exactpro.th2.dataprovider.grpc.EventData;
+import com.exactpro.th2.dataprovider.grpc.EventSearchRequest;
+import com.exactpro.th2.dataprovider.grpc.MessageData;
+import com.exactpro.th2.dataprovider.grpc.MessageSearchRequest;
+import com.exactpro.th2.dataprovider.grpc.StreamResponse;
 import com.google.protobuf.Timestamp;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -50,9 +54,14 @@ import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.*;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.function.Function;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 
@@ -528,10 +537,11 @@ public class Crawler {
 
         GetIntervalReport getReport = getInterval(intervals);
 
-        if (getReport.foundInterval != null)
+        if (getReport.foundInterval != null) {
             return new FetchIntervalReport(getReport.foundInterval, defaultSleepTime);
-        else
-            lastInterval = getReport.lastInterval;
+        }
+
+        lastInterval = getReport.lastInterval;
 
         LOGGER.info("Crawler did not find suitable interval. Creating new one if necessary.");
 
@@ -547,21 +557,21 @@ public class Crawler {
                     newIntervalEnd = lastIntervalEnd.plus(length);
 
                 } else {
+                    newIntervalEnd = to;
+
                     if (floatingToTime) {
 
-                        long sleepTime = getSleepTime(lastIntervalEnd.plus(length), to);
+                        long sleepTime = getSleepTime(newIntervalEnd, to);
 
                         if (LOGGER.isInfoEnabled()) {
                             LOGGER.info("Failed to create new interval from: {}, to: {} as it is too early now. Wait for {}",
                                     lastIntervalEnd,
-                                    lastIntervalEnd.plus(length),
+                                    newIntervalEnd,
                                     Duration.ofMillis(sleepTime));
                         }
 
                         return new FetchIntervalReport(null, sleepTime);
-
                     }
-                    newIntervalEnd = to;
                 }
 
                 return createAndStoreInterval(lastIntervalEnd, newIntervalEnd, name, version, type, lagNow);

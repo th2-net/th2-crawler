@@ -43,9 +43,10 @@ Allowed values are described [here](https://docs.oracle.com/en/java/javase/11/do
 The default value is **HOURS**.
 
 **workAlone: true** - flag that indicates if Crawler works alone or there are a few Crawlers
-processing the same intervals.
+processing the same intervals. If it is set to false, Crawler will not try to capture 
+the interval that another Crawler is processing at the moment.
 
-**sessionAliases: alias1** - aliases that Crawler will search messages by.
+**sessionAliases: [alias1, alias2]** - aliases that Crawler will search messages by.
 
 ## Example of infra-schema
 
