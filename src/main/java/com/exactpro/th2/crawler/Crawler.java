@@ -69,7 +69,6 @@ public class Crawler {
     private final Duration defaultIntervalLength;
 
     private final Set<String> sessionAliases;
-    private final Pattern sessionAliasesPattern;
 
     private final boolean floatingToTime;
     private final boolean workAlone;
@@ -105,7 +104,6 @@ public class Crawler {
         this.crawlerId = CrawlerId.newBuilder().setName(configuration.getName()).build();
         this.info = dataService.crawlerConnect(CrawlerInfo.newBuilder().setId(crawlerId).build());
         this.sessionAliases = configuration.getSessionAliases();
-        this.sessionAliasesPattern = configuration.getSessionAliasesPattern() == null ? null : Pattern.compile(configuration.getSessionAliasesPattern());
         this.crawlerTime = Objects.requireNonNull(crawlerTime, "Crawler time cannot be null");
 
         prepare();
@@ -188,10 +186,6 @@ public class Crawler {
 
                     startIds = ids.stream().collect(Collectors.toMap(messageID -> messageID.getConnectionId().getSessionAlias(),
                             Function.identity(), (messageID, messageID2) -> messageID2));
-                }
-
-                if (sessionAliasesPattern != null) {
-                    sendMessagesWithNewAliases(interval);
                 }
 
                 sendingReport = sendMessages(new MessagesInfo(interval, info, startIds,
@@ -449,7 +443,7 @@ public class Crawler {
                                 numberOfMessages);
                     }
 
-                    interval = intervalsWorker.updateRecoveryState(interval, newState.convertToJson()); // FIXME: update in the correct interval!
+                    interval = intervalsWorker.updateRecoveryState(interval, newState.convertToJson());
                 }
             }
 
@@ -457,21 +451,6 @@ public class Crawler {
         }
 
         return new SendingReport(CrawlerAction.NONE, dataServiceName, dataServiceVersion, 0, numberOfMessages);
-    }
-
-    // FIXME: use correct intervals here
-    private void sendMessagesWithNewAliases(Interval interval) throws IOException {
-        List<String> newAliases = dataProviderService.getMessageStreams(Empty.getDefaultInstance())
-                .getListStringList().stream()
-                .filter(sessionAliasesPattern.asPredicate())
-                .collect(Collectors.toList());
-
-        boolean foundNewAliases = newAliases.removeAll(sessionAliases);
-        sessionAliases.addAll(newAliases);
-
-        if (foundNewAliases) {
-            sendMessages(new MessagesInfo(interval, info, null, newAliases, from, interval.getStartTime()));
-        }
     }
 
     private SendingReport handshake(CrawlerId crawlerId, DataServiceInfo dataServiceInfo, long numberOfEvents, long numberOfMessages) {

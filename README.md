@@ -47,9 +47,6 @@ processing the same intervals.
 
 **sessionAliases: alias1** - aliases that Crawler will search messages by.
 
-**sessionAliasesPattern: alias1|alias2** - pattern for processing messages with aliases
-that will match this pattern.
-
 ## Example of infra-schema
 
 schema component description example (crawler.yml):
