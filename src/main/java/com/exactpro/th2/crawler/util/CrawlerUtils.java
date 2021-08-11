@@ -19,6 +19,7 @@ package com.exactpro.th2.crawler.util;
 import com.exactpro.th2.common.grpc.EventID;
 import com.exactpro.th2.common.grpc.MessageID;
 import com.exactpro.th2.common.message.MessageUtils;
+import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import com.exactpro.th2.dataprovider.grpc.EventData;
 import com.exactpro.th2.dataprovider.grpc.EventSearchRequest;
 import com.exactpro.th2.dataprovider.grpc.MessageData;
@@ -36,13 +37,13 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
+import java.util.Objects;
 
 public class CrawlerUtils {
     private static final Logger LOGGER = LoggerFactory.getLogger(CrawlerUtils.class);
 
 
-    public static Iterator<StreamResponse> searchEvents(Function<EventSearchRequest, Iterator<StreamResponse>> function,
+    public static Iterator<StreamResponse> searchEvents(DataProviderService dataProviderService,
                                                             EventsSearchInfo info) {
 
         EventSearchRequest.Builder eventSearchBuilder = info.searchBuilder;
@@ -59,10 +60,10 @@ public class CrawlerUtils {
         else
             request = eventSearchBuilder.setResumeFromId(info.resumeId).build();
 
-        return function.apply(request);
+        return dataProviderService.searchEvents(request);
     }
 
-    public static Iterator<StreamResponse> searchMessages(Function<MessageSearchRequest, Iterator<StreamResponse>> function,
+    public static Iterator<StreamResponse> searchMessages(DataProviderService dataProviderService,
                                                             MessagesSearchInfo info) {
 
         MessageSearchRequest.Builder messageSearchBuilder = info.searchBuilder;
@@ -79,7 +80,7 @@ public class CrawlerUtils {
         else
             request = messageSearchBuilder.addAllMessageId(info.resumeIds.values()).build();
 
-        return function.apply(request);
+        return dataProviderService.searchMessages(request);
     }
 
     public static List<EventData> collectEvents(Iterator<StreamResponse> iterator, Timestamp to) {
@@ -133,10 +134,11 @@ public class CrawlerUtils {
         private final int batchSize;
         private final EventID resumeId;
 
-        public EventsSearchInfo(EventSearchRequest.Builder searchBuilder, Timestamp from, Timestamp to, int batchSize, EventID resumeId) {
-            this.searchBuilder = searchBuilder;
-            this.from = from;
-            this.to = to;
+        public EventsSearchInfo(EventSearchRequest.Builder searchBuilder, Timestamp from, Timestamp to,
+                                int batchSize, EventID resumeId) {
+            this.searchBuilder = Objects.requireNonNull(searchBuilder, "Search builder must not be null");
+            this.from = Objects.requireNonNull(from, "Timestamp 'from' must not be null");
+            this.to = Objects.requireNonNull(to, "Timestamp 'to' must not be null");
             this.batchSize = batchSize;
             this.resumeId = resumeId;
         }
@@ -150,11 +152,11 @@ public class CrawlerUtils {
         private final Map<String, MessageID> resumeIds;
         private final Collection<String> aliases;
 
-        public MessagesSearchInfo(MessageSearchRequest.Builder searchBuilder, Timestamp from, Timestamp to, int batchSize,
-                                  Map<String, MessageID> resumeIds, Collection<String> aliases) {
-            this.searchBuilder = searchBuilder;
-            this.from = from;
-            this.to = to;
+        public MessagesSearchInfo(MessageSearchRequest.Builder searchBuilder, Timestamp from, Timestamp to,
+                                  int batchSize, Map<String, MessageID> resumeIds, Collection<String> aliases) {
+            this.searchBuilder = Objects.requireNonNull(searchBuilder, "Search builder must not be null");
+            this.from = Objects.requireNonNull(from, "Timestamp 'from' must not be null");
+            this.to = Objects.requireNonNull(to, "Timestamp 'to' must not be null");
             this.batchSize = batchSize;
             this.resumeIds = resumeIds;
             this.aliases = aliases;

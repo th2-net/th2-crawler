@@ -57,7 +57,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-public class TestClass {
+public class CrawlerTest {
 
     private final String name = "test_crawler";
     private final String version = "1";
@@ -218,11 +218,7 @@ public class TestClass {
         verify(intervalsWorkerMock).getIntervals(any(Instant.class), any(Instant.class), anyString(), anyString(), anyString());
         verify(intervalsWorkerMock).storeInterval(any(Interval.class));
 
-        if (configuration.getType().equals("EVENTS")) {
-            verify(dataProviderMock).searchEvents(any(EventSearchRequest.class));
-        } else if (configuration.getType().equals("MESSAGES")) {
-            verify(dataProviderMock).searchMessages(any(MessageSearchRequest.class));
-        }
+        verify(dataProviderMock).searchEvents(any(EventSearchRequest.class));
     }
 
     @Test

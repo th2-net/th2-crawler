@@ -82,8 +82,6 @@ public class RecoveryState {
         return null;
     }
 
-    public static ObjectMapper getMAPPER() { return MAPPER; }
-
     @Override
     public String toString() {
         StringJoiner joiner = new StringJoiner(", ");
