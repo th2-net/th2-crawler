@@ -39,12 +39,13 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Function;
 
 public class CrawlerUtils {
     private static final Logger LOGGER = LoggerFactory.getLogger(CrawlerUtils.class);
 
     public static List<EventData> searchEvents(DataProviderService dataProviderService,
-                                                            EventsSearchInfo info) {
+                                               EventsSearchInfo info) {
 
         EventSearchRequest.Builder eventSearchBuilder = info.searchBuilder;
         EventSearchRequest request;
@@ -66,7 +67,7 @@ public class CrawlerUtils {
     }
 
     public static List<MessageData> searchMessages(DataProviderService dataProviderService,
-                                                            MessagesSearchInfo info) {
+                                                   MessagesSearchInfo info) {
 
         MessageSearchRequest.Builder messageSearchBuilder = info.searchBuilder;
         MessageSearchRequest request;
@@ -92,26 +93,34 @@ public class CrawlerUtils {
                 eventData -> eventData.hasStartTimestamp() ? eventData.getStartTimestamp() : null);
     }
 
-    public static List<MessageData> collectMessages(Iterator<StreamResponse> iterator, Timestamp to) {
-        List<MessageData> messages = new ArrayList<>();
+    private static List<MessageData> collectMessages(Iterator<StreamResponse> iterator, Timestamp to) {
+        return collectData(iterator, to, response -> response.hasMessage() ? response.getMessage() : null,
+                messageData -> messageData.hasTimestamp() ? messageData.getTimestamp() : null);
+    }
+
+    public static <T extends MessageOrBuilder> List<T> collectData(Iterator<StreamResponse> iterator, Timestamp to,
+                                                                   Function<StreamResponse, T> objectExtractor,
+                                                                   Function<T, Timestamp> timeExtractor) {
+        List<T> data = new ArrayList<>();
 
         while (iterator.hasNext()) {
             StreamResponse r = iterator.next();
 
-            if (r.hasMessage()) {
-                MessageData message = r.getMessage();
+            T object = objectExtractor.apply(r);
+            if (object == null) {
+                continue;
+            }
 
-                if (!message.getTimestamp().equals(to)) {
-                    messages.add(message);
+            if (!to.equals(timeExtractor.apply(object))) {
+                data.add(object);
 
-                    if (LOGGER.isDebugEnabled()) {
-                        LOGGER.debug("Got message {}", MessageUtils.toJson(message, true));
-                    }
+                if (LOGGER.isDebugEnabled()) {
+                    LOGGER.debug("Got {}", MessageUtils.toJson(object, true));
                 }
             }
         }
 
-        return messages;
+        return data;
     }
 
     public static class EventsSearchInfo {
