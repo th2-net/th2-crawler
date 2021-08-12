@@ -28,6 +28,7 @@ import com.exactpro.th2.dataprovider.grpc.StreamResponse;
 import com.exactpro.th2.dataprovider.grpc.StringList;
 import com.google.protobuf.BoolValue;
 import com.google.protobuf.Int32Value;
+import com.google.protobuf.MessageOrBuilder;
 import com.google.protobuf.Timestamp;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -84,25 +85,8 @@ public class CrawlerUtils {
     }
 
     public static List<EventData> collectEvents(Iterator<StreamResponse> iterator, Timestamp to) {
-        List<EventData> data = new ArrayList<>();
-
-        while (iterator.hasNext()) {
-            StreamResponse r = iterator.next();
-
-            if (r.hasEvent()) {
-                EventData event = r.getEvent();
-
-                if (!event.getStartTimestamp().equals(to)) {
-                    data.add(event);
-
-                    if (LOGGER.isDebugEnabled()) {
-                        LOGGER.debug("Got event {}", MessageUtils.toJson(event, true));
-                    }
-                }
-            }
-        }
-
-        return data;
+        return collectData(iterator, to, it -> it.hasEvent() ? it.getEvent() : null,
+                it -> it.hasStartTimestamp() ? it.getStartTimestamp() : null);
     }
 
     public static List<MessageData> collectMessages(Iterator<StreamResponse> iterator, Timestamp to) {
