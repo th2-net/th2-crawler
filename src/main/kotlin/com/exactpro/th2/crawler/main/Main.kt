@@ -24,7 +24,7 @@ import com.exactpro.th2.common.metrics.liveness
 import com.exactpro.th2.common.metrics.readiness
 import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.exactpro.th2.crawler.CrawlerConfiguration
-import com.exactpro.th2.crawler.dataservice.grpc.DataServiceService
+import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService
 import com.exactpro.th2.crawler.exception.UnexpectedDataServiceException
 import com.exactpro.th2.dataprovider.grpc.DataProviderService
 import mu.KotlinLogging
@@ -69,7 +69,7 @@ fun main(args: Array<String>) {
 
         resources += grpcRouter
 
-        val dataService = grpcRouter.getService(DataServiceService::class.java)
+        val dataService = grpcRouter.getService(DataProcessorService::class.java)
         val dataProviderService = grpcRouter.getService(DataProviderService::class.java)
 
         val configuration = factory.getCustomConfiguration(CrawlerConfiguration::class.java)

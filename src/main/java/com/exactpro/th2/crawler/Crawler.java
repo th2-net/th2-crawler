@@ -20,20 +20,20 @@ import com.exactpro.cradle.CradleStorage;
 import com.exactpro.cradle.Direction;
 import com.exactpro.cradle.intervals.Interval;
 import com.exactpro.cradle.intervals.IntervalsWorker;
+import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId;
+import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerInfo;
+import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorInfo;
+import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService;
+import com.exactpro.th2.crawler.dataprocessor.grpc.EventDataRequest;
+import com.exactpro.th2.crawler.dataprocessor.grpc.EventResponse;
+import com.exactpro.th2.crawler.dataprocessor.grpc.MessageDataRequest;
+import com.exactpro.th2.crawler.dataprocessor.grpc.MessageResponse;
 import com.exactpro.th2.crawler.state.RecoveryState;
 import com.exactpro.th2.common.event.EventUtils;
 import com.exactpro.th2.common.grpc.ConnectionID;
 import com.exactpro.th2.common.grpc.EventID;
 import com.exactpro.th2.common.grpc.MessageID;
 import com.exactpro.th2.common.message.MessageUtils;
-import com.exactpro.th2.crawler.dataservice.grpc.CrawlerId;
-import com.exactpro.th2.crawler.dataservice.grpc.CrawlerInfo;
-import com.exactpro.th2.crawler.dataservice.grpc.DataServiceInfo;
-import com.exactpro.th2.crawler.dataservice.grpc.DataServiceService;
-import com.exactpro.th2.crawler.dataservice.grpc.EventDataRequest;
-import com.exactpro.th2.crawler.dataservice.grpc.EventResponse;
-import com.exactpro.th2.crawler.dataservice.grpc.MessageDataRequest;
-import com.exactpro.th2.crawler.dataservice.grpc.MessageResponse;
 import com.exactpro.th2.crawler.exception.UnexpectedDataServiceException;
 import com.exactpro.th2.crawler.exception.ConfigurationException;
 import com.exactpro.th2.crawler.util.CrawlerTime;
@@ -66,7 +66,7 @@ import java.util.stream.Collectors;
 
 
 public class Crawler {
-    private final DataServiceService dataService;
+    private final DataProcessorService dataService;
     private final DataProviderService dataProviderService;
     private final IntervalsWorker intervalsWorker;
     private final CrawlerConfiguration configuration;
@@ -87,7 +87,7 @@ public class Crawler {
 
     private final String crawlerType;
     private final int batchSize;
-    private final DataServiceInfo info;
+    private final DataProcessorInfo info;
     private final CrawlerId crawlerId;
 
     private static final String EVENTS = "EVENTS";
@@ -95,7 +95,7 @@ public class Crawler {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(Crawler.class);
 
-    public Crawler(@NotNull CradleStorage storage, @NotNull DataServiceService dataService,
+    public Crawler(@NotNull CradleStorage storage, @NotNull DataProcessorService dataService,
                    @NotNull DataProviderService dataProviderService, @NotNull CrawlerConfiguration configuration,
                    CrawlerTime crawlerTime) {
         this.intervalsWorker = Objects.requireNonNull(storage, "Cradle storage cannot be null").getIntervalsWorker();
@@ -118,7 +118,7 @@ public class Crawler {
         prepare();
     }
 
-    public Crawler(@NotNull CradleStorage storage, @NotNull DataServiceService dataService,
+    public Crawler(@NotNull CradleStorage storage, @NotNull DataProcessorService dataService,
                    @NotNull DataProviderService dataProviderService, @NotNull CrawlerConfiguration configuration) {
         this(storage, dataService, dataProviderService, configuration, new CrawlerTimeImpl());
     }
@@ -274,8 +274,8 @@ public class Crawler {
 
         long diff = 0L;
 
-        String dataServiceName = info.dataServiceInfo.getName();
-        String dataServiceVersion = info.dataServiceInfo.getVersion();
+        String dataServiceName = info.dataProcessorInfo.getName();
+        String dataServiceVersion = info.dataProcessorInfo.getVersion();
 
         while (search) {
 
@@ -302,7 +302,7 @@ public class Crawler {
 
             if (response.hasStatus()) {
                 if (response.getStatus().getHandshakeRequired()) {
-                    return handshake(crawlerId, info.dataServiceInfo, numberOfEvents, 0);
+                    return handshake(crawlerId, info.dataProcessorInfo, numberOfEvents, 0);
                 }
             }
 
@@ -368,8 +368,8 @@ public class Crawler {
 
         long diff = 0L;
 
-        String dataServiceName = info.dataServiceInfo.getName();
-        String dataServiceVersion = info.dataServiceInfo.getVersion();
+        String dataServiceName = info.dataProcessorInfo.getName();
+        String dataServiceVersion = info.dataProcessorInfo.getVersion();
 
         while (search) {
 
@@ -401,7 +401,7 @@ public class Crawler {
 
             if (response.hasStatus()) {
                 if (response.getStatus().getHandshakeRequired()) {
-                    return handshake(crawlerId, info.dataServiceInfo, 0, numberOfMessages);
+                    return handshake(crawlerId, info.dataProcessorInfo, 0, numberOfMessages);
                 }
             }
 
@@ -462,8 +462,8 @@ public class Crawler {
         return new SendingReport(CrawlerAction.NONE, dataServiceName, dataServiceVersion, 0, numberOfMessages);
     }
 
-    private SendingReport handshake(CrawlerId crawlerId, DataServiceInfo dataServiceInfo, long numberOfEvents, long numberOfMessages) {
-        DataServiceInfo info = dataService.crawlerConnect(CrawlerInfo.newBuilder().setId(crawlerId).build());
+    private SendingReport handshake(CrawlerId crawlerId, DataProcessorInfo dataServiceInfo, long numberOfEvents, long numberOfMessages) {
+        DataProcessorInfo info = dataService.crawlerConnect(CrawlerInfo.newBuilder().setId(crawlerId).build());
 
         String dataServiceName = info.getName();
         String dataServiceVersion = info.getVersion();
@@ -665,15 +665,15 @@ public class Crawler {
 
     private static class EventsInfo {
         private final Interval interval;
-        private final DataServiceInfo dataServiceInfo;
+        private final DataProcessorInfo dataProcessorInfo;
         private final EventID startId;
         private final Instant from;
         private final Instant to;
 
-        private EventsInfo(Interval interval, DataServiceInfo dataServiceInfo,
+        private EventsInfo(Interval interval, DataProcessorInfo dataServiceInfo,
                           EventID startId, Instant from, Instant to) {
             this.interval = interval;
-            this.dataServiceInfo = dataServiceInfo;
+            this.dataProcessorInfo = dataServiceInfo;
             this.startId = startId;
             this.from = from;
             this.to = to;
@@ -682,16 +682,16 @@ public class Crawler {
 
     private static class MessagesInfo {
         private final Interval interval;
-        private final DataServiceInfo dataServiceInfo;
+        private final DataProcessorInfo dataProcessorInfo;
         private final Map<String, MessageID> startIds;
         private final Collection<String> aliases;
         private final Instant from;
         private final Instant to;
 
-        private MessagesInfo(Interval interval, DataServiceInfo dataServiceInfo, Map<String,
+        private MessagesInfo(Interval interval, DataProcessorInfo dataServiceInfo, Map<String,
                 MessageID> startIds, Collection<String> aliases, Instant from, Instant to) {
             this.interval = interval;
-            this.dataServiceInfo = dataServiceInfo;
+            this.dataProcessorInfo = dataServiceInfo;
             this.startIds = startIds;
             this.aliases = aliases;
             this.from = from;

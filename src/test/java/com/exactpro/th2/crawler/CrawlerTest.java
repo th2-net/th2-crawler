@@ -19,13 +19,19 @@ package com.exactpro.th2.crawler;
 import com.exactpro.cradle.CradleStorage;
 import com.exactpro.cradle.intervals.Interval;
 import com.exactpro.cradle.intervals.IntervalsWorker;
+import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerInfo;
+import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorInfo;
+import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService;
+import com.exactpro.th2.crawler.dataprocessor.grpc.EventDataRequest;
+import com.exactpro.th2.crawler.dataprocessor.grpc.EventResponse;
+import com.exactpro.th2.crawler.dataprocessor.grpc.MessageDataRequest;
+import com.exactpro.th2.crawler.dataprocessor.grpc.Status;
 import com.exactpro.th2.crawler.state.RecoveryState;
 import com.exactpro.cradle.utils.UpdateNotAppliedException;
 import com.exactpro.th2.common.grpc.ConnectionID;
 import com.exactpro.th2.common.grpc.Direction;
 import com.exactpro.th2.common.grpc.EventID;
 import com.exactpro.th2.common.grpc.MessageID;
-import com.exactpro.th2.crawler.dataservice.grpc.*;
 import com.exactpro.th2.crawler.exception.UnexpectedDataServiceException;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import com.exactpro.th2.dataprovider.grpc.EventData;
@@ -62,7 +68,7 @@ public class CrawlerTest {
     private final String name = "test_crawler";
     private final String version = "1";
 
-    private final DataServiceService dataServiceMock = mock(DataServiceService.class);
+    private final DataProcessorService dataServiceMock = mock(DataProcessorService.class);
     private final DataProviderService dataProviderMock = mock(DataProviderService.class);
     private final CradleStorage storageMock = mock(CradleStorage.class);
     private final IntervalsWorker intervalsWorkerMock = mock(IntervalsWorker.class);
@@ -106,7 +112,7 @@ public class CrawlerTest {
         }).collect(Collectors.toList()).iterator());
 
         when(dataServiceMock.crawlerConnect(any(CrawlerInfo.class)))
-                .thenReturn(DataServiceInfo.newBuilder().setEventId(toEventID("3")).setName(name).setVersion(version).build());
+                .thenReturn(DataProcessorInfo.newBuilder().setEventId(toEventID("3")).setName(name).setVersion(version).build());
 
         when(dataServiceMock.sendEvent(any(EventDataRequest.class))).then(invocation -> {
                     EventDataRequest request = invocation.getArgument(0);
@@ -231,7 +237,7 @@ public class CrawlerTest {
         Crawler crawler = new Crawler(storageMock, dataServiceMock, dataProviderMock, configuration, new CrawlerTimeTestImpl());
 
         when(dataServiceMock.crawlerConnect(any(CrawlerInfo.class)))
-                .thenReturn(DataServiceInfo.newBuilder().setEventId(toEventID("3")).setName("another_crawler").setVersion(version).build());
+                .thenReturn(DataProcessorInfo.newBuilder().setEventId(toEventID("3")).setName("another_crawler").setVersion(version).build());
 
         when(dataServiceMock.sendEvent(any(EventDataRequest.class))).then(invocation -> {
             EventDataRequest request = invocation.getArgument(0);
@@ -262,7 +268,7 @@ public class CrawlerTest {
 
             StreamResponse response = StreamResponse.newBuilder()
                     .setMessage(MessageData.newBuilder()
-                            .setDirectionValue(1).setBody("").setMessageId(MessageID.newBuilder()
+                            .setDirectionValue(1).setMessageId(MessageID.newBuilder()
                                     .setDirection(Direction.FIRST).setConnectionId(ConnectionID.newBuilder()
                                             .setSessionAlias("alias1").build()).setSequence(1).build())).build();
 
@@ -272,7 +278,7 @@ public class CrawlerTest {
         });
 
         when(dataServiceMock.crawlerConnect(any(CrawlerInfo.class)))
-                .thenReturn(DataServiceInfo.newBuilder().setEventId(toEventID("3")).setName("another_crawler").setVersion(version).build());
+                .thenReturn(DataProcessorInfo.newBuilder().setEventId(toEventID("3")).setName("another_crawler").setVersion(version).build());
 
         when(dataServiceMock.sendMessage(any(MessageDataRequest.class))).thenThrow(new RuntimeException(exceptionMessage));
 
