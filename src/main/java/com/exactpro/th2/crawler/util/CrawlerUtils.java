@@ -43,8 +43,7 @@ import java.util.Objects;
 public class CrawlerUtils {
     private static final Logger LOGGER = LoggerFactory.getLogger(CrawlerUtils.class);
 
-
-    public static Iterator<StreamResponse> searchEvents(DataProviderService dataProviderService,
+    public static List<EventData> searchEvents(DataProviderService dataProviderService,
                                                             EventsSearchInfo info) {
 
         EventSearchRequest.Builder eventSearchBuilder = info.searchBuilder;
@@ -61,10 +60,12 @@ public class CrawlerUtils {
         else
             request = eventSearchBuilder.setResumeFromId(info.resumeId).build();
 
-        return dataProviderService.searchEvents(request);
+        Iterator<StreamResponse> iterator = dataProviderService.searchEvents(request);
+
+        return collectEvents(iterator, info.to);
     }
 
-    public static Iterator<StreamResponse> searchMessages(DataProviderService dataProviderService,
+    public static List<MessageData> searchMessages(DataProviderService dataProviderService,
                                                             MessagesSearchInfo info) {
 
         MessageSearchRequest.Builder messageSearchBuilder = info.searchBuilder;
@@ -81,10 +82,12 @@ public class CrawlerUtils {
         else
             request = messageSearchBuilder.addAllMessageId(info.resumeIds.values()).build();
 
-        return dataProviderService.searchMessages(request);
+        Iterator<StreamResponse> iterator = dataProviderService.searchMessages(request);
+
+        return collectMessages(iterator, info.to);
     }
 
-    public static List<EventData> collectEvents(Iterator<StreamResponse> iterator, Timestamp to) {
+    private static List<EventData> collectEvents(Iterator<StreamResponse> iterator, Timestamp to) {
         return collectData(iterator, to, it -> it.hasEvent() ? it.getEvent() : null,
                 it -> it.hasStartTimestamp() ? it.getStartTimestamp() : null);
     }

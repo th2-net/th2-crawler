@@ -282,10 +282,8 @@ public class Crawler {
             EventSearchRequest.Builder searchBuilder = EventSearchRequest.newBuilder();
             EventDataRequest.Builder eventRequestBuilder = EventDataRequest.newBuilder();
 
-            Iterator<StreamResponse> eventsIterator = CrawlerUtils.searchEvents(dataProviderService,
+            List<EventData> events = CrawlerUtils.searchEvents(dataProviderService,
                     new CrawlerUtils.EventsSearchInfo(searchBuilder, fromTimestamp, toTimestamp, batchSize, resumeId));
-
-            List<EventData> events = CrawlerUtils.collectEvents(eventsIterator, toTimestamp);
 
             if (events.isEmpty()) {
                 LOGGER.info("No more events in interval from: {}, to: {}", interval.getStartTime(), interval.getEndTime());
@@ -376,10 +374,8 @@ public class Crawler {
             MessageSearchRequest.Builder searchBuilder = MessageSearchRequest.newBuilder();
             MessageDataRequest.Builder messageDataBuilder = MessageDataRequest.newBuilder();
 
-            Iterator<StreamResponse> messagesIterator = CrawlerUtils.searchMessages(dataProviderService,
+            List<MessageData> messages = CrawlerUtils.searchMessages(dataProviderService,
                     new CrawlerUtils.MessagesSearchInfo(searchBuilder, fromTimestamp, toTimestamp, batchSize, resumeIds, info.aliases));
-
-            List<MessageData> messages = CrawlerUtils.collectMessages(messagesIterator, toTimestamp);
 
             if (messages.isEmpty()) {
                 LOGGER.info("No more messages in interval from: {}, to: {}", interval.getStartTime(), interval.getEndTime());
