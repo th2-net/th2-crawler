@@ -88,8 +88,8 @@ public class CrawlerUtils {
     }
 
     private static List<EventData> collectEvents(Iterator<StreamResponse> iterator, Timestamp to) {
-        return collectData(iterator, to, it -> it.hasEvent() ? it.getEvent() : null,
-                it -> it.hasStartTimestamp() ? it.getStartTimestamp() : null);
+        return collectData(iterator, to, response -> response.hasEvent() ? response.getEvent() : null,
+                eventData -> eventData.hasStartTimestamp() ? eventData.getStartTimestamp() : null);
     }
 
     public static List<MessageData> collectMessages(Iterator<StreamResponse> iterator, Timestamp to) {
