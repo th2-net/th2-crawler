@@ -34,7 +34,7 @@ import com.exactpro.th2.common.grpc.ConnectionID;
 import com.exactpro.th2.common.grpc.EventID;
 import com.exactpro.th2.common.grpc.MessageID;
 import com.exactpro.th2.common.message.MessageUtils;
-import com.exactpro.th2.crawler.exception.UnexpectedDataServiceException;
+import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException;
 import com.exactpro.th2.crawler.exception.ConfigurationException;
 import com.exactpro.th2.crawler.util.CrawlerTime;
 import com.exactpro.th2.crawler.util.CrawlerUtils;
@@ -66,7 +66,7 @@ import java.util.stream.Collectors;
 
 
 public class Crawler {
-    private final DataProcessorService dataService;
+    private final DataProcessorService dataProcessor;
     private final DataProviderService dataProviderService;
     private final IntervalsWorker intervalsWorker;
     private final CrawlerConfiguration configuration;
@@ -95,11 +95,11 @@ public class Crawler {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(Crawler.class);
 
-    public Crawler(@NotNull CradleStorage storage, @NotNull DataProcessorService dataService,
+    public Crawler(@NotNull CradleStorage storage, @NotNull DataProcessorService dataProcessor,
                    @NotNull DataProviderService dataProviderService, @NotNull CrawlerConfiguration configuration,
                    CrawlerTime crawlerTime) {
         this.intervalsWorker = Objects.requireNonNull(storage, "Cradle storage cannot be null").getIntervalsWorker();
-        this.dataService = Objects.requireNonNull(dataService, "Data service cannot be null");
+        this.dataProcessor = Objects.requireNonNull(dataProcessor, "Data service cannot be null");
         this.dataProviderService = Objects.requireNonNull(dataProviderService, "Data provider service cannot be null");
         this.configuration = Objects.requireNonNull(configuration, "Crawler configuration cannot be null");
         this.from = Instant.parse(configuration.getFrom());
@@ -111,16 +111,16 @@ public class Crawler {
         this.crawlerType = configuration.getType();
         this.batchSize = configuration.getBatchSize();
         this.crawlerId = CrawlerId.newBuilder().setName(configuration.getName()).build();
-        this.info = dataService.crawlerConnect(CrawlerInfo.newBuilder().setId(crawlerId).build());
+        this.info = dataProcessor.crawlerConnect(CrawlerInfo.newBuilder().setId(crawlerId).build());
         this.sessionAliases = configuration.getSessionAliases();
         this.crawlerTime = Objects.requireNonNull(crawlerTime, "Crawler time cannot be null");
 
         prepare();
     }
 
-    public Crawler(@NotNull CradleStorage storage, @NotNull DataProcessorService dataService,
+    public Crawler(@NotNull CradleStorage storage, @NotNull DataProcessorService dataProcessor,
                    @NotNull DataProviderService dataProviderService, @NotNull CrawlerConfiguration configuration) {
-        this(storage, dataService, dataProviderService, configuration, new CrawlerTimeImpl());
+        this(storage, dataProcessor, dataProviderService, configuration, new CrawlerTimeImpl());
     }
 
     private void prepare() {
@@ -135,11 +135,11 @@ public class Crawler {
         LOGGER.info("Crawler started working");
     }
 
-    public Duration process() throws IOException, UnexpectedDataServiceException {
-        String dataServiceName = info.getName();
-        String dataServiceVersion = info.getVersion();
+    public Duration process() throws IOException, UnexpectedDataProcessorException {
+        String dataProcessorName = info.getName();
+        String dataProcessorVersion = info.getVersion();
 
-        FetchIntervalReport fetchIntervalReport = getOrCreateInterval(dataServiceName, dataServiceVersion, crawlerType);
+        FetchIntervalReport fetchIntervalReport = getOrCreateInterval(dataProcessorName, dataProcessorVersion, crawlerType);
 
         Interval interval = fetchIntervalReport.interval;
 
@@ -251,8 +251,8 @@ public class Crawler {
             }
 
             if (sendingReport.action == CrawlerAction.STOP) {
-                throw new UnexpectedDataServiceException("Need to restart Crawler because of changed name and/or version of data-service. " +
-                        "Old name: "+dataServiceName+", old version: "+dataServiceVersion+". " +
+                throw new UnexpectedDataProcessorException("Need to restart Crawler because of changed name and/or version of data-service. " +
+                        "Old name: "+dataProcessorName+", old version: "+dataProcessorVersion+". " +
                         "New name: "+sendingReport.newName+", new version: "+sendingReport.newVersion);
             }
 
@@ -274,8 +274,8 @@ public class Crawler {
 
         long diff = 0L;
 
-        String dataServiceName = info.dataProcessorInfo.getName();
-        String dataServiceVersion = info.dataProcessorInfo.getVersion();
+        String dataProcessorName = info.dataProcessorInfo.getName();
+        String dataProcessorVersion = info.dataProcessorInfo.getVersion();
 
         while (search) {
 
@@ -298,7 +298,7 @@ public class Crawler {
 
             EventDataRequest eventRequest = eventRequestBuilder.setId(crawlerId).addAllEventData(events).build();
 
-            response = dataService.sendEvent(eventRequest);
+            response = dataProcessor.sendEvent(eventRequest);
 
             if (response.hasStatus()) {
                 if (response.getStatus().getHandshakeRequired()) {
@@ -354,7 +354,7 @@ public class Crawler {
             search = events.size() == batchSize;
         }
 
-        return new SendingReport(CrawlerAction.NONE, dataServiceName, dataServiceVersion, numberOfEvents, 0);
+        return new SendingReport(CrawlerAction.NONE, dataProcessorName, dataProcessorVersion, numberOfEvents, 0);
     }
 
     private SendingReport sendMessages(MessagesInfo info) throws IOException {
@@ -368,8 +368,8 @@ public class Crawler {
 
         long diff = 0L;
 
-        String dataServiceName = info.dataProcessorInfo.getName();
-        String dataServiceVersion = info.dataProcessorInfo.getVersion();
+        String dataProcessorName = info.dataProcessorInfo.getName();
+        String dataProcessorVersion = info.dataProcessorInfo.getVersion();
 
         while (search) {
 
@@ -397,7 +397,7 @@ public class Crawler {
 
             MessageDataRequest messageRequest = messageDataBuilder.setId(crawlerId).addAllMessageData(messages).build();
 
-            response = dataService.sendMessage(messageRequest);
+            response = dataProcessor.sendMessage(messageRequest);
 
             if (response.hasStatus()) {
                 if (response.getStatus().getHandshakeRequired()) {
@@ -459,21 +459,21 @@ public class Crawler {
             search = messages.size() == batchSize;
         }
 
-        return new SendingReport(CrawlerAction.NONE, dataServiceName, dataServiceVersion, 0, numberOfMessages);
+        return new SendingReport(CrawlerAction.NONE, dataProcessorName, dataProcessorVersion, 0, numberOfMessages);
     }
 
-    private SendingReport handshake(CrawlerId crawlerId, DataProcessorInfo dataServiceInfo, long numberOfEvents, long numberOfMessages) {
-        DataProcessorInfo info = dataService.crawlerConnect(CrawlerInfo.newBuilder().setId(crawlerId).build());
+    private SendingReport handshake(CrawlerId crawlerId, DataProcessorInfo dataProcessorInfo, long numberOfEvents, long numberOfMessages) {
+        DataProcessorInfo info = dataProcessor.crawlerConnect(CrawlerInfo.newBuilder().setId(crawlerId).build());
 
-        String dataServiceName = info.getName();
-        String dataServiceVersion = info.getVersion();
+        String dataProcessorName = info.getName();
+        String dataProcessorVersion = info.getVersion();
 
-        if (dataServiceName.equals(dataServiceInfo.getName()) && dataServiceVersion.equals(dataServiceInfo.getVersion())) {
-            LOGGER.info("Got the same name ({}) and version ({}) from repeated crawlerConnect", dataServiceName, dataServiceVersion);
-            return new SendingReport(CrawlerAction.CONTINUE, dataServiceName, dataServiceVersion, numberOfEvents, numberOfMessages);
+        if (dataProcessorName.equals(dataProcessorInfo.getName()) && dataProcessorVersion.equals(dataProcessorInfo.getVersion())) {
+            LOGGER.info("Got the same name ({}) and version ({}) from repeated crawlerConnect", dataProcessorName, dataProcessorVersion);
+            return new SendingReport(CrawlerAction.CONTINUE, dataProcessorName, dataProcessorVersion, numberOfEvents, numberOfMessages);
         } else {
-            LOGGER.info("Got another name ({}) or version ({}) from repeated crawlerConnect, restarting component", dataServiceName, dataServiceVersion);
-            return new SendingReport(CrawlerAction.STOP, dataServiceName, dataServiceVersion, numberOfEvents, numberOfMessages);
+            LOGGER.info("Got another name ({}) or version ({}) from repeated crawlerConnect, restarting component", dataProcessorName, dataProcessorVersion);
+            return new SendingReport(CrawlerAction.STOP, dataProcessorName, dataProcessorVersion, numberOfEvents, numberOfMessages);
         }
     }
 
@@ -670,10 +670,10 @@ public class Crawler {
         private final Instant from;
         private final Instant to;
 
-        private EventsInfo(Interval interval, DataProcessorInfo dataServiceInfo,
+        private EventsInfo(Interval interval, DataProcessorInfo dataProcessorInfo,
                           EventID startId, Instant from, Instant to) {
             this.interval = interval;
-            this.dataProcessorInfo = dataServiceInfo;
+            this.dataProcessorInfo = dataProcessorInfo;
             this.startId = startId;
             this.from = from;
             this.to = to;
@@ -688,10 +688,10 @@ public class Crawler {
         private final Instant from;
         private final Instant to;
 
-        private MessagesInfo(Interval interval, DataProcessorInfo dataServiceInfo, Map<String,
+        private MessagesInfo(Interval interval, DataProcessorInfo dataProcessorInfo, Map<String,
                 MessageID> startIds, Collection<String> aliases, Instant from, Instant to) {
             this.interval = interval;
-            this.dataProcessorInfo = dataServiceInfo;
+            this.dataProcessorInfo = dataProcessorInfo;
             this.startIds = startIds;
             this.aliases = aliases;
             this.from = from;

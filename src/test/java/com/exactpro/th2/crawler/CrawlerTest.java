@@ -32,7 +32,7 @@ import com.exactpro.th2.common.grpc.ConnectionID;
 import com.exactpro.th2.common.grpc.Direction;
 import com.exactpro.th2.common.grpc.EventID;
 import com.exactpro.th2.common.grpc.MessageID;
-import com.exactpro.th2.crawler.exception.UnexpectedDataServiceException;
+import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import com.exactpro.th2.dataprovider.grpc.EventData;
 import com.exactpro.th2.dataprovider.grpc.EventSearchRequest;
@@ -212,7 +212,7 @@ public class CrawlerTest {
 
     @Test
     @DisplayName("Calling method process()")
-    public void processMethodCall() throws IOException, UnexpectedDataServiceException {
+    public void processMethodCall() throws IOException, UnexpectedDataProcessorException {
         CrawlerConfiguration configuration = new CrawlerConfiguration("2021-06-16T12:00:00.00Z", null, name,
                 "EVENTS", "PT1H", 1, ChronoUnit.NANOS, 1, 10, 5,
                 ChronoUnit.MINUTES, true, new HashSet<>());
@@ -249,7 +249,7 @@ public class CrawlerTest {
             return EventResponse.newBuilder().setId(eventID).setStatus(Status.newBuilder().setHandshakeRequired(true).build()).build();
         });
 
-        Assertions.assertThrows(UnexpectedDataServiceException.class, crawler::process);
+        Assertions.assertThrows(UnexpectedDataProcessorException.class, crawler::process);
     }
 
     @Test

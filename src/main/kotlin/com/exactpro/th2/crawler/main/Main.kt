@@ -25,7 +25,7 @@ import com.exactpro.th2.common.metrics.readiness
 import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.exactpro.th2.crawler.CrawlerConfiguration
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService
-import com.exactpro.th2.crawler.exception.UnexpectedDataServiceException
+import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException
 import com.exactpro.th2.dataprovider.grpc.DataProviderService
 import mu.KotlinLogging
 import java.util.Deque
@@ -69,7 +69,7 @@ fun main(args: Array<String>) {
 
         resources += grpcRouter
 
-        val dataService = grpcRouter.getService(DataProcessorService::class.java)
+        val dataProcessor = grpcRouter.getService(DataProcessorService::class.java)
         val dataProviderService = grpcRouter.getService(DataProviderService::class.java)
 
         val configuration = factory.getCustomConfiguration(CrawlerConfiguration::class.java)
@@ -106,7 +106,7 @@ fun main(args: Array<String>) {
         LOGGER.error("Crawler's sleep was interrupted", ex)
         Thread.currentThread().interrupt()
         exitProcess(1)
-    } catch (ex: UnexpectedDataServiceException) {
+    } catch (ex: UnexpectedDataProcessorException) {
         LOGGER.info("Data processor changed its name and/or version", ex)
         exitProcess(0)
     } catch (ex: UpdateNotAppliedException) {

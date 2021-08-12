@@ -16,12 +16,12 @@
 
 package com.exactpro.th2.crawler.exception;
 
-public class UnexpectedDataServiceException extends Exception {
+public class UnexpectedDataProcessorException extends Exception {
 
-    public UnexpectedDataServiceException() { super(); }
+    public UnexpectedDataProcessorException() { super(); }
 
-    public UnexpectedDataServiceException(String message) { super(message); }
+    public UnexpectedDataProcessorException(String message) { super(message); }
 
-    public UnexpectedDataServiceException(String message, Throwable e) { super(message, e); }
+    public UnexpectedDataProcessorException(String message, Throwable e) { super(message, e); }
 
 }
