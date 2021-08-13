@@ -68,25 +68,20 @@ public class Crawler {
     private final DataProviderService dataProviderService;
     private final IntervalsWorker intervalsWorker;
     private final CrawlerConfiguration configuration;
-
-    private final Instant from;
-    private Instant to;
-
     private final CrawlerTime crawlerTime;
     private final Duration defaultIntervalLength;
-
+    private final long defaultSleepTime;
     private final Set<String> sessionAliases;
-
     private final boolean floatingToTime;
     private final boolean workAlone;
-    private boolean reachedTo;
-
-    private final long defaultSleepTime;
-
     private final String crawlerType;
     private final int batchSize;
     private final DataProcessorInfo info;
     private final CrawlerId crawlerId;
+
+    private final Instant from;
+    private Instant to;
+    private boolean reachedTo;
 
     private static final String EVENTS = "EVENTS";
     private static final String MESSAGES = "MESSAGES";
@@ -143,8 +138,7 @@ public class Crawler {
 
         if (interval != null) {
 
-            if (!floatingToTime && interval.getEndTime().equals(to))
-                reachedTo = true;
+            reachedTo = !floatingToTime && interval.getEndTime().equals(to);
 
             SendingReport sendingReport;
 
