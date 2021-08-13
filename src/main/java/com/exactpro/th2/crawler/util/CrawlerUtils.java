@@ -16,9 +16,13 @@
 
 package com.exactpro.th2.crawler.util;
 
+import com.exactpro.cradle.intervals.Interval;
+import com.exactpro.cradle.intervals.IntervalsWorker;
 import com.exactpro.th2.common.grpc.EventID;
 import com.exactpro.th2.common.grpc.MessageID;
 import com.exactpro.th2.common.message.MessageUtils;
+import com.exactpro.th2.crawler.Crawler;
+import com.exactpro.th2.crawler.state.RecoveryState;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import com.exactpro.th2.dataprovider.grpc.EventData;
 import com.exactpro.th2.dataprovider.grpc.EventSearchRequest;
@@ -33,6 +37,7 @@ import com.google.protobuf.Timestamp;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
@@ -86,6 +91,49 @@ public class CrawlerUtils {
         Iterator<StreamResponse> iterator = dataProviderService.searchMessages(request);
 
         return collectMessages(iterator, info.to);
+    }
+
+    public static Interval updateEventRecoveryState(IntervalsWorker worker, Interval interval,
+                                                    RecoveryState previousState, long numberOfEvents) throws IOException {
+        RecoveryState state;
+
+        if (previousState == null) {
+            state = new RecoveryState(
+                    null,
+                    null,
+                    numberOfEvents,
+                    0);
+        } else {
+            state = new RecoveryState(
+                    null,
+                    previousState.getLastProcessedMessages(),
+                    numberOfEvents,
+                    previousState.getLastNumberOfMessages());
+        }
+
+        return worker.updateRecoveryState(interval, state.convertToJson());
+    }
+
+    public static Interval updateMessageRecoveryState(IntervalsWorker worker, Interval interval,
+                                                      RecoveryState previousState, long numberOfMessages) throws IOException {
+        RecoveryState state;
+
+        if (previousState == null) {
+            state = new RecoveryState(
+                    null,
+                    null,
+                    0,
+                    numberOfMessages
+            );
+        } else {
+            state = new RecoveryState(
+                    previousState.getLastProcessedEvent(),
+                    null,
+                    previousState.getLastNumberOfEvents(),
+                    numberOfMessages);
+        }
+
+        return worker.updateRecoveryState(interval, state.convertToJson());
     }
 
     private static List<EventData> collectEvents(Iterator<StreamResponse> iterator, Timestamp to) {

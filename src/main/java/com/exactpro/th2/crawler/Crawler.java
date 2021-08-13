@@ -207,42 +207,11 @@ public class Crawler {
                 RecoveryState previousState = RecoveryState.getStateFromJson(interval.getRecoveryState());
 
                 if (EVENTS.equals(interval.getCrawlerType())) {
-                    RecoveryState state;
-
-                    if (previousState == null) {
-                        state = new RecoveryState(
-                                null,
-                                null,
-                                sendingReport.numberOfEvents,
-                                0);
-                    } else {
-                        state = new RecoveryState(
-                                null,
-                                previousState.getLastProcessedMessages(),
-                                sendingReport.numberOfEvents,
-                                previousState.getLastNumberOfMessages());
-                    }
-
-                    interval = intervalsWorker.updateRecoveryState(interval, state.convertToJson());
+                    interval = CrawlerUtils.updateEventRecoveryState(intervalsWorker, interval,
+                            previousState, sendingReport.numberOfEvents);
                 } else if (MESSAGES.equals(interval.getCrawlerType())) {
-                    RecoveryState state;
-
-                    if (previousState == null) {
-                        state = new RecoveryState(
-                                null,
-                                null,
-                                0,
-                                sendingReport.numberOfMessages
-                        );
-                    } else {
-                        state = new RecoveryState(
-                                previousState.getLastProcessedEvent(),
-                                null,
-                                previousState.getLastNumberOfEvents(),
-                                sendingReport.numberOfMessages);
-                    }
-
-                    interval = intervalsWorker.updateRecoveryState(interval, state.convertToJson());
+                    interval = CrawlerUtils.updateMessageRecoveryState(intervalsWorker, interval,
+                            previousState, sendingReport.numberOfMessages);
                 }
 
                 LOGGER.info("Interval from {}, to {} was processed successfully", interval.getStartTime(), interval.getEndTime());
