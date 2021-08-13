@@ -40,6 +40,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -95,45 +96,58 @@ public class CrawlerUtils {
 
     public static Interval updateEventRecoveryState(IntervalsWorker worker, Interval interval,
                                                     RecoveryState previousState, long numberOfEvents) throws IOException {
-        RecoveryState state;
+        RecoveryState newState;
+        RecoveryState currentState = RecoveryState.getStateFromJson(interval.getRecoveryState());
+        RecoveryState.InnerEvent lastProcessedEvent = null;
+
+        if (currentState != null) {
+            lastProcessedEvent = currentState.getLastProcessedEvent();
+        }
+
 
         if (previousState == null) {
-            state = new RecoveryState(
-                    null,
+            newState = new RecoveryState(
+                    lastProcessedEvent,
                     null,
                     numberOfEvents,
                     0);
         } else {
-            state = new RecoveryState(
-                    null,
+            newState = new RecoveryState(
+                    lastProcessedEvent,
                     previousState.getLastProcessedMessages(),
                     numberOfEvents,
                     previousState.getLastNumberOfMessages());
         }
 
-        return worker.updateRecoveryState(interval, state.convertToJson());
+        return worker.updateRecoveryState(interval, newState.convertToJson());
     }
 
     public static Interval updateMessageRecoveryState(IntervalsWorker worker, Interval interval,
                                                       RecoveryState previousState, long numberOfMessages) throws IOException {
-        RecoveryState state;
+        RecoveryState newState;
+        RecoveryState currentState = RecoveryState.getStateFromJson(interval.getRecoveryState());
+        Map<String, RecoveryState.InnerMessage> lastProcessedMessages = new HashMap<>();
+
+        if (currentState != null) {
+            lastProcessedMessages.putAll(currentState.getLastProcessedMessages());
+        }
 
         if (previousState == null) {
-            state = new RecoveryState(
+            newState = new RecoveryState(
                     null,
-                    null,
+                    lastProcessedMessages,
                     0,
                     numberOfMessages
             );
         } else {
-            state = new RecoveryState(
+            newState = new RecoveryState(
                     previousState.getLastProcessedEvent(),
-                    null,
+                    lastProcessedMessages,
                     previousState.getLastNumberOfEvents(),
                     numberOfMessages);
         }
 
-        return worker.updateRecoveryState(interval, state.convertToJson());
+        return worker.updateRecoveryState(interval, newState.convertToJson());
     }
 
     private static List<EventData> collectEvents(Iterator<StreamResponse> iterator, Timestamp to) {

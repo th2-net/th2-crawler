@@ -157,7 +157,9 @@ public class Crawler {
                 EventID startId = null;
 
                 if (lastProcessedEvent != null) {
-                    startId = EventUtils.toEventID(lastProcessedEvent.getId());
+                    if (!fetchIntervalReport.processFromStart) {
+                        startId = EventUtils.toEventID(lastProcessedEvent.getId());
+                    }
                 }
 
                 sendingReport = sendEvents(new EventsInfo(interval, info, startId,
@@ -174,25 +176,27 @@ public class Crawler {
                 MessageID.Builder builder = MessageID.newBuilder();
 
                 if (lastProcessedMessages != null) {
-                    List<MessageID> ids = lastProcessedMessages.values().stream()
-                            .map(innerMessage -> {
-                                com.exactpro.th2.common.grpc.Direction direction;
+                    if (!fetchIntervalReport.processFromStart) {
+                        List<MessageID> ids = lastProcessedMessages.values().stream()
+                                .map(innerMessage -> {
+                                    com.exactpro.th2.common.grpc.Direction direction;
 
-                                if (innerMessage.getDirection() == Direction.FIRST)
-                                    direction = com.exactpro.th2.common.grpc.Direction.FIRST;
-                                else
-                                    direction = com.exactpro.th2.common.grpc.Direction.SECOND;
+                                    if (innerMessage.getDirection() == Direction.FIRST)
+                                        direction = com.exactpro.th2.common.grpc.Direction.FIRST;
+                                    else
+                                        direction = com.exactpro.th2.common.grpc.Direction.SECOND;
 
-                                return builder
-                                        .setSequence(innerMessage.getSequence())
-                                        .setConnectionId(ConnectionID.newBuilder().setSessionAlias(innerMessage.getSessionAlias()).build())
-                                        .setDirection(direction)
-                                        .build();
-                            })
-                            .collect(Collectors.toList());
+                                    return builder
+                                            .setSequence(innerMessage.getSequence())
+                                            .setConnectionId(ConnectionID.newBuilder().setSessionAlias(innerMessage.getSessionAlias()).build())
+                                            .setDirection(direction)
+                                            .build();
+                                })
+                                .collect(Collectors.toList());
 
-                    startIds = ids.stream().collect(Collectors.toMap(messageID -> messageID.getConnectionId().getSessionAlias(),
-                            Function.identity(), (messageID, messageID2) -> messageID2));
+                        startIds = ids.stream().collect(Collectors.toMap(messageID -> messageID.getConnectionId().getSessionAlias(),
+                                Function.identity(), (messageID, messageID2) -> messageID2));
+                    }
                 }
 
                 sendingReport = sendMessages(new MessagesInfo(interval, info, startIds,
@@ -444,6 +448,7 @@ public class Crawler {
         Interval lastInterval = null;
         Interval foundInterval = null;
         long intervalsNumber = 0;
+        boolean processFromStart = true;
 
         for (Interval interval : intervals) {
             boolean lastUpdateCheck = interval.getLastUpdateDateTime()
@@ -462,6 +467,8 @@ public class Crawler {
 
 
             if (foundInterval == null && (reachedTo || floatingToTime) && (floatingAndMultiple || floatingAndAlone || fixedAndMultiple || fixedAndAlone)) {
+                processFromStart = interval.isProcessed();
+
                 if (interval.isProcessed()) {
                     interval = intervalsWorker.setIntervalProcessed(interval, false);
                 }
@@ -477,7 +484,7 @@ public class Crawler {
 
         LOGGER.info("Crawler retrieved {} intervals from {} to {}", intervalsNumber, from, to);
 
-        return new GetIntervalReport(foundInterval, lastInterval);
+        return new GetIntervalReport(foundInterval, lastInterval, processFromStart);
     }
 
     private FetchIntervalReport getOrCreateInterval(String name, String version, String type) throws IOException {
@@ -490,7 +497,7 @@ public class Crawler {
 
         if (lagNow.isBefore(from)) {
             LOGGER.info("Current time with lag: {} is before \"from\" time of Crawler: {}", lagNow, from);
-            return new FetchIntervalReport(null, getSleepTime(lagNow, from));
+            return new FetchIntervalReport(null, getSleepTime(lagNow, from), true);
         }
 
         Iterable<Interval> intervals = intervalsWorker.getIntervals(from, to, name, version, type);
@@ -501,7 +508,7 @@ public class Crawler {
         GetIntervalReport getReport = getInterval(intervals);
 
         if (getReport.foundInterval != null) {
-            return new FetchIntervalReport(getReport.foundInterval, defaultSleepTime);
+            return new FetchIntervalReport(getReport.foundInterval, defaultSleepTime, getReport.processFromStart);
         }
 
         lastInterval = getReport.lastInterval;
@@ -533,7 +540,7 @@ public class Crawler {
                                     Duration.ofMillis(sleepTime));
                         }
 
-                        return new FetchIntervalReport(null, sleepTime);
+                        return new FetchIntervalReport(null, sleepTime, true);
                     }
                 }
 
@@ -543,14 +550,14 @@ public class Crawler {
                 if (!floatingToTime) {
                     LOGGER.info("All intervals between {} and {} were fully processed less than {} {} ago",
                             from, to, configuration.getLastUpdateOffset(), configuration.getLastUpdateOffsetUnit());
-                    return new FetchIntervalReport(null, defaultSleepTime);
+                    return new FetchIntervalReport(null, defaultSleepTime, true);
                 }
 
                 LOGGER.info("Failed to create new interval from: {}, to: {} as the end of the last interval is after " +
                                 "end time of Crawler: {}",
                         lastIntervalEnd, lastIntervalEnd.plus(length), to);
 
-                return new FetchIntervalReport(null, getSleepTime(lastIntervalEnd.plus(length), lagNow)); // TODO: we need to start from the beginning I guess
+                return new FetchIntervalReport(null, getSleepTime(lastIntervalEnd.plus(length), lagNow), true); // TODO: we need to start from the beginning I guess
             }
         } else {
             return createAndStoreInterval(from, from.plus(length), name, version, type, lagNow);
@@ -567,7 +574,7 @@ public class Crawler {
             LOGGER.info("It is too early now to create new interval from: {}, to: {}. " +
                     "Falling asleep for {} seconds", from, to, sleepTime);
 
-            return new FetchIntervalReport(null, sleepTime);
+            return new FetchIntervalReport(null, sleepTime, true);
         }
 
         Interval newInterval = Interval.builder()
@@ -587,12 +594,12 @@ public class Crawler {
             LOGGER.info("Failed to store new interval from {} to {}. Trying to get or create an interval again.",
                     from, to);
 
-            return new FetchIntervalReport(null, 0L); // setting sleepTime to 0 in order to try again immediately
+            return new FetchIntervalReport(null, 0L, true); // setting sleepTime to 0 in order to try again immediately
         }
 
         LOGGER.info("Crawler created interval from: {}, to: {}", newInterval.getStartTime(), newInterval.getEndTime());
 
-        return new FetchIntervalReport(newInterval, sleepTime);
+        return new FetchIntervalReport(newInterval, sleepTime, true);
     }
 
     private long getSleepTime(Instant from, Instant to) {
@@ -619,10 +626,12 @@ public class Crawler {
     private static class GetIntervalReport {
         private final Interval foundInterval;
         private final Interval lastInterval;
+        private final boolean processFromStart;
 
-        private GetIntervalReport(Interval foundInterval, Interval lastInterval) {
+        private GetIntervalReport(Interval foundInterval, Interval lastInterval, boolean processFromStart) {
             this.foundInterval = foundInterval;
             this.lastInterval = lastInterval;
+            this.processFromStart = processFromStart;
         }
     }
 
@@ -665,10 +674,12 @@ public class Crawler {
     private static class FetchIntervalReport {
         private final Interval interval;
         private final long sleepTime;
+        private final boolean processFromStart;
 
-        private FetchIntervalReport(Interval interval, long sleepTime) {
+        private FetchIntervalReport(Interval interval, long sleepTime, boolean processFromStart) {
             this.interval = interval;
             this.sleepTime = sleepTime;
+            this.processFromStart = processFromStart;
         }
     }
 
