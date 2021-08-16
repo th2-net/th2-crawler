@@ -44,7 +44,9 @@ import com.exactpro.th2.dataprovider.grpc.EventData;
 import com.exactpro.th2.dataprovider.grpc.EventSearchRequest;
 import com.exactpro.th2.dataprovider.grpc.MessageData;
 import com.exactpro.th2.dataprovider.grpc.MessageSearchRequest;
+import com.google.protobuf.Empty;
 import com.google.protobuf.Timestamp;
+import org.checkerframework.checker.units.qual.C;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -55,17 +57,20 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 
 public class Crawler {
     private final DataProcessorService dataProcessor;
     private final DataProviderService dataProviderService;
+    private final CradleStorage cradleStorage;
     private final IntervalsWorker intervalsWorker;
     private final CrawlerConfiguration configuration;
     private final CrawlerTime crawlerTime;
@@ -74,10 +79,17 @@ public class Crawler {
     private final Set<String> sessionAliases;
     private final boolean floatingToTime;
     private final boolean workAlone;
+    private final String crawlerName;
     private final String crawlerType;
     private final int batchSize;
     private final DataProcessorInfo info;
     private final CrawlerId crawlerId;
+    private final Pattern sessionAliasesPattern;
+    private final long lastUpdateOffset;
+    private final ChronoUnit lastUpdateOffsetUnit;
+    private final long delay;
+    private final int toLag;
+    private final ChronoUnit toLagOffsetUnit;
 
     private final Instant from;
     private Instant to;
@@ -91,7 +103,8 @@ public class Crawler {
     public Crawler(@NotNull CradleStorage storage, @NotNull DataProcessorService dataProcessor,
                    @NotNull DataProviderService dataProviderService, @NotNull CrawlerConfiguration configuration,
                    CrawlerTime crawlerTime) {
-        this.intervalsWorker = Objects.requireNonNull(storage, "Cradle storage cannot be null").getIntervalsWorker();
+        this.cradleStorage = Objects.requireNonNull(storage, "Cradle storage cannot be null");
+        this.intervalsWorker = cradleStorage.getIntervalsWorker();
         this.dataProcessor = Objects.requireNonNull(dataProcessor, "Data service cannot be null");
         this.dataProviderService = Objects.requireNonNull(dataProviderService, "Data provider service cannot be null");
         this.configuration = Objects.requireNonNull(configuration, "Crawler configuration cannot be null");
@@ -101,11 +114,18 @@ public class Crawler {
         this.to = floatingToTime ? crawlerTime.now() : Instant.parse(configuration.getTo());
         this.defaultIntervalLength = Duration.parse(configuration.getDefaultLength());
         this.defaultSleepTime = configuration.getDelay() * 1000;
+        this.crawlerName = configuration.getName();
         this.crawlerType = configuration.getType();
         this.batchSize = configuration.getBatchSize();
-        this.crawlerId = CrawlerId.newBuilder().setName(configuration.getName()).build();
+        this.crawlerId = CrawlerId.newBuilder().setName(crawlerName).build();
         this.info = dataProcessor.crawlerConnect(CrawlerInfo.newBuilder().setId(crawlerId).build());
         this.sessionAliases = configuration.getSessionAliases();
+        this.sessionAliasesPattern = configuration.getSessionAliasesPattern() == null ? null : Pattern.compile(configuration.getSessionAliasesPattern());
+        this.lastUpdateOffset = configuration.getLastUpdateOffset();
+        this.lastUpdateOffsetUnit = configuration.getLastUpdateOffsetUnit();
+        this.delay = configuration.getDelay();
+        this.toLag = configuration.getToLag();
+        this.toLagOffsetUnit = configuration.getToLagOffsetUnit();
         this.crawlerTime = Objects.requireNonNull(crawlerTime, "Crawler time cannot be null");
 
         prepare();
@@ -189,6 +209,10 @@ public class Crawler {
                                 .collect(Collectors.toMap(messageID -> messageID.getConnectionId().getSessionAlias(),
                                         Function.identity(), (messageID, messageID2) -> messageID2));
                     }
+                }
+
+                if (sessionAliasesPattern != null) {
+                    processMessagesWithNewAliases(from, interval.getStartTime());
                 }
 
                 sendingReport = sendMessages(new MessagesInfo(interval, info, startIds,
@@ -426,6 +450,31 @@ public class Crawler {
         return new SendingReport(CrawlerAction.NONE, interval, dataProcessorName, dataProcessorVersion, 0, numberOfMessages);
     }
 
+    private void processMessagesWithNewAliases(Instant from, Instant to) throws IOException, UnexpectedDataProcessorException {
+        List<String> aliases = dataProviderService.getMessageStreams(Empty.getDefaultInstance())
+                .getListStringList().stream()
+                .filter(sessionAliasesPattern.asPredicate())
+                .collect(Collectors.toList());
+
+        boolean foundNewAliases = aliases.removeAll(sessionAliases);
+
+        if (foundNewAliases) {
+            sessionAliases.addAll(aliases);
+
+            aliases.forEach(alias -> LOGGER.info("New alias found: {} \n", alias));
+
+            Crawler crawler = new Crawler(cradleStorage, dataProcessor, dataProviderService, new CrawlerConfiguration(
+                    from.toString(), to.toString(), crawlerName, crawlerType, defaultIntervalLength.toString(),
+                    lastUpdateOffset, lastUpdateOffsetUnit,
+                    delay, batchSize, toLag, toLagOffsetUnit, workAlone, Set.copyOf(aliases), null
+            ));
+
+            while (!crawler.reachedTo) {
+                crawler.process();
+            }
+        }
+    }
+
     private SendingReport handshake(CrawlerId crawlerId, Interval interval, DataProcessorInfo dataProcessorInfo, long numberOfEvents, long numberOfMessages) {
         DataProcessorInfo info = dataProcessor.crawlerConnect(CrawlerInfo.newBuilder().setId(crawlerId).build());
 
@@ -449,7 +498,7 @@ public class Crawler {
 
         for (Interval interval : intervals) {
             boolean lastUpdateCheck = interval.getLastUpdateDateTime()
-                    .isBefore(crawlerTime.now().minus(configuration.getLastUpdateOffset(), configuration.getLastUpdateOffsetUnit()));
+                    .isBefore(crawlerTime.now().minus(lastUpdateOffset, lastUpdateOffsetUnit));
 
             intervalsNumber++;
 
@@ -486,7 +535,7 @@ public class Crawler {
 
     private FetchIntervalReport getOrCreateInterval(String name, String version, String type) throws IOException {
 
-        Instant lagNow = crawlerTime.now().minus(configuration.getToLag(), configuration.getToLagOffsetUnit());
+        Instant lagNow = crawlerTime.now().minus(toLag, toLagOffsetUnit);
 
         if (floatingToTime) {
             this.to = lagNow;
@@ -546,7 +595,7 @@ public class Crawler {
 
                 if (!floatingToTime) {
                     LOGGER.info("All intervals between {} and {} were fully processed less than {} {} ago",
-                            from, to, configuration.getLastUpdateOffset(), configuration.getLastUpdateOffsetUnit());
+                            from, to, lastUpdateOffset, lastUpdateOffsetUnit);
                     return new FetchIntervalReport(null, defaultSleepTime, true);
                 }
 

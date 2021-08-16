@@ -45,5 +45,7 @@ class CrawlerConfiguration(
     @JsonProperty
     val workAlone: Boolean = false,
     @JsonProperty
-    val sessionAliases: Set<String> = emptySet()
+    val sessionAliases: Set<String> = emptySet(),
+    @JsonProperty
+    val sessionAliasesPattern: String? = null
 )

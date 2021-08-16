@@ -50,6 +50,9 @@ the interval that another Crawler is processing at the moment.
 
 **sessionAliases: [alias1, alias2]** - aliases that Crawler will search messages by.
 
+**sessionAliasesPattern: alias1|alias2** - pattern for processing messages with aliases
+that will match this pattern.
+
 ## Example of infra-schema
 
 schema component description example (crawler.yml):
