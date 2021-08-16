@@ -191,7 +191,7 @@ public class CrawlerTest {
     private List<StreamResponse> addEvents() {
         CrawlerConfiguration configuration = new CrawlerConfiguration("2021-06-16T12:00:00.00Z", null, name,
                 "EVENTS", "PT1H", 1, ChronoUnit.NANOS, 1, 10, 5,
-                ChronoUnit.MINUTES, true, new HashSet<>());
+                ChronoUnit.MINUTES, true, new HashSet<>(), null);
 
         List<StreamResponse> responses = new ArrayList<>();
 
@@ -215,7 +215,7 @@ public class CrawlerTest {
     public void processMethodCall() throws IOException, UnexpectedDataProcessorException {
         CrawlerConfiguration configuration = new CrawlerConfiguration("2021-06-16T12:00:00.00Z", null, name,
                 "EVENTS", "PT1H", 1, ChronoUnit.NANOS, 1, 10, 5,
-                ChronoUnit.MINUTES, true, new HashSet<>());
+                ChronoUnit.MINUTES, true, new HashSet<>(), null);
 
         Crawler crawler = new Crawler(storageMock, dataServiceMock, dataProviderMock, configuration, new CrawlerTimeTestImpl());
 
@@ -232,7 +232,7 @@ public class CrawlerTest {
     public void handshakeNeededAnother() {
         CrawlerConfiguration configuration = new CrawlerConfiguration("2021-06-16T12:00:00.00Z", null, name,
                 "EVENTS", "PT1H", 1, ChronoUnit.NANOS, 1, 10, 5,
-                ChronoUnit.MINUTES, true, new HashSet<>());
+                ChronoUnit.MINUTES, true, new HashSet<>(), null);
 
         Crawler crawler = new Crawler(storageMock, dataServiceMock, dataProviderMock, configuration, new CrawlerTimeTestImpl());
 
@@ -257,7 +257,7 @@ public class CrawlerTest {
     public void dataServiceFail() {
         CrawlerConfiguration configuration = new CrawlerConfiguration("2021-06-16T12:00:00.00Z", null, name,
                 "MESSAGES", "PT1H", 1, ChronoUnit.NANOS, 1, 10, 5,
-                ChronoUnit.MINUTES, true, new HashSet<>(Arrays.asList(aliases)));
+                ChronoUnit.MINUTES, true, new HashSet<>(Arrays.asList(aliases)), null);
 
         Crawler crawler = new Crawler(storageMock, dataServiceMock, dataProviderMock, configuration, new CrawlerTimeTestImpl());
 
