@@ -198,6 +198,7 @@ public class Crawler {
             }
 
             if (sendingReport.action == CrawlerAction.NONE) {
+                interval = sendingReport.interval;
                 interval = intervalsWorker.setIntervalProcessed(interval, true);
 
                 RecoveryState previousState = RecoveryState.getStateFromJson(interval.getRecoveryState());
@@ -263,7 +264,7 @@ public class Crawler {
 
             if (response.hasStatus()) {
                 if (response.getStatus().getHandshakeRequired()) {
-                    return handshake(crawlerId, info.dataProcessorInfo, numberOfEvents, 0);
+                    return handshake(crawlerId, interval, info.dataProcessorInfo, numberOfEvents, 0);
                 }
             }
 
@@ -315,7 +316,7 @@ public class Crawler {
             search = events.size() == batchSize;
         }
 
-        return new SendingReport(CrawlerAction.NONE, dataProcessorName, dataProcessorVersion, numberOfEvents, 0);
+        return new SendingReport(CrawlerAction.NONE, interval, dataProcessorName, dataProcessorVersion, numberOfEvents, 0);
     }
 
     private SendingReport sendMessages(MessagesInfo info) throws IOException {
@@ -360,7 +361,7 @@ public class Crawler {
 
             if (response.hasStatus()) {
                 if (response.getStatus().getHandshakeRequired()) {
-                    return handshake(crawlerId, info.dataProcessorInfo, 0, numberOfMessages);
+                    return handshake(crawlerId, interval, info.dataProcessorInfo, 0, numberOfMessages);
                 }
             }
 
@@ -422,10 +423,10 @@ public class Crawler {
             search = messages.size() == batchSize;
         }
 
-        return new SendingReport(CrawlerAction.NONE, dataProcessorName, dataProcessorVersion, 0, numberOfMessages);
+        return new SendingReport(CrawlerAction.NONE, interval, dataProcessorName, dataProcessorVersion, 0, numberOfMessages);
     }
 
-    private SendingReport handshake(CrawlerId crawlerId, DataProcessorInfo dataProcessorInfo, long numberOfEvents, long numberOfMessages) {
+    private SendingReport handshake(CrawlerId crawlerId, Interval interval, DataProcessorInfo dataProcessorInfo, long numberOfEvents, long numberOfMessages) {
         DataProcessorInfo info = dataProcessor.crawlerConnect(CrawlerInfo.newBuilder().setId(crawlerId).build());
 
         String dataProcessorName = info.getName();
@@ -433,10 +434,10 @@ public class Crawler {
 
         if (dataProcessorName.equals(dataProcessorInfo.getName()) && dataProcessorVersion.equals(dataProcessorInfo.getVersion())) {
             LOGGER.info("Got the same name ({}) and version ({}) from repeated crawlerConnect", dataProcessorName, dataProcessorVersion);
-            return new SendingReport(CrawlerAction.CONTINUE, dataProcessorName, dataProcessorVersion, numberOfEvents, numberOfMessages);
+            return new SendingReport(CrawlerAction.CONTINUE, interval, dataProcessorName, dataProcessorVersion, numberOfEvents, numberOfMessages);
         } else {
             LOGGER.info("Got another name ({}) or version ({}) from repeated crawlerConnect, restarting component", dataProcessorName, dataProcessorVersion);
-            return new SendingReport(CrawlerAction.STOP, dataProcessorName, dataProcessorVersion, numberOfEvents, numberOfMessages);
+            return new SendingReport(CrawlerAction.STOP, interval, dataProcessorName, dataProcessorVersion, numberOfEvents, numberOfMessages);
         }
     }
 
@@ -608,10 +609,12 @@ public class Crawler {
         private final String newVersion;
         private final long numberOfEvents;
         private final long numberOfMessages;
+        private final Interval interval;
 
 
-        private SendingReport(CrawlerAction action, String newName, String newVersion, long numberOfEvents, long numberOfMessages) {
+        private SendingReport(CrawlerAction action, Interval interval, String newName, String newVersion, long numberOfEvents, long numberOfMessages) {
             this.action = action;
+            this.interval = interval;
             this.newName = newName;
             this.newVersion = newVersion;
             this.numberOfEvents = numberOfEvents;
