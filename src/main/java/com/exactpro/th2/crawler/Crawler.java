@@ -171,7 +171,7 @@ public class Crawler {
 
                 if (lastProcessedMessages != null) {
                     if (!fetchIntervalReport.processFromStart) {
-                        List<MessageID> ids = lastProcessedMessages.values().stream()
+                        startIds = lastProcessedMessages.values().stream()
                                 .map(innerMessage -> {
                                     com.exactpro.th2.common.grpc.Direction direction;
 
@@ -186,10 +186,8 @@ public class Crawler {
                                             .setDirection(direction)
                                             .build();
                                 })
-                                .collect(Collectors.toList());
-
-                        startIds = ids.stream().collect(Collectors.toMap(messageID -> messageID.getConnectionId().getSessionAlias(),
-                                Function.identity(), (messageID, messageID2) -> messageID2));
+                                .collect(Collectors.toMap(messageID -> messageID.getConnectionId().getSessionAlias(),
+                                        Function.identity(), (messageID, messageID2) -> messageID2));
                     }
                 }
 

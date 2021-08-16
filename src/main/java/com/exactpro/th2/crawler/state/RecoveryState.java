@@ -50,8 +50,8 @@ public class RecoveryState {
                          @JsonProperty("lastProcessedMessages") Map<String, InnerMessage> lastProcessedMessages,
                          @JsonProperty("lastNumberOfEvents") long lastNumberOfEvents,
                          @JsonProperty("lastNumberOfMessages") long lastNumberOfMessages) {
-        this.lastProcessedEvent = Optional.ofNullable(lastProcessedEvent).orElse(null);
-        this.lastProcessedMessages = Optional.ofNullable(lastProcessedMessages).orElse(null);
+        this.lastProcessedEvent = lastProcessedEvent;
+        this.lastProcessedMessages = lastProcessedMessages;
         this.lastNumberOfEvents = lastNumberOfEvents;
         this.lastNumberOfMessages = lastNumberOfMessages;
     }
@@ -64,22 +64,12 @@ public class RecoveryState {
 
     public long getLastNumberOfMessages() { return lastNumberOfMessages; }
 
-    public String convertToJson() {
-        try {
-            return MAPPER.writeValueAsString(this);
-        } catch (JsonProcessingException e) {
-            logger.error("Failed to convert recovery state to JSON", e);
-        }
-        return null;
+    public String convertToJson() throws JsonProcessingException {
+        return MAPPER.writeValueAsString(this);
     }
 
-    public static RecoveryState getStateFromJson(String json) {
-        try {
-            return MAPPER.readValue(json, RecoveryState.class);
-        } catch (JsonProcessingException e) {
-            logger.error("Failed to get recovery state from JSON", e);
-        }
-        return null;
+    public static RecoveryState getStateFromJson(String json) throws JsonProcessingException {
+        return MAPPER.readValue(json, RecoveryState.class);
     }
 
     @Override
