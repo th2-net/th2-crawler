@@ -528,7 +528,7 @@ public class Crawler {
 
                     if (floatingToTime) {
 
-                        long sleepTime = getSleepTime(newIntervalEnd, to);
+                        long sleepTime = getSleepTime(lastIntervalEnd, to);
 
                         if (LOGGER.isInfoEnabled()) {
                             LOGGER.info("Failed to create new interval from: {}, to: {} as it is too early now. Wait for {}",
