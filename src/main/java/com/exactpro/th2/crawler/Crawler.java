@@ -404,7 +404,11 @@ public class Crawler {
                                 0,
                                 numberOfMessages);
                     } else {
-                        Map<String, RecoveryState.InnerMessage> lastProcessedMessages = new HashMap<>(oldState.getLastProcessedMessages());
+                        Map<String, RecoveryState.InnerMessage> lastProcessedMessages = new HashMap<>();
+
+                        if (oldState.getLastProcessedMessages() != null) {
+                            lastProcessedMessages.putAll(oldState.getLastProcessedMessages());
+                        }
 
                         lastProcessedMessages.putAll(recoveryStateMessages);
 
