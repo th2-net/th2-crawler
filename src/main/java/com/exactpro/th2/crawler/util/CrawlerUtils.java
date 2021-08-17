@@ -18,6 +18,7 @@ package com.exactpro.th2.crawler.util;
 
 import com.exactpro.cradle.intervals.Interval;
 import com.exactpro.cradle.intervals.IntervalsWorker;
+import com.exactpro.th2.common.grpc.Direction;
 import com.exactpro.th2.common.grpc.EventID;
 import com.exactpro.th2.common.grpc.MessageID;
 import com.exactpro.th2.common.message.MessageUtils;
@@ -126,7 +127,7 @@ public class CrawlerUtils {
                                                       RecoveryState previousState, long numberOfMessages) throws IOException {
         RecoveryState newState;
         RecoveryState currentState = RecoveryState.getStateFromJson(interval.getRecoveryState());
-        Map<String, RecoveryState.InnerMessage> lastProcessedMessages = new HashMap<>();
+        Map<AliasAndDirection, RecoveryState.InnerMessage> lastProcessedMessages = new HashMap<>();
 
         if (currentState != null) {
             lastProcessedMessages.putAll(currentState.getLastProcessedMessages());
@@ -185,6 +186,14 @@ public class CrawlerUtils {
         return data;
     }
 
+    public static RecoveryState.InnerMessage findPairedMessage(String alias, com.exactpro.th2.common.grpc.Direction direction) {
+        if (direction.equals(com.exactpro.th2.common.grpc.Direction.FIRST)) {
+
+        } else {
+
+        }
+    }
+
     public static class EventsSearchInfo {
         private final EventSearchRequest.Builder searchBuilder;
         private final Timestamp from;
@@ -207,17 +216,63 @@ public class CrawlerUtils {
         private final Timestamp from;
         private final Timestamp to;
         private final int batchSize;
-        private final Map<String, MessageID> resumeIds;
+        private final Map<AliasAndDirection, MessageID> resumeIds;
         private final Collection<String> aliases;
 
         public MessagesSearchInfo(MessageSearchRequest.Builder searchBuilder, Timestamp from, Timestamp to,
-                                  int batchSize, Map<String, MessageID> resumeIds, Collection<String> aliases) {
+                                  int batchSize, Map<AliasAndDirection, MessageID> resumeIds, Collection<String> aliases) {
             this.searchBuilder = Objects.requireNonNull(searchBuilder, "Search builder must not be null");
             this.from = Objects.requireNonNull(from, "Timestamp 'from' must not be null");
             this.to = Objects.requireNonNull(to, "Timestamp 'to' must not be null");
             this.batchSize = batchSize;
             this.resumeIds = resumeIds;
             this.aliases = aliases;
+        }
+    }
+
+    public static class AliasAndDirection {
+        private final String sessionAlias;
+        private final com.exactpro.th2.common.grpc.Direction direction;
+
+        public AliasAndDirection(String sessionAlias, com.exactpro.th2.common.grpc.Direction direction) {
+            this.sessionAlias = sessionAlias;
+            this.direction = direction;
+        }
+
+        public String getSessionAlias() {
+            return sessionAlias;
+        }
+
+        public Direction getDirection() {
+            return direction;
+        }
+
+        @Override
+        public int hashCode() {
+            final int prime = 31;
+            int result = 1;
+
+            result = prime * result + sessionAlias.hashCode();
+            result = prime * result + direction.hashCode();
+
+            return result;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj)
+                return true;
+            if (obj == null)
+                return false;
+            if (getClass() != obj.getClass())
+                return false;
+            AliasAndDirection other = (AliasAndDirection) obj;
+            if (!sessionAlias.equals(other.sessionAlias))
+                return false;
+            if (!direction.equals(other.direction))
+                return false;
+
+            return true;
         }
     }
 }

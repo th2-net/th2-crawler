@@ -160,12 +160,12 @@ public class Crawler {
                         interval.getStartTime(), interval.getEndTime()));
 
             } else if (MESSAGES.equals(interval.getCrawlerType())) {
-                Map<String, RecoveryState.InnerMessage> lastProcessedMessages;
+                Map<CrawlerUtils.AliasAndDirection, RecoveryState.InnerMessage> lastProcessedMessages;
                 RecoveryState state = RecoveryState.getStateFromJson(interval.getRecoveryState());
 
                 lastProcessedMessages = state == null ? null : state.getLastProcessedMessages();
 
-                Map<String, MessageID> startIds = null;
+                Map<CrawlerUtils.AliasAndDirection, MessageID> startIds = null;
 
                 MessageID.Builder builder = MessageID.newBuilder();
 
@@ -186,8 +186,9 @@ public class Crawler {
                                             .setDirection(direction)
                                             .build();
                                 })
-                                .collect(Collectors.toMap(messageID -> messageID.getConnectionId().getSessionAlias(),
-                                        Function.identity(), (messageID, messageID2) -> messageID2));
+                                .collect(Collectors.toMap(messageID ->
+                                                new CrawlerUtils.AliasAndDirection(messageID.getConnectionId().getSessionAlias(), messageID.getDirection()),
+                                        Function.identity(), (messageID1, messageID2) -> messageID2));
                     }
                 }
 
@@ -321,7 +322,7 @@ public class Crawler {
 
     private SendingReport sendMessages(MessagesInfo info) throws IOException {
         Interval interval = info.interval;
-        Map<String, MessageID> resumeIds = info.startIds;
+        Map<CrawlerUtils.AliasAndDirection, MessageID> resumeIds = info.startIds;
         MessageResponse response;
         boolean search = true;
         Timestamp fromTimestamp = MessageUtils.toTimestamp(info.from);
@@ -346,14 +347,16 @@ public class Crawler {
                 break;
             }
 
-            if (resumeIds != null)
+            if (resumeIds != null) {
                 resumeIds.clear();
+            }
 
             resumeIds = messages.stream()
                     .filter(MessageData::hasMessageId)
                     .map(MessageData::getMessageId)
-                    .collect(Collectors.toMap(messageID -> messageID.getConnectionId().getSessionAlias(),
-                            Function.identity(), (messageID, messageID2) -> messageID2));
+                    .collect(Collectors.toMap(messageID ->
+                                    new CrawlerUtils.AliasAndDirection(messageID.getConnectionId().getSessionAlias(), messageID.getDirection()),
+                            Function.identity(), (messageID1, messageID2) -> messageID2));
 
             MessageDataRequest messageRequest = messageDataBuilder.setId(crawlerId).addAllMessageData(messages).build();
 
@@ -366,10 +369,10 @@ public class Crawler {
             }
 
             if (!response.getIdsMap().isEmpty()) {
-                Map<String, MessageID> responseIds = response.getIdsMap();
+                Map<String, MessageID> responseIds = response.getIdsMap(); // TODO: make key as AliasAndDirection for saving to rec state
                 RecoveryState oldState = RecoveryState.getStateFromJson(interval.getRecoveryState());
 
-                Map<String, RecoveryState.InnerMessage> recoveryStateMessages;
+                Map<CrawlerUtils.AliasAndDirection, RecoveryState.InnerMessage> recoveryStateMessages;
 
                 long processedMessagesCount = 0L;
 
@@ -390,20 +393,32 @@ public class Crawler {
 
                             return new RecoveryState.InnerMessage(alias, timestamp, direction, sequence);
                         })
-                        .collect(Collectors.toMap(RecoveryState.InnerMessage::getSessionAlias,
+                        .collect(Collectors.toMap(innerMessage ->
+                                        new CrawlerUtils.AliasAndDirection(innerMessage.getSessionAlias(),
+                                                com.exactpro.th2.common.grpc.Direction.valueOf(innerMessage.getDirection().toString())),
                                 Function.identity(), (messageID, messageID2) -> messageID2));
+
+                recoveryStateMessages.putAll(findPairedMessages(recoveryStateMessages));// TODO: find pairs here?
 
                 if (!recoveryStateMessages.isEmpty()) {
                     RecoveryState newState;
 
                     if (oldState == null) {
-                        Map<String, RecoveryState.InnerMessage> lastProcessedMessages = new HashMap<>(recoveryStateMessages);
+                        Map<CrawlerUtils.AliasAndDirection, RecoveryState.InnerMessage> lastProcessedMessages = new HashMap<>(recoveryStateMessages);
+
+                        List<CrawlerUtils.AliasAndDirection> aliasesAndDirections = lastProcessedMessages.values().stream()
+                                .map(innerMessage ->
+                                        new CrawlerUtils.AliasAndDirection(innerMessage.getSessionAlias(),
+                                                com.exactpro.th2.common.grpc.Direction.valueOf(innerMessage.getDirection().toString())))
+                                .collect(Collectors.toList());
+
+
 
                         newState = new RecoveryState(null, lastProcessedMessages,
                                 0,
                                 numberOfMessages);
                     } else {
-                        Map<String, RecoveryState.InnerMessage> lastProcessedMessages = new HashMap<>();
+                        Map<CrawlerUtils.AliasAndDirection, RecoveryState.InnerMessage> lastProcessedMessages = new HashMap<>();
 
                         if (oldState.getLastProcessedMessages() != null) {
                             lastProcessedMessages.putAll(oldState.getLastProcessedMessages());
@@ -424,6 +439,21 @@ public class Crawler {
         }
 
         return new SendingReport(CrawlerAction.NONE, interval, dataProcessorName, dataProcessorVersion, 0, numberOfMessages);
+    }
+
+    private Map<CrawlerUtils.AliasAndDirection, RecoveryState.InnerMessage> findPairedMessages
+            (Map<CrawlerUtils.AliasAndDirection, RecoveryState.InnerMessage> messages) {
+        Map<CrawlerUtils.AliasAndDirection, RecoveryState.InnerMessage> result = new HashMap<>();
+
+        messages.forEach((key, value) -> {
+
+            com.exactpro.th2.common.grpc.Direction direction = key.getDirection();
+            String alias = key.getSessionAlias();
+
+            result.put(new CrawlerUtils.AliasAndDirection(alias, direction), CrawlerUtils.findPairedMessage(alias, direction));
+        });
+
+        return result;
     }
 
     private SendingReport handshake(CrawlerId crawlerId, Interval interval, DataProcessorInfo dataProcessorInfo, long numberOfEvents, long numberOfMessages) {
@@ -654,13 +684,14 @@ public class Crawler {
     private static class MessagesInfo {
         private final Interval interval;
         private final DataProcessorInfo dataProcessorInfo;
-        private final Map<String, MessageID> startIds;
+        private final Map<CrawlerUtils.AliasAndDirection, MessageID> startIds;
         private final Collection<String> aliases;
         private final Instant from;
         private final Instant to;
 
-        private MessagesInfo(Interval interval, DataProcessorInfo dataProcessorInfo, Map<String,
-                MessageID> startIds, Collection<String> aliases, Instant from, Instant to) {
+        private MessagesInfo(Interval interval, DataProcessorInfo dataProcessorInfo,
+                             Map<CrawlerUtils.AliasAndDirection, MessageID> startIds, Collection<String> aliases,
+                             Instant from, Instant to) {
             this.interval = interval;
             this.dataProcessorInfo = dataProcessorInfo;
             this.startIds = startIds;

@@ -20,6 +20,7 @@ import com.exactpro.cradle.Direction;
 import com.exactpro.cradle.messages.StoredMessage;
 import com.exactpro.cradle.testevents.StoredTestEventWrapper;
 import com.exactpro.cradle.utils.CompressionUtils;
+import com.exactpro.th2.crawler.util.CrawlerUtils;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -35,7 +36,7 @@ import java.util.StringJoiner;
 public class RecoveryState {
     private final InnerEvent lastProcessedEvent;
 
-    private final Map<String, InnerMessage> lastProcessedMessages;
+    private final Map<CrawlerUtils.AliasAndDirection, InnerMessage> lastProcessedMessages;
 
     private final long lastNumberOfEvents;
 
@@ -47,7 +48,7 @@ public class RecoveryState {
     private static final Logger logger = LoggerFactory.getLogger(RecoveryState.class);
 
     public RecoveryState(@JsonProperty("lastProcessedEvent") InnerEvent lastProcessedEvent,
-                         @JsonProperty("lastProcessedMessages") Map<String, InnerMessage> lastProcessedMessages,
+                         @JsonProperty("lastProcessedMessages") Map<CrawlerUtils.AliasAndDirection, InnerMessage> lastProcessedMessages,
                          @JsonProperty("lastNumberOfEvents") long lastNumberOfEvents,
                          @JsonProperty("lastNumberOfMessages") long lastNumberOfMessages) {
         this.lastProcessedEvent = lastProcessedEvent;
@@ -58,7 +59,7 @@ public class RecoveryState {
 
     public InnerEvent getLastProcessedEvent() { return lastProcessedEvent; }
 
-    public Map<String, InnerMessage> getLastProcessedMessages() { return lastProcessedMessages; }
+    public Map<CrawlerUtils.AliasAndDirection, InnerMessage> getLastProcessedMessages() { return lastProcessedMessages; }
 
     public long getLastNumberOfEvents() { return lastNumberOfEvents; }
 
@@ -107,7 +108,7 @@ public class RecoveryState {
 
         if (lastProcessedMessages != null) {
 
-            for (Map.Entry<String, InnerMessage> entry : lastProcessedMessages.entrySet()) {
+            for (Map.Entry<CrawlerUtils.AliasAndDirection, InnerMessage> entry : lastProcessedMessages.entrySet()) {
                 result = prime * result + entry.getKey().hashCode();
                 result = prime * result + entry.getValue().hashCode();
 
@@ -225,7 +226,7 @@ public class RecoveryState {
             this.direction = null;
             this.sequence = 0;
         }
-
+        //TODO: add map direction-sequence to have pairs of sequences of FIRST and SECOND directions. Check stream_info
         public InnerMessage(String sessionAlias, Instant timestamp, Direction direction, long sequence) {
             this.sessionAlias = sessionAlias;
             this.timestamp = timestamp;
