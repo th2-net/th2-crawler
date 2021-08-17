@@ -453,8 +453,8 @@ public class Crawler {
 
             intervalsNumber++;
 
-            if (LOGGER.isDebugEnabled()) {
-                LOGGER.debug("Interval from Cassandra from {}, to {}", interval.getStartTime(), interval.getEndTime());
+            if (LOGGER.isTraceEnabled()) {
+                LOGGER.trace("Interval from Cassandra from {}, to {}", interval.getStartTime(), interval.getEndTime());
             }
 
             boolean floatingAndMultiple = floatingToTime && !workAlone && !interval.isProcessed() && lastUpdateCheck;
