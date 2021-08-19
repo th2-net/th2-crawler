@@ -27,6 +27,7 @@ import com.exactpro.th2.crawler.state.RecoveryState;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import com.exactpro.th2.dataprovider.grpc.EventData;
 import com.exactpro.th2.dataprovider.grpc.EventSearchRequest;
+import com.exactpro.th2.dataprovider.grpc.Filter;
 import com.exactpro.th2.dataprovider.grpc.MessageData;
 import com.exactpro.th2.dataprovider.grpc.MessageSearchRequest;
 import com.exactpro.th2.dataprovider.grpc.StreamResponse;
@@ -41,11 +42,13 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Function;
 
 public class CrawlerUtils {
@@ -182,14 +185,29 @@ public class CrawlerUtils {
         return data;
     }
 
-    public static RecoveryState.InnerMessage findPairedMessage(String alias, com.exactpro.th2.common.grpc.Direction direction) {
-        if (direction.equals(com.exactpro.th2.common.grpc.Direction.FIRST)) {
+    public static RecoveryState.InnerMessage findPairedMessage(RecoveryState.InnerMessage message,
+                                                               Map<AliasAndDirection, RecoveryState.InnerMessage> messages) {
+        Direction direction = Direction.valueOf(message.getDirection().toString());
 
+        if (direction.equals(Direction.FIRST)) {
+            return findNearestMessage(message, messages, Direction.SECOND);
         } else {
-
+            return findNearestMessage(message, messages, Direction.FIRST);
         }
+    }
 
-        return null;
+    private static RecoveryState.InnerMessage findNearestMessage(RecoveryState.InnerMessage message,
+                                                                 Map<AliasAndDirection, RecoveryState.InnerMessage> messages,
+                                                                 Direction direction) {
+        Optional<Map.Entry<AliasAndDirection, RecoveryState.InnerMessage>> optional = messages.entrySet().stream()
+                .filter(entry -> {
+                    AliasAndDirection key = entry.getKey();
+                    return key.sessionAlias.equals(message.getSessionAlias()) && key.direction == direction;
+                })
+                .filter(entry -> entry.getValue().getSequence() < message.getSequence())
+                .max(Comparator.comparingLong(o -> o.getValue().getSequence()));
+
+        return optional.map(Map.Entry::getValue).orElse(null);
     }
 
     public static class EventsSearchInfo {

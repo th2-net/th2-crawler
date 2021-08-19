@@ -226,7 +226,7 @@ public class RecoveryState {
             this.direction = null;
             this.sequence = 0;
         }
-        //TODO: add map direction-sequence to have pairs of sequences of FIRST and SECOND directions. Check stream_info
+
         public InnerMessage(String sessionAlias, Instant timestamp, Direction direction, long sequence) {
             this.sessionAlias = sessionAlias;
             this.timestamp = timestamp;

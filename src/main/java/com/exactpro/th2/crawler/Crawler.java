@@ -374,7 +374,7 @@ public class Crawler {
             }
 
             if (!response.getIdsMap().isEmpty()) {
-                Map<String, MessageID> responseIds = response.getIdsMap(); // TODO: make key as AliasAndDirection for saving to rec state
+                Map<String, MessageID> responseIds = response.getIdsMap();
                 RecoveryState oldState = RecoveryState.getStateFromJson(interval.getRecoveryState());
 
                 Map<CrawlerUtils.AliasAndDirection, RecoveryState.InnerMessage> recoveryStateMessages;
@@ -403,21 +403,13 @@ public class Crawler {
                                                 com.exactpro.th2.common.grpc.Direction.valueOf(innerMessage.getDirection().toString())),
                                 Function.identity(), (messageID, messageID2) -> messageID2));
 
-                //recoveryStateMessages.putAll(findPairedMessages(recoveryStateMessages));// TODO: find pairs here?
+                recoveryStateMessages.putAll(findPairedMessages(recoveryStateMessages, fromTimestamp, toTimestamp, resumeIds, sessionAliases));
 
                 if (!recoveryStateMessages.isEmpty()) {
                     RecoveryState newState;
 
                     if (oldState == null) {
                         Map<CrawlerUtils.AliasAndDirection, RecoveryState.InnerMessage> lastProcessedMessages = new HashMap<>(recoveryStateMessages);
-
-                        List<CrawlerUtils.AliasAndDirection> aliasesAndDirections = lastProcessedMessages.values().stream()
-                                .map(innerMessage ->
-                                        new CrawlerUtils.AliasAndDirection(innerMessage.getSessionAlias(),
-                                                com.exactpro.th2.common.grpc.Direction.valueOf(innerMessage.getDirection().toString())))
-                                .collect(Collectors.toList());
-
-
 
                         newState = new RecoveryState(null, lastProcessedMessages,
                                 0,
@@ -446,7 +438,7 @@ public class Crawler {
         return new SendingReport(CrawlerAction.NONE, interval, dataProcessorName, dataProcessorVersion, 0, numberOfMessages);
     }
 
-    /*private Map<CrawlerUtils.AliasAndDirection, RecoveryState.InnerMessage> findPairedMessages
+    private Map<CrawlerUtils.AliasAndDirection, RecoveryState.InnerMessage> findPairedMessages
             (Map<CrawlerUtils.AliasAndDirection, RecoveryState.InnerMessage> messages, Timestamp from, Timestamp to,
              Map<CrawlerUtils.AliasAndDirection, MessageID> resumeIds, Collection<String> aliases) {
         Map<CrawlerUtils.AliasAndDirection, RecoveryState.InnerMessage> result = new HashMap<>();
@@ -456,12 +448,11 @@ public class Crawler {
             com.exactpro.th2.common.grpc.Direction direction = key.getDirection();
             String alias = key.getSessionAlias();
 
-            RecoveryState.InnerMessage message = CrawlerUtils.findPairedMessage(alias, direction);
+            RecoveryState.InnerMessage message = CrawlerUtils.findPairedMessage(value, messages);
 
             if (message != null) {
                 result.put(new CrawlerUtils.AliasAndDirection(alias, direction), message);
             } else {
-                // FIXME: may be I shouldn't request it for every message?
                 MessageSearchRequest.Builder searchBuilder = MessageSearchRequest.newBuilder();
 
                 int limit = 1; // TODO: need to take the necessary one
@@ -474,12 +465,9 @@ public class Crawler {
                         com.exactpro.th2.common.grpc.Direction streamDirection = stream.getDirection();
                         if (stream.getSession().equals(alias) && streamDirection != direction) {
                             long sequence = stream.getLastId().getSequence();
-                            *//*dataProviderService.getMessage(MessageID.newBuilder().setSequence(sequence)
-                                    .setConnectionId(ConnectionID.newBuilder().setSessionAlias(alias))
-                                    .setDirection(streamDirection).build()).;*//*
 
                             result.put(new CrawlerUtils.AliasAndDirection(alias, streamDirection),
-                                    new RecoveryState.InnerMessage(alias, Timestamp.getDefaultInstance(),
+                                    new RecoveryState.InnerMessage(alias, null,
                                             Direction.valueOf(streamDirection.toString()), sequence));
 
                         }
@@ -489,7 +477,7 @@ public class Crawler {
         });
 
         return result;
-    }*/
+    }
 
     private SendingReport handshake(CrawlerId crawlerId, Interval interval, DataProcessorInfo dataProcessorInfo, long numberOfEvents, long numberOfMessages) {
         DataProcessorInfo info = dataProcessor.crawlerConnect(CrawlerInfo.newBuilder().setId(crawlerId).build());
