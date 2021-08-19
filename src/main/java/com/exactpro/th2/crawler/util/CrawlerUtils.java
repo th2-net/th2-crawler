@@ -22,16 +22,16 @@ import com.exactpro.th2.common.grpc.Direction;
 import com.exactpro.th2.common.grpc.EventID;
 import com.exactpro.th2.common.grpc.MessageID;
 import com.exactpro.th2.common.message.MessageUtils;
-import com.exactpro.th2.crawler.Crawler;
 import com.exactpro.th2.crawler.state.RecoveryState;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import com.exactpro.th2.dataprovider.grpc.EventData;
 import com.exactpro.th2.dataprovider.grpc.EventSearchRequest;
-import com.exactpro.th2.dataprovider.grpc.Filter;
 import com.exactpro.th2.dataprovider.grpc.MessageData;
 import com.exactpro.th2.dataprovider.grpc.MessageSearchRequest;
 import com.exactpro.th2.dataprovider.grpc.StreamResponse;
 import com.exactpro.th2.dataprovider.grpc.StringList;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.KeyDeserializer;
 import com.google.protobuf.BoolValue;
 import com.google.protobuf.Int32Value;
 import com.google.protobuf.MessageOrBuilder;
@@ -189,7 +189,7 @@ public class CrawlerUtils {
                                                                Map<AliasAndDirection, RecoveryState.InnerMessage> messages) {
         Direction direction = Direction.valueOf(message.getDirection().toString());
 
-        if (direction.equals(Direction.FIRST)) {
+        if (direction == Direction.FIRST) {
             return findNearestMessage(message, messages, Direction.SECOND);
         } else {
             return findNearestMessage(message, messages, Direction.FIRST);
@@ -255,6 +255,12 @@ public class CrawlerUtils {
             this.direction = direction;
         }
 
+        public AliasAndDirection(String s) {
+            String[] aliasAndDirection = s.split(",");
+            this.sessionAlias = aliasAndDirection[0].trim();
+            this.direction = Direction.valueOf(aliasAndDirection[1].trim());
+        }
+
         public String getSessionAlias() {
             return sessionAlias;
         }
@@ -289,6 +295,18 @@ public class CrawlerUtils {
                 return false;
 
             return true;
+        }
+
+        @Override
+        public String toString() {
+            return sessionAlias + ", " + direction;
+        }
+    }
+
+    private static class AliasAndDirectionDeserializer extends KeyDeserializer {
+        @Override
+        public Object deserializeKey(String key, DeserializationContext ctxt) throws IOException {
+            return new AliasAndDirection(key);
         }
     }
 }
