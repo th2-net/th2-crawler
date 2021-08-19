@@ -51,7 +51,7 @@ import java.util.function.Function;
 public class CrawlerUtils {
     private static final Logger LOGGER = LoggerFactory.getLogger(CrawlerUtils.class);
 
-    public static List<EventData> searchEvents(DataProviderService dataProviderService,
+    public static Iterator<StreamResponse> searchEvents(DataProviderService dataProviderService,
                                                EventsSearchInfo info) {
 
         EventSearchRequest.Builder eventSearchBuilder = info.searchBuilder;
@@ -68,12 +68,10 @@ public class CrawlerUtils {
         else
             request = eventSearchBuilder.setResumeFromId(info.resumeId).build();
 
-        Iterator<StreamResponse> iterator = dataProviderService.searchEvents(request);
-
-        return collectEvents(iterator, info.to);
+        return dataProviderService.searchEvents(request);
     }
 
-    public static List<MessageData> searchMessages(DataProviderService dataProviderService,
+    public static Iterator<StreamResponse> searchMessages(DataProviderService dataProviderService,
                                                    MessagesSearchInfo info) {
 
         MessageSearchRequest.Builder messageSearchBuilder = info.searchBuilder;
@@ -90,9 +88,7 @@ public class CrawlerUtils {
         else
             request = messageSearchBuilder.addAllMessageId(info.resumeIds.values()).build();
 
-        Iterator<StreamResponse> iterator = dataProviderService.searchMessages(request);
-
-        return collectMessages(iterator, info.to);
+        return dataProviderService.searchMessages(request);
     }
 
     public static Interval updateEventRecoveryState(IntervalsWorker worker, Interval interval,
@@ -151,12 +147,12 @@ public class CrawlerUtils {
         return worker.updateRecoveryState(interval, newState.convertToJson());
     }
 
-    private static List<EventData> collectEvents(Iterator<StreamResponse> iterator, Timestamp to) {
+    public static List<EventData> collectEvents(Iterator<StreamResponse> iterator, Timestamp to) {
         return collectData(iterator, to, response -> response.hasEvent() ? response.getEvent() : null,
                 eventData -> eventData.hasStartTimestamp() ? eventData.getStartTimestamp() : null);
     }
 
-    private static List<MessageData> collectMessages(Iterator<StreamResponse> iterator, Timestamp to) {
+    public static List<MessageData> collectMessages(Iterator<StreamResponse> iterator, Timestamp to) {
         return collectData(iterator, to, response -> response.hasMessage() ? response.getMessage() : null,
                 messageData -> messageData.hasTimestamp() ? messageData.getTimestamp() : null);
     }
@@ -192,6 +188,8 @@ public class CrawlerUtils {
         } else {
 
         }
+
+        return null;
     }
 
     public static class EventsSearchInfo {

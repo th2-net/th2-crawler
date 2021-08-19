@@ -44,6 +44,7 @@ import com.exactpro.th2.dataprovider.grpc.EventData;
 import com.exactpro.th2.dataprovider.grpc.EventSearchRequest;
 import com.exactpro.th2.dataprovider.grpc.MessageData;
 import com.exactpro.th2.dataprovider.grpc.MessageSearchRequest;
+import com.exactpro.th2.dataprovider.grpc.StreamResponse;
 import com.google.protobuf.Timestamp;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -55,6 +56,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -247,8 +249,10 @@ public class Crawler {
             EventSearchRequest.Builder searchBuilder = EventSearchRequest.newBuilder();
             EventDataRequest.Builder eventRequestBuilder = EventDataRequest.newBuilder();
 
-            List<EventData> events = CrawlerUtils.searchEvents(dataProviderService,
+            Iterator<StreamResponse> iterator = CrawlerUtils.searchEvents(dataProviderService,
                     new CrawlerUtils.EventsSearchInfo(searchBuilder, fromTimestamp, toTimestamp, batchSize, resumeId));
+
+            List<EventData> events = CrawlerUtils.collectEvents(iterator, toTimestamp);
 
             if (events.isEmpty()) {
                 LOGGER.info("No more events in interval from: {}, to: {}", interval.getStartTime(), interval.getEndTime());
@@ -339,8 +343,9 @@ public class Crawler {
             MessageSearchRequest.Builder searchBuilder = MessageSearchRequest.newBuilder();
             MessageDataRequest.Builder messageDataBuilder = MessageDataRequest.newBuilder();
 
-            List<MessageData> messages = CrawlerUtils.searchMessages(dataProviderService,
+            Iterator<StreamResponse> iterator = CrawlerUtils.searchMessages(dataProviderService,
                     new CrawlerUtils.MessagesSearchInfo(searchBuilder, fromTimestamp, toTimestamp, batchSize, resumeIds, info.aliases));
+            List<MessageData> messages = CrawlerUtils.collectMessages(iterator, toTimestamp);
 
             if (messages.isEmpty()) {
                 LOGGER.info("No more messages in interval from: {}, to: {}", interval.getStartTime(), interval.getEndTime());
@@ -398,7 +403,7 @@ public class Crawler {
                                                 com.exactpro.th2.common.grpc.Direction.valueOf(innerMessage.getDirection().toString())),
                                 Function.identity(), (messageID, messageID2) -> messageID2));
 
-                recoveryStateMessages.putAll(findPairedMessages(recoveryStateMessages));// TODO: find pairs here?
+                //recoveryStateMessages.putAll(findPairedMessages(recoveryStateMessages));// TODO: find pairs here?
 
                 if (!recoveryStateMessages.isEmpty()) {
                     RecoveryState newState;
@@ -441,8 +446,9 @@ public class Crawler {
         return new SendingReport(CrawlerAction.NONE, interval, dataProcessorName, dataProcessorVersion, 0, numberOfMessages);
     }
 
-    private Map<CrawlerUtils.AliasAndDirection, RecoveryState.InnerMessage> findPairedMessages
-            (Map<CrawlerUtils.AliasAndDirection, RecoveryState.InnerMessage> messages) {
+    /*private Map<CrawlerUtils.AliasAndDirection, RecoveryState.InnerMessage> findPairedMessages
+            (Map<CrawlerUtils.AliasAndDirection, RecoveryState.InnerMessage> messages, Timestamp from, Timestamp to,
+             Map<CrawlerUtils.AliasAndDirection, MessageID> resumeIds, Collection<String> aliases) {
         Map<CrawlerUtils.AliasAndDirection, RecoveryState.InnerMessage> result = new HashMap<>();
 
         messages.forEach((key, value) -> {
@@ -450,11 +456,40 @@ public class Crawler {
             com.exactpro.th2.common.grpc.Direction direction = key.getDirection();
             String alias = key.getSessionAlias();
 
-            result.put(new CrawlerUtils.AliasAndDirection(alias, direction), CrawlerUtils.findPairedMessage(alias, direction));
+            RecoveryState.InnerMessage message = CrawlerUtils.findPairedMessage(alias, direction);
+
+            if (message != null) {
+                result.put(new CrawlerUtils.AliasAndDirection(alias, direction), message);
+            } else {
+                // FIXME: may be I shouldn't request it for every message?
+                MessageSearchRequest.Builder searchBuilder = MessageSearchRequest.newBuilder();
+
+                int limit = 1; // TODO: need to take the necessary one
+
+                Iterator<StreamResponse> iterator = CrawlerUtils.searchMessages(dataProviderService,
+                        new CrawlerUtils.MessagesSearchInfo(searchBuilder, from, to, limit, resumeIds, aliases));
+
+                while (iterator.hasNext()) {
+                    iterator.next().getStreamInfo().getStreamsList().forEach(stream -> {
+                        com.exactpro.th2.common.grpc.Direction streamDirection = stream.getDirection();
+                        if (stream.getSession().equals(alias) && streamDirection != direction) {
+                            long sequence = stream.getLastId().getSequence();
+                            *//*dataProviderService.getMessage(MessageID.newBuilder().setSequence(sequence)
+                                    .setConnectionId(ConnectionID.newBuilder().setSessionAlias(alias))
+                                    .setDirection(streamDirection).build()).;*//*
+
+                            result.put(new CrawlerUtils.AliasAndDirection(alias, streamDirection),
+                                    new RecoveryState.InnerMessage(alias, Timestamp.getDefaultInstance(),
+                                            Direction.valueOf(streamDirection.toString()), sequence));
+
+                        }
+                    });
+                }
+            }
         });
 
         return result;
-    }
+    }*/
 
     private SendingReport handshake(CrawlerId crawlerId, Interval interval, DataProcessorInfo dataProcessorInfo, long numberOfEvents, long numberOfMessages) {
         DataProcessorInfo info = dataProcessor.crawlerConnect(CrawlerInfo.newBuilder().setId(crawlerId).build());
