@@ -291,7 +291,7 @@ public class CrawlerUtils {
             AliasAndDirection other = (AliasAndDirection) obj;
             if (!sessionAlias.equals(other.sessionAlias))
                 return false;
-            if (!direction.equals(other.direction))
+            if (direction != other.direction)
                 return false;
 
             return true;

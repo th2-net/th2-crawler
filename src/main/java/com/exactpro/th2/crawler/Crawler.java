@@ -365,6 +365,9 @@ public class Crawler {
                 resumeIds = newResumeIds;
             }
 
+            LOGGER.debug("Resume ids:");
+            resumeIds.forEach((key, value) -> LOGGER.debug(key + ": " + value));
+
             MessageDataRequest messageRequest = messageDataBuilder.setId(crawlerId).addAllMessageData(messages).build();
 
             response = dataProcessor.sendMessage(messageRequest);
