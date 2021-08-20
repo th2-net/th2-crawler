@@ -352,10 +352,6 @@ public class Crawler {
                 break;
             }
 
-            if (resumeIds != null) {
-                resumeIds.clear();
-            }
-
             resumeIds = messages.stream()
                     .filter(MessageData::hasMessageId)
                     .map(MessageData::getMessageId)
