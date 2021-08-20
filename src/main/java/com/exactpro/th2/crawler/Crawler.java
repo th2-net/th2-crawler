@@ -352,12 +352,15 @@ public class Crawler {
                 break;
             }
 
-            resumeIds = messages.stream()
+            Map<CrawlerUtils.AliasAndDirection, MessageID> newResumeIds = messages.stream()
                     .filter(MessageData::hasMessageId)
                     .map(MessageData::getMessageId)
                     .collect(Collectors.toMap(messageID ->
                                     new CrawlerUtils.AliasAndDirection(messageID.getConnectionId().getSessionAlias(), messageID.getDirection()),
                             Function.identity(), (messageID1, messageID2) -> messageID2));
+
+            resumeIds.putAll(newResumeIds);
+
 
             MessageDataRequest messageRequest = messageDataBuilder.setId(crawlerId).addAllMessageData(messages).build();
 
