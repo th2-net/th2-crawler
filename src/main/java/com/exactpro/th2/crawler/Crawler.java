@@ -359,8 +359,11 @@ public class Crawler {
                                     new CrawlerUtils.AliasAndDirection(messageID.getConnectionId().getSessionAlias(), messageID.getDirection()),
                             Function.identity(), (messageID1, messageID2) -> messageID2));
 
-            resumeIds.putAll(newResumeIds);
-
+            if (resumeIds != null) {
+                resumeIds.putAll(newResumeIds);
+            } else {
+                resumeIds = newResumeIds;
+            }
 
             MessageDataRequest messageRequest = messageDataBuilder.setId(crawlerId).addAllMessageData(messages).build();
 
