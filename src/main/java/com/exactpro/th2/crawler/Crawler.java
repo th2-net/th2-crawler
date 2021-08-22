@@ -180,7 +180,7 @@ public class Crawler {
                         if (latestMessage != null) {
                             startId = MessageID.newBuilder().setSequence(latestMessage.getSequence())
                                     .setConnectionId(ConnectionID.newBuilder().setSessionAlias(latestMessage.getSessionAlias()).build())
-                                    .setDirection(com.exactpro.th2.common.grpc.Direction.valueOf(latestMessage.getSessionAlias()))
+                                    .setDirection(com.exactpro.th2.common.grpc.Direction.valueOf(latestMessage.getDirection().toString()))
                                     .build();
                         }
                     }
