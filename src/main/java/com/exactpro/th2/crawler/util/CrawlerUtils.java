@@ -22,7 +22,10 @@ import com.exactpro.th2.common.grpc.Direction;
 import com.exactpro.th2.common.grpc.EventID;
 import com.exactpro.th2.common.grpc.MessageID;
 import com.exactpro.th2.common.message.MessageUtils;
+import com.exactpro.th2.crawler.state.InnerEventId;
+import com.exactpro.th2.crawler.state.InnerMessageId;
 import com.exactpro.th2.crawler.state.RecoveryState;
+import com.exactpro.th2.crawler.state.StreamKey;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import com.exactpro.th2.dataprovider.grpc.EventData;
 import com.exactpro.th2.dataprovider.grpc.EventSearchRequest;
@@ -30,8 +33,6 @@ import com.exactpro.th2.dataprovider.grpc.MessageData;
 import com.exactpro.th2.dataprovider.grpc.MessageSearchRequest;
 import com.exactpro.th2.dataprovider.grpc.StreamResponse;
 import com.exactpro.th2.dataprovider.grpc.StringList;
-import com.fasterxml.jackson.databind.DeserializationContext;
-import com.fasterxml.jackson.databind.KeyDeserializer;
 import com.google.protobuf.BoolValue;
 import com.google.protobuf.Int32Value;
 import com.google.protobuf.MessageOrBuilder;
@@ -98,7 +99,7 @@ public class CrawlerUtils {
                                                     RecoveryState previousState, long numberOfEvents) throws IOException {
         RecoveryState newState;
         RecoveryState currentState = RecoveryState.getStateFromJson(interval.getRecoveryState());
-        RecoveryState.InnerEvent lastProcessedEvent = null;
+        InnerEventId lastProcessedEvent = null;
 
         if (currentState != null) {
             lastProcessedEvent = currentState.getLastProcessedEvent();
@@ -126,7 +127,7 @@ public class CrawlerUtils {
                                                       RecoveryState previousState, long numberOfMessages) throws IOException {
         RecoveryState newState;
         RecoveryState currentState = RecoveryState.getStateFromJson(interval.getRecoveryState());
-        Map<AliasAndDirection, RecoveryState.InnerMessage> lastProcessedMessages = new HashMap<>();
+        Map<StreamKey, InnerMessageId> lastProcessedMessages = new HashMap<>();
 
         if (currentState != null) {
             lastProcessedMessages.putAll(currentState.getLastProcessedMessages());
@@ -185,9 +186,9 @@ public class CrawlerUtils {
         return data;
     }
 
-    public static RecoveryState.InnerMessage findPairedMessage(RecoveryState.InnerMessage message,
-                                                               Map<AliasAndDirection, RecoveryState.InnerMessage> messages) {
-        Direction direction = Direction.valueOf(message.getDirection().toString());
+    public static InnerMessageId findPairedMessage(InnerMessageId message,
+                                                   Map<StreamKey, InnerMessageId> messages) {
+        Direction direction = message.getDirection();
 
         if (direction == Direction.FIRST) {
             return findNearestMessage(message, messages, Direction.SECOND);
@@ -196,13 +197,13 @@ public class CrawlerUtils {
         }
     }
 
-    private static RecoveryState.InnerMessage findNearestMessage(RecoveryState.InnerMessage message,
-                                                                 Map<AliasAndDirection, RecoveryState.InnerMessage> messages,
-                                                                 Direction direction) {
-        Optional<Map.Entry<AliasAndDirection, RecoveryState.InnerMessage>> optional = messages.entrySet().stream()
+    private static InnerMessageId findNearestMessage(InnerMessageId message,
+                                                     Map<StreamKey, InnerMessageId> messages,
+                                                     Direction direction) {
+        Optional<Map.Entry<StreamKey, InnerMessageId>> optional = messages.entrySet().stream()
                 .filter(entry -> {
-                    AliasAndDirection key = entry.getKey();
-                    return key.sessionAlias.equals(message.getSessionAlias()) && key.direction == direction;
+                    StreamKey key = entry.getKey();
+                    return key.getSessionAlias().equals(message.getSessionAlias()) && key.getDirection() == direction;
                 })
                 .filter(entry -> entry.getValue().getSequence() < message.getSequence())
                 .max(Comparator.comparingLong(o -> o.getValue().getSequence()));
@@ -232,81 +233,17 @@ public class CrawlerUtils {
         private final Timestamp from;
         private final Timestamp to;
         private final int batchSize;
-        private final Map<AliasAndDirection, MessageID> resumeIds;
+        private final Map<StreamKey, MessageID> resumeIds;
         private final Collection<String> aliases;
 
         public MessagesSearchInfo(MessageSearchRequest.Builder searchBuilder, Timestamp from, Timestamp to,
-                                  int batchSize, Map<AliasAndDirection, MessageID> resumeIds, Collection<String> aliases) {
+                                  int batchSize, Map<StreamKey, MessageID> resumeIds, Collection<String> aliases) {
             this.searchBuilder = Objects.requireNonNull(searchBuilder, "Search builder must not be null");
             this.from = Objects.requireNonNull(from, "Timestamp 'from' must not be null");
             this.to = Objects.requireNonNull(to, "Timestamp 'to' must not be null");
             this.batchSize = batchSize;
             this.resumeIds = resumeIds;
             this.aliases = aliases;
-        }
-    }
-
-    public static class AliasAndDirection {
-        private final String sessionAlias;
-        private final com.exactpro.th2.common.grpc.Direction direction;
-
-        public AliasAndDirection(String sessionAlias, com.exactpro.th2.common.grpc.Direction direction) {
-            this.sessionAlias = sessionAlias;
-            this.direction = direction;
-        }
-
-        public AliasAndDirection(String s) {
-            String[] aliasAndDirection = s.split(",");
-            this.sessionAlias = aliasAndDirection[0].trim();
-            this.direction = Direction.valueOf(aliasAndDirection[1].trim());
-        }
-
-        public String getSessionAlias() {
-            return sessionAlias;
-        }
-
-        public Direction getDirection() {
-            return direction;
-        }
-
-        @Override
-        public int hashCode() {
-            final int prime = 31;
-            int result = 1;
-
-            result = prime * result + sessionAlias.hashCode();
-            result = prime * result + direction.hashCode();
-
-            return result;
-        }
-
-        @Override
-        public boolean equals(Object obj) {
-            if (this == obj)
-                return true;
-            if (obj == null)
-                return false;
-            if (getClass() != obj.getClass())
-                return false;
-            AliasAndDirection other = (AliasAndDirection) obj;
-            if (!sessionAlias.equals(other.sessionAlias))
-                return false;
-            if (direction != other.direction)
-                return false;
-
-            return true;
-        }
-
-        @Override
-        public String toString() {
-            return sessionAlias + ", " + direction;
-        }
-    }
-
-    private static class AliasAndDirectionDeserializer extends KeyDeserializer {
-        @Override
-        public Object deserializeKey(String key, DeserializationContext ctxt) throws IOException {
-            return new AliasAndDirection(key);
         }
     }
 }

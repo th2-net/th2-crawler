@@ -41,6 +41,9 @@ dependencies {
     implementation 'com.exactpro.th2:common:3.16.2'
 
     implementation "com.exactpro.th2:grpc-crawler-data-processor:${grpcCrawlerVersion}"
+    implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310") {
+        because("we need to process java Instant class")
+    }
 
     // Logging. All versions are specified in BOM dependency
     implementation "org.slf4j:slf4j-log4j12"
