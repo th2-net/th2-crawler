@@ -55,13 +55,11 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Collection;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -169,24 +167,34 @@ public class Crawler {
 
                 lastProcessedMessages = state == null ? null : state.getLastProcessedMessages();
 
-                MessageID startId = null;
+                Map<CrawlerUtils.AliasAndDirection, MessageID> startIds = null;
 
-                if (lastProcessedMessages != null) { // TODO: check if I take the correct startId here
+                MessageID.Builder builder = MessageID.newBuilder();
+
+                if (lastProcessedMessages != null) {
                     if (!fetchIntervalReport.processFromStart) {
-                        RecoveryState.InnerMessage latestMessage = lastProcessedMessages.values().stream()
-                                .max(Comparator.comparing(RecoveryState.InnerMessage::getTimestamp))
-                                .orElse(null);
+                        startIds = lastProcessedMessages.values().stream()
+                                .map(innerMessage -> {
+                                    com.exactpro.th2.common.grpc.Direction direction;
 
-                        if (latestMessage != null) {
-                            startId = MessageID.newBuilder().setSequence(latestMessage.getSequence())
-                                    .setConnectionId(ConnectionID.newBuilder().setSessionAlias(latestMessage.getSessionAlias()).build())
-                                    .setDirection(com.exactpro.th2.common.grpc.Direction.valueOf(latestMessage.getDirection().toString()))
-                                    .build();
-                        }
+                                    if (innerMessage.getDirection() == Direction.FIRST)
+                                        direction = com.exactpro.th2.common.grpc.Direction.FIRST;
+                                    else
+                                        direction = com.exactpro.th2.common.grpc.Direction.SECOND;
+
+                                    return builder
+                                            .setSequence(innerMessage.getSequence())
+                                            .setConnectionId(ConnectionID.newBuilder().setSessionAlias(innerMessage.getSessionAlias()).build())
+                                            .setDirection(direction)
+                                            .build();
+                                })
+                                .collect(Collectors.toMap(messageID ->
+                                                new CrawlerUtils.AliasAndDirection(messageID.getConnectionId().getSessionAlias(), messageID.getDirection()),
+                                        Function.identity(), (messageID1, messageID2) -> messageID2));
                     }
                 }
 
-                sendingReport = sendMessages(new MessagesInfo(interval, info, startId,
+                sendingReport = sendMessages(new MessagesInfo(interval, info, startIds,
                         sessionAliases, interval.getStartTime(), interval.getEndTime()));
             } else {
                 throw new ConfigurationException("Type must be either EVENTS or MESSAGES");
@@ -318,7 +326,7 @@ public class Crawler {
 
     private SendingReport sendMessages(MessagesInfo info) throws IOException {
         Interval interval = info.interval;
-        MessageID resumeId = info.startId;
+        Map<CrawlerUtils.AliasAndDirection, MessageID> resumeIds = info.startIds;
         MessageResponse response;
         boolean search = true;
         Timestamp fromTimestamp = MessageUtils.toTimestamp(info.from);
@@ -336,7 +344,7 @@ public class Crawler {
             MessageDataRequest.Builder messageDataBuilder = MessageDataRequest.newBuilder();
 
             Iterator<StreamResponse> iterator = CrawlerUtils.searchMessages(dataProviderService,
-                    new CrawlerUtils.MessagesSearchInfo(searchBuilder, fromTimestamp, toTimestamp, batchSize, resumeId, info.aliases));
+                    new CrawlerUtils.MessagesSearchInfo(searchBuilder, fromTimestamp, toTimestamp, batchSize, resumeIds, info.aliases));
             List<MessageData> messages = CrawlerUtils.collectMessages(iterator, toTimestamp);
 
             if (messages.isEmpty()) {
@@ -344,11 +352,21 @@ public class Crawler {
                 break;
             }
 
-            resumeId = messages.get(messages.size() - 1).getMessageId();
+            Map<CrawlerUtils.AliasAndDirection, MessageID> newResumeIds = messages.stream()
+                    .filter(MessageData::hasMessageId)
+                    .map(MessageData::getMessageId)
+                    .collect(Collectors.toMap(messageID ->
+                                    new CrawlerUtils.AliasAndDirection(messageID.getConnectionId().getSessionAlias(), messageID.getDirection()),
+                            Function.identity(), (messageID1, messageID2) -> messageID2));
 
-            if (LOGGER.isDebugEnabled()) {
-                LOGGER.debug("ResumeId:" + MessageUtils.toJson(resumeId, true));
+            if (resumeIds != null) {
+                resumeIds.putAll(newResumeIds);
+            } else {
+                resumeIds = newResumeIds;
             }
+
+            LOGGER.debug("Resume ids:");
+            resumeIds.forEach((key, value) -> LOGGER.debug(key + ": " + value));
 
             MessageDataRequest messageRequest = messageDataBuilder.setId(crawlerId).addAllMessageData(messages).build();
 
@@ -390,7 +408,7 @@ public class Crawler {
                                                 com.exactpro.th2.common.grpc.Direction.valueOf(innerMessage.getDirection().toString())),
                                 Function.identity(), (messageID, messageID2) -> messageID2));
 
-                recoveryStateMessages.putAll(findPairedMessages(recoveryStateMessages, fromTimestamp, toTimestamp, resumeId, sessionAliases));
+                recoveryStateMessages.putAll(findPairedMessages(recoveryStateMessages, fromTimestamp, toTimestamp, resumeIds, sessionAliases));
 
                 if (!recoveryStateMessages.isEmpty()) {
                     RecoveryState newState;
@@ -427,7 +445,7 @@ public class Crawler {
 
     private Map<CrawlerUtils.AliasAndDirection, RecoveryState.InnerMessage> findPairedMessages
             (Map<CrawlerUtils.AliasAndDirection, RecoveryState.InnerMessage> messages, Timestamp from, Timestamp to,
-             MessageID resumeId, Collection<String> aliases) {
+             Map<CrawlerUtils.AliasAndDirection, MessageID> resumeIds, Collection<String> aliases) {
         Map<CrawlerUtils.AliasAndDirection, RecoveryState.InnerMessage> result = new HashMap<>();
 
         messages.forEach((key, value) -> {
@@ -442,10 +460,10 @@ public class Crawler {
             } else {
                 MessageSearchRequest.Builder searchBuilder = MessageSearchRequest.newBuilder();
 
-                int limit = 1;
+                int limit = 1; // TODO: need to take the necessary one
 
                 Iterator<StreamResponse> iterator = CrawlerUtils.searchMessages(dataProviderService,
-                        new CrawlerUtils.MessagesSearchInfo(searchBuilder, from, to, limit, resumeId, aliases));
+                        new CrawlerUtils.MessagesSearchInfo(searchBuilder, from, to, limit, resumeIds, aliases));
 
                 while (iterator.hasNext()) {
                     iterator.next().getStreamInfo().getStreamsList().forEach(stream -> {
@@ -456,6 +474,7 @@ public class Crawler {
                             result.put(new CrawlerUtils.AliasAndDirection(alias, streamDirection),
                                     new RecoveryState.InnerMessage(alias, null,
                                             Direction.valueOf(streamDirection.toString()), sequence));
+
                         }
                     });
                 }
@@ -693,17 +712,17 @@ public class Crawler {
     private static class MessagesInfo {
         private final Interval interval;
         private final DataProcessorInfo dataProcessorInfo;
-        private final MessageID startId;
+        private final Map<CrawlerUtils.AliasAndDirection, MessageID> startIds;
         private final Collection<String> aliases;
         private final Instant from;
         private final Instant to;
 
         private MessagesInfo(Interval interval, DataProcessorInfo dataProcessorInfo,
-                             MessageID startId, Collection<String> aliases,
+                             Map<CrawlerUtils.AliasAndDirection, MessageID> startIds, Collection<String> aliases,
                              Instant from, Instant to) {
             this.interval = interval;
             this.dataProcessorInfo = dataProcessorInfo;
-            this.startId = startId;
+            this.startIds = startIds;
             this.aliases = aliases;
             this.from = from;
             this.to = to;

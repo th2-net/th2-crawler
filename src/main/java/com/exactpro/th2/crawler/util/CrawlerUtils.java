@@ -86,10 +86,10 @@ public class CrawlerUtils {
                 .setResultCountLimit(Int32Value.of(info.batchSize))
                 .setStream(StringList.newBuilder().addAllListString(info.aliases).build());
 
-        if (info.resumeId == null)
+        if (info.resumeIds == null)
             request = messageSearchBuilder.build();
         else
-            request = messageSearchBuilder.setResumeFromId(info.resumeId).build();
+            request = messageSearchBuilder.addAllMessageId(info.resumeIds.values()).build();
 
         return dataProviderService.searchMessages(request);
     }
@@ -232,16 +232,16 @@ public class CrawlerUtils {
         private final Timestamp from;
         private final Timestamp to;
         private final int batchSize;
-        private final MessageID resumeId;
+        private final Map<AliasAndDirection, MessageID> resumeIds;
         private final Collection<String> aliases;
 
         public MessagesSearchInfo(MessageSearchRequest.Builder searchBuilder, Timestamp from, Timestamp to,
-                                  int batchSize, MessageID resumeId, Collection<String> aliases) {
+                                  int batchSize, Map<AliasAndDirection, MessageID> resumeIds, Collection<String> aliases) {
             this.searchBuilder = Objects.requireNonNull(searchBuilder, "Search builder must not be null");
             this.from = Objects.requireNonNull(from, "Timestamp 'from' must not be null");
             this.to = Objects.requireNonNull(to, "Timestamp 'to' must not be null");
             this.batchSize = batchSize;
-            this.resumeId = resumeId;
+            this.resumeIds = resumeIds;
             this.aliases = aliases;
         }
     }
