@@ -450,8 +450,9 @@ public class Crawler {
                 continue;
             }
             if (streamData.hasBothDirections) {
+                LOGGER.debug("Cannot find message ID pair for alias {} in messages. Current id: {}", alias, streamData.checkpointIDs);
                 if (searchWithLimit == null) {
-                    LOGGER.debug("Cannot find message ID pair for alias {} in messages. Request with lower limit. Current id: {}", alias, streamData.checkpointIDs);
+                    LOGGER.debug("Requesting search with lower limit");
                     SearchResult<MessageData> result = CrawlerUtils.searchMessages(dataProviderService, originalParams.copyWithNewLimit(1));
                     searchWithLimit = requireNonNull(result.getStreamsInfo(), "search response for retrieving last ids does not contain streams info");
                 }
@@ -541,7 +542,7 @@ public class Crawler {
         @Override
         public String toString() {
             return new StringJoiner(", ", MessageIdHolder.class.getSimpleName() + "[", "]")
-                    .add("timestamp=" + timestamp)
+                    .add("timestamp=" + MessageUtils.toJson(timestamp))
                     .add("messageID=" + MessageUtils.toJson(messageID))
                     .toString();
         }

@@ -183,8 +183,8 @@ public class CrawlerUtils {
             if (!to.equals(timeExtractor.apply(object))) {
                 data.add(object);
 
-                if (LOGGER.isDebugEnabled()) {
-                    LOGGER.debug("Got {}", MessageUtils.toJson(object, true));
+                if (LOGGER.isTraceEnabled()) {
+                    LOGGER.trace("Got object of type {}: {}", object.getClass().getSimpleName(), MessageUtils.toJson(object));
                 }
             }
         }
