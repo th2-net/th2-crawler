@@ -72,7 +72,6 @@ public class RecoveryState {
 
     @Override
     public String toString() {
-        StringJoiner joiner = new StringJoiner(", ");
         StringBuilder sb = new StringBuilder();
 
         sb.append("RecoveryState{").append(CompressionUtils.EOL)
@@ -81,6 +80,7 @@ public class RecoveryState {
                 .append("lastProcessedMessages=");
 
         if (lastProcessedMessages != null) {
+            StringJoiner joiner = new StringJoiner(", ");
             lastProcessedMessages.forEach((k, v) -> joiner.add(k + ": "+ v));
             sb.append(joiner);
         } else {

@@ -66,6 +66,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.StringJoiner;
 import java.util.stream.Collectors;
 
 import static java.util.Objects.requireNonNull;
@@ -393,7 +394,9 @@ public class Crawler {
                                 numberOfMessages);
                     }
 
-                    interval = intervalsWorker.updateRecoveryState(interval, newState.convertToJson());
+                    String recoveryStateJson = newState.convertToJson();
+                    LOGGER.debug("Recovery state is updated: {}", recoveryStateJson);
+                    interval = intervalsWorker.updateRecoveryState(interval, recoveryStateJson);
                 }
             }
 
@@ -405,7 +408,11 @@ public class Crawler {
                             Stream::getLastId
                     ));
 
-            LOGGER.debug("New resume ids: {}", resumeIds);
+            if (LOGGER.isDebugEnabled()) {
+                LOGGER.debug("New resume ids: {}", resumeIds.entrySet().stream()
+                        .map(entry -> entry.getKey() + "=" + MessageUtils.toJson(entry.getValue()))
+                        .collect(Collectors.joining(",")));
+            }
 
             search = messages.size() == batchSize;
         }
@@ -444,7 +451,7 @@ public class Crawler {
             }
             if (streamData.hasBothDirections) {
                 if (searchWithLimit == null) {
-                    LOGGER.debug("Cannot find message ID pair for alias {}. Current id: {}", alias, streamData.checkpointIDs);
+                    LOGGER.debug("Cannot find message ID pair for alias {} in messages. Request with lower limit. Current id: {}", alias, streamData.checkpointIDs);
                     SearchResult<MessageData> result = CrawlerUtils.searchMessages(dataProviderService, originalParams.copyWithNewLimit(1));
                     searchWithLimit = requireNonNull(result.getStreamsInfo(), "search response for retrieving last ids does not contain streams info");
                 }
@@ -475,17 +482,17 @@ public class Crawler {
                         it -> {
                             InternalStreamData streamData = streamDataMap.get(it.getSession());
                             if (streamData == null) {
-                                return fromMessageId(null, it.getLastId());
+                                return fromMessageInfo(null, it.getLastId());
                             }
                             MessageIdHolder holder = streamData.checkpointIDs.get(it.getDirection());
                             if (holder == null) {
-                                return fromMessageId(null, it.getLastId());
+                                return fromMessageInfo(null, it.getLastId());
                             }
-                            return fromMessageId(holder.getTimestamp(), holder.getMessageID());
+                            return fromMessageInfo(holder.getTimestamp(), holder.getMessageID());
                         }));
     }
 
-    private static InnerMessageId fromMessageId(Timestamp timestamp, MessageID messageID) {
+    private static InnerMessageId fromMessageInfo(Timestamp timestamp, MessageID messageID) {
         return new InnerMessageId(
                 timestamp == null ? null : CrawlerUtils.fromTimestamp(timestamp),
                 messageID.getSequence()
@@ -529,6 +536,14 @@ public class Crawler {
 
         public MessageID getMessageID() {
             return messageID;
+        }
+
+        @Override
+        public String toString() {
+            return new StringJoiner(", ", MessageIdHolder.class.getSimpleName() + "[", "]")
+                    .add("timestamp=" + timestamp)
+                    .add("messageID=" + MessageUtils.toJson(messageID))
+                    .toString();
         }
     }
 
