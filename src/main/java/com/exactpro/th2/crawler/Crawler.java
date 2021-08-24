@@ -696,7 +696,7 @@ public class Crawler {
             sleepTime = getSleepTime(lagTime, to);
 
             LOGGER.info("It is too early now to create new interval from: {}, to: {}. " +
-                    "Falling asleep for {} seconds", from, to, sleepTime);
+                    "Falling asleep for {} millis", from, to, sleepTime);
 
             return new FetchIntervalReport(null, sleepTime, true);
         }
