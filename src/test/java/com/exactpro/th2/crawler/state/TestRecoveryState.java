@@ -35,9 +35,9 @@ class TestRecoveryState {
                 ),
                 Map.of(
                         new StreamKey("test", Direction.FIRST),
-                        new InnerMessageId("test", Instant.now(), Direction.FIRST, 42L),
+                        new InnerMessageId(Instant.now(), 42L),
                         new StreamKey("test", Direction.SECOND),
-                        new InnerMessageId("test", Instant.now(), Direction.SECOND, 43L)
+                        new InnerMessageId(Instant.now(), 43L)
                 ),
                 10,
                 15

@@ -18,7 +18,6 @@ package com.exactpro.th2.crawler.util;
 
 import com.exactpro.cradle.intervals.Interval;
 import com.exactpro.cradle.intervals.IntervalsWorker;
-import com.exactpro.th2.common.grpc.Direction;
 import com.exactpro.th2.common.grpc.EventID;
 import com.exactpro.th2.common.grpc.MessageID;
 import com.exactpro.th2.common.message.MessageUtils;
@@ -32,6 +31,7 @@ import com.exactpro.th2.dataprovider.grpc.EventSearchRequest;
 import com.exactpro.th2.dataprovider.grpc.MessageData;
 import com.exactpro.th2.dataprovider.grpc.MessageSearchRequest;
 import com.exactpro.th2.dataprovider.grpc.StreamResponse;
+import com.exactpro.th2.dataprovider.grpc.StreamsInfo;
 import com.exactpro.th2.dataprovider.grpc.StringList;
 import com.google.protobuf.BoolValue;
 import com.google.protobuf.Int32Value;
@@ -41,21 +41,18 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
+import java.time.Instant;
+import java.util.*;
 import java.util.function.Function;
 
 public class CrawlerUtils {
     private static final Logger LOGGER = LoggerFactory.getLogger(CrawlerUtils.class);
 
-    public static Iterator<StreamResponse> searchEvents(DataProviderService dataProviderService,
+    public static Instant fromTimestamp(Timestamp timestamp) {
+        return Instant.ofEpochSecond(timestamp.getSeconds(), timestamp.getNanos());
+    }
+
+    public static SearchResult<EventData> searchEvents(DataProviderService dataProviderService,
                                                EventsSearchInfo info) {
 
         EventSearchRequest.Builder eventSearchBuilder = info.searchBuilder;
@@ -72,11 +69,11 @@ public class CrawlerUtils {
         else
             request = eventSearchBuilder.setResumeFromId(info.resumeId).build();
 
-        return dataProviderService.searchEvents(request);
+        return collectEvents(dataProviderService.searchEvents(request), info.to);
     }
 
-    public static Iterator<StreamResponse> searchMessages(DataProviderService dataProviderService,
-                                                   MessagesSearchInfo info) {
+    public static SearchResult<MessageData> searchMessages(DataProviderService dataProviderService,
+                                                   MessagesSearchParameters info) {
 
         MessageSearchRequest.Builder messageSearchBuilder = info.searchBuilder;
         MessageSearchRequest request;
@@ -87,12 +84,13 @@ public class CrawlerUtils {
                 .setResultCountLimit(Int32Value.of(info.batchSize))
                 .setStream(StringList.newBuilder().addAllListString(info.aliases).build());
 
-        if (info.resumeIds == null)
+        if (info.resumeIds == null || info.resumeIds.isEmpty()) {
             request = messageSearchBuilder.build();
-        else
+        } else {
             request = messageSearchBuilder.addAllMessageId(info.resumeIds.values()).build();
+        }
 
-        return dataProviderService.searchMessages(request);
+        return collectMessages(dataProviderService.searchMessages(request), info.to);
     }
 
     public static Interval updateEventRecoveryState(IntervalsWorker worker, Interval interval,
@@ -151,27 +149,35 @@ public class CrawlerUtils {
         return worker.updateRecoveryState(interval, newState.convertToJson());
     }
 
-    public static List<EventData> collectEvents(Iterator<StreamResponse> iterator, Timestamp to) {
+    public static SearchResult<EventData> collectEvents(Iterator<StreamResponse> iterator, Timestamp to) {
         return collectData(iterator, to, response -> response.hasEvent() ? response.getEvent() : null,
                 eventData -> eventData.hasStartTimestamp() ? eventData.getStartTimestamp() : null);
     }
 
-    public static List<MessageData> collectMessages(Iterator<StreamResponse> iterator, Timestamp to) {
+    public static SearchResult<MessageData> collectMessages(Iterator<StreamResponse> iterator, Timestamp to) {
         return collectData(iterator, to, response -> response.hasMessage() ? response.getMessage() : null,
                 messageData -> messageData.hasTimestamp() ? messageData.getTimestamp() : null);
     }
 
-    public static <T extends MessageOrBuilder> List<T> collectData(Iterator<StreamResponse> iterator, Timestamp to,
+    public static <T extends MessageOrBuilder> SearchResult<T> collectData(Iterator<StreamResponse> iterator, Timestamp to,
                                                                    Function<StreamResponse, T> objectExtractor,
                                                                    Function<T, Timestamp> timeExtractor) {
-        List<T> data = new ArrayList<>();
+        List<T> data = null;
+        StreamsInfo streamsInfo = null;
 
         while (iterator.hasNext()) {
             StreamResponse r = iterator.next();
+            if (r.hasStreamInfo()) {
+                streamsInfo = r.getStreamInfo();
+                continue;
+            }
 
             T object = objectExtractor.apply(r);
             if (object == null) {
                 continue;
+            }
+            if (data == null) {
+                data = new ArrayList<>();
             }
 
             if (!to.equals(timeExtractor.apply(object))) {
@@ -183,32 +189,7 @@ public class CrawlerUtils {
             }
         }
 
-        return data;
-    }
-
-    public static InnerMessageId findPairedMessage(InnerMessageId message,
-                                                   Map<StreamKey, InnerMessageId> messages) {
-        Direction direction = message.getDirection();
-
-        if (direction == Direction.FIRST) {
-            return findNearestMessage(message, messages, Direction.SECOND);
-        } else {
-            return findNearestMessage(message, messages, Direction.FIRST);
-        }
-    }
-
-    private static InnerMessageId findNearestMessage(InnerMessageId message,
-                                                     Map<StreamKey, InnerMessageId> messages,
-                                                     Direction direction) {
-        Optional<Map.Entry<StreamKey, InnerMessageId>> optional = messages.entrySet().stream()
-                .filter(entry -> {
-                    StreamKey key = entry.getKey();
-                    return key.getSessionAlias().equals(message.getSessionAlias()) && key.getDirection() == direction;
-                })
-                .filter(entry -> entry.getValue().getSequence() < message.getSequence())
-                .max(Comparator.comparingLong(o -> o.getValue().getSequence()));
-
-        return optional.map(Map.Entry::getValue).orElse(null);
+        return new SearchResult<>(data == null ? Collections.emptyList() : data, streamsInfo);
     }
 
     public static class EventsSearchInfo {
@@ -228,7 +209,7 @@ public class CrawlerUtils {
         }
     }
 
-    public static class MessagesSearchInfo {
+    public static class MessagesSearchParameters {
         private final MessageSearchRequest.Builder searchBuilder;
         private final Timestamp from;
         private final Timestamp to;
@@ -236,14 +217,21 @@ public class CrawlerUtils {
         private final Map<StreamKey, MessageID> resumeIds;
         private final Collection<String> aliases;
 
-        public MessagesSearchInfo(MessageSearchRequest.Builder searchBuilder, Timestamp from, Timestamp to,
-                                  int batchSize, Map<StreamKey, MessageID> resumeIds, Collection<String> aliases) {
+        public MessagesSearchParameters(MessageSearchRequest.Builder searchBuilder, Timestamp from, Timestamp to,
+                                        int batchSize, Map<StreamKey, MessageID> resumeIds, Collection<String> aliases) {
             this.searchBuilder = Objects.requireNonNull(searchBuilder, "Search builder must not be null");
             this.from = Objects.requireNonNull(from, "Timestamp 'from' must not be null");
             this.to = Objects.requireNonNull(to, "Timestamp 'to' must not be null");
             this.batchSize = batchSize;
             this.resumeIds = resumeIds;
             this.aliases = aliases;
+        }
+
+        public MessagesSearchParameters copyWithNewLimit(int limit) {
+            return new MessagesSearchParameters(
+                    MessageSearchRequest.newBuilder(),
+                    from, to, limit, resumeIds, aliases
+            );
         }
     }
 }

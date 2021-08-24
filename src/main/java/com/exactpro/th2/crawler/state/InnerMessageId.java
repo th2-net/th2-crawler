@@ -26,41 +26,25 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class InnerMessageId {
-    private final String sessionAlias;
     private final Instant timestamp;
-    private final Direction direction;
     private final long sequence;
 
     public InnerMessageId(StoredMessage message) {
-        this.sessionAlias = message.getId().toString();
         this.timestamp = message.getTimestamp();
-        this.direction = Direction.valueOf(message.getDirection().name());
         this.sequence = message.getIndex();
     }
 
     @JsonCreator
     public InnerMessageId(
-            @JsonProperty("sessionAlias") String sessionAlias,
             @JsonProperty("timestamp") Instant timestamp,
-            @JsonProperty("direction") Direction direction,
             @JsonProperty("sequence") long sequence
     ) {
-        this.sessionAlias = sessionAlias;
         this.timestamp = timestamp;
-        this.direction = direction;
         this.sequence = sequence;
-    }
-
-    public String getSessionAlias() {
-        return sessionAlias;
     }
 
     public Instant getTimestamp() {
         return timestamp;
-    }
-
-    public Direction getDirection() {
-        return direction;
     }
 
     public long getSequence() {
@@ -70,9 +54,7 @@ public class InnerMessageId {
     @Override
     public String toString() {
         return "InnerMessage{" + CompressionUtils.EOL
-                + "sessionAlias=" + sessionAlias + CompressionUtils.EOL
                 + "timestamp=" + timestamp + CompressionUtils.EOL
-                + "direction=" + direction + CompressionUtils.EOL
                 + "sequence=" + sequence + CompressionUtils.EOL
                 + "}";
     }
@@ -82,11 +64,11 @@ public class InnerMessageId {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         InnerMessageId that = (InnerMessageId) o;
-        return sequence == that.sequence && sessionAlias.equals(that.sessionAlias) && Objects.equals(timestamp, that.timestamp) && direction == that.direction;
+        return sequence == that.sequence && Objects.equals(timestamp, that.timestamp);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(sessionAlias, timestamp, direction, sequence);
+        return Objects.hash(timestamp, sequence);
     }
 }

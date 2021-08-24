@@ -41,13 +41,16 @@ import com.exactpro.th2.crawler.exception.ConfigurationException;
 import com.exactpro.th2.crawler.state.StreamKey;
 import com.exactpro.th2.crawler.util.CrawlerTime;
 import com.exactpro.th2.crawler.util.CrawlerUtils;
+import com.exactpro.th2.crawler.util.CrawlerUtils.MessagesSearchParameters;
+import com.exactpro.th2.crawler.util.SearchResult;
 import com.exactpro.th2.crawler.util.impl.CrawlerTimeImpl;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import com.exactpro.th2.dataprovider.grpc.EventData;
 import com.exactpro.th2.dataprovider.grpc.EventSearchRequest;
 import com.exactpro.th2.dataprovider.grpc.MessageData;
 import com.exactpro.th2.dataprovider.grpc.MessageSearchRequest;
-import com.exactpro.th2.dataprovider.grpc.StreamResponse;
+import com.exactpro.th2.dataprovider.grpc.Stream;
+import com.exactpro.th2.dataprovider.grpc.StreamsInfo;
 import com.google.protobuf.Timestamp;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -58,14 +61,16 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Collection;
+import java.util.EnumMap;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
-import java.util.function.Function;
 import java.util.stream.Collectors;
+
+import static java.util.Objects.requireNonNull;
+import static java.util.stream.Collectors.toMap;
+import static java.util.stream.Collectors.toUnmodifiableMap;
 
 
 public class Crawler {
@@ -96,10 +101,10 @@ public class Crawler {
     public Crawler(@NotNull CradleStorage storage, @NotNull DataProcessorService dataProcessor,
                    @NotNull DataProviderService dataProviderService, @NotNull CrawlerConfiguration configuration,
                    CrawlerTime crawlerTime) {
-        this.intervalsWorker = Objects.requireNonNull(storage, "Cradle storage cannot be null").getIntervalsWorker();
-        this.dataProcessor = Objects.requireNonNull(dataProcessor, "Data service cannot be null");
-        this.dataProviderService = Objects.requireNonNull(dataProviderService, "Data provider service cannot be null");
-        this.configuration = Objects.requireNonNull(configuration, "Crawler configuration cannot be null");
+        this.intervalsWorker = requireNonNull(storage, "Cradle storage cannot be null").getIntervalsWorker();
+        this.dataProcessor = requireNonNull(dataProcessor, "Data service cannot be null");
+        this.dataProviderService = requireNonNull(dataProviderService, "Data provider service cannot be null");
+        this.configuration = requireNonNull(configuration, "Crawler configuration cannot be null");
         this.from = Instant.parse(configuration.getFrom());
         this.floatingToTime = configuration.getTo() == null;
         this.workAlone = configuration.getWorkAlone();
@@ -111,7 +116,7 @@ public class Crawler {
         this.crawlerId = CrawlerId.newBuilder().setName(configuration.getName()).build();
         this.info = dataProcessor.crawlerConnect(CrawlerInfo.newBuilder().setId(crawlerId).build());
         this.sessionAliases = configuration.getSessionAliases();
-        this.crawlerTime = Objects.requireNonNull(crawlerTime, "Crawler time cannot be null");
+        this.crawlerTime = requireNonNull(crawlerTime, "Crawler time cannot be null");
 
         prepare();
     }
@@ -165,35 +170,27 @@ public class Crawler {
                         interval.getStartTime(), interval.getEndTime()));
 
             } else if (MESSAGES.equals(interval.getCrawlerType())) {
-                Map<StreamKey, InnerMessageId> lastProcessedMessages;
                 RecoveryState state = RecoveryState.getStateFromJson(interval.getRecoveryState());
 
-                lastProcessedMessages = state == null ? null : state.getLastProcessedMessages();
+                Map<StreamKey, InnerMessageId> lastProcessedMessages = state == null ? null : state.getLastProcessedMessages();
 
                 Map<StreamKey, MessageID> startIds = null;
 
-                MessageID.Builder builder = MessageID.newBuilder();
-
                 if (lastProcessedMessages != null) {
                     if (!fetchIntervalReport.processFromStart) {
-                        startIds = lastProcessedMessages.values().stream()
-                                .map(innerMessage -> {
-                                    Direction direction;
-
-                                    if (innerMessage.getDirection() == Direction.FIRST)
-                                        direction = Direction.FIRST;
-                                    else
-                                        direction = Direction.SECOND;
-
-                                    return builder
-                                            .setSequence(innerMessage.getSequence())
-                                            .setConnectionId(ConnectionID.newBuilder().setSessionAlias(innerMessage.getSessionAlias()).build())
-                                            .setDirection(direction)
-                                            .build();
-                                })
-                                .collect(Collectors.toMap(messageID ->
-                                                new StreamKey(messageID.getConnectionId().getSessionAlias(), messageID.getDirection()),
-                                        Function.identity(), (messageID1, messageID2) -> messageID2));
+                        startIds = lastProcessedMessages.entrySet().stream()
+                                .collect(Collectors.toMap(
+                                        it -> new StreamKey(it.getKey().getSessionAlias(), it.getKey().getDirection()),
+                                        it -> {
+                                            StreamKey key = it.getKey();
+                                            InnerMessageId value = it.getValue();
+                                            return MessageID.newBuilder()
+                                                    .setSequence(value.getSequence())
+                                                    .setConnectionId(ConnectionID.newBuilder().setSessionAlias(key.getSessionAlias()).build())
+                                                    .setDirection(key.getDirection())
+                                                    .build();
+                                        }
+                                ));
                     }
                 }
 
@@ -252,10 +249,9 @@ public class Crawler {
             EventSearchRequest.Builder searchBuilder = EventSearchRequest.newBuilder();
             EventDataRequest.Builder eventRequestBuilder = EventDataRequest.newBuilder();
 
-            Iterator<StreamResponse> iterator = CrawlerUtils.searchEvents(dataProviderService,
+            SearchResult<EventData> result = CrawlerUtils.searchEvents(dataProviderService,
                     new CrawlerUtils.EventsSearchInfo(searchBuilder, fromTimestamp, toTimestamp, batchSize, resumeId));
-
-            List<EventData> events = CrawlerUtils.collectEvents(iterator, toTimestamp);
+            List<EventData> events = result.getData();
 
             if (events.isEmpty()) {
                 LOGGER.info("No more events in interval from: {}, to: {}", interval.getStartTime(), interval.getEndTime());
@@ -346,30 +342,14 @@ public class Crawler {
             MessageSearchRequest.Builder searchBuilder = MessageSearchRequest.newBuilder();
             MessageDataRequest.Builder messageDataBuilder = MessageDataRequest.newBuilder();
 
-            Iterator<StreamResponse> iterator = CrawlerUtils.searchMessages(dataProviderService,
-                    new CrawlerUtils.MessagesSearchInfo(searchBuilder, fromTimestamp, toTimestamp, batchSize, resumeIds, info.aliases));
-            List<MessageData> messages = CrawlerUtils.collectMessages(iterator, toTimestamp);
+            MessagesSearchParameters searchParams = new MessagesSearchParameters(searchBuilder, fromTimestamp, toTimestamp, batchSize, resumeIds, info.aliases);
+            SearchResult<MessageData> result = CrawlerUtils.searchMessages(dataProviderService, searchParams);
+            List<MessageData> messages = result.getData();
 
             if (messages.isEmpty()) {
                 LOGGER.info("No more messages in interval from: {}, to: {}", interval.getStartTime(), interval.getEndTime());
                 break;
             }
-
-            Map<StreamKey, MessageID> newResumeIds = messages.stream()
-                    .filter(MessageData::hasMessageId)
-                    .map(MessageData::getMessageId)
-                    .collect(Collectors.toMap(messageID ->
-                                    new StreamKey(messageID.getConnectionId().getSessionAlias(), messageID.getDirection()),
-                            Function.identity(), (messageID1, messageID2) -> messageID2));
-
-            if (resumeIds != null) {
-                resumeIds.putAll(newResumeIds);
-            } else {
-                resumeIds = newResumeIds;
-            }
-
-            LOGGER.debug("Resume ids:");
-            resumeIds.forEach((key, value) -> LOGGER.debug(key + ": " + value));
 
             MessageDataRequest messageRequest = messageDataBuilder.setId(crawlerId).addAllMessageData(messages).build();
 
@@ -381,55 +361,32 @@ public class Crawler {
                 }
             }
 
-            if (!response.getIdsMap().isEmpty()) {
+            if (response.getIdsCount() > 0) {
                 Map<String, MessageID> responseIds = response.getIdsMap();
-                RecoveryState oldState = RecoveryState.getStateFromJson(interval.getRecoveryState());
 
-                Map<StreamKey, InnerMessageId> recoveryStateMessages;
-
-                long processedMessagesCount = 0L;
-
-                for (MessageID messageID : responseIds.values()) {
-                    processedMessagesCount += messages.stream().takeWhile(eventData -> eventData.getMessageId().equals(messageID)).count();
-                }
+                Map.Entry<Integer, Map<StreamKey, InnerMessageId>> processedResult = processServiceResponse(responseIds, result, searchParams);
+                requireNonNull(processedResult, () -> "processServiceResponse cannot be null for not empty IDs in response: " + responseIds);
+                int processedMessagesCount = processedResult.getKey();
+                Map<StreamKey, InnerMessageId> checkpoints = processedResult.getValue();
 
                 numberOfMessages += processedMessagesCount + diff;
 
-                diff = batchSize - processedMessagesCount;
+                diff = messages.size() - processedMessagesCount;
 
-                recoveryStateMessages = messages.stream()
-                        .map(messageData -> {
-                            String alias = messageData.getMessageId().getConnectionId().getSessionAlias();
-                            Instant timestamp = Instant.ofEpochSecond(messageData.getTimestamp().getSeconds(), messageData.getTimestamp().getNanos());
-                            Direction direction = messageData.getDirection();
-                            long sequence = messageData.getMessageId().getSequence();
+                if (!checkpoints.isEmpty()) {
 
-                            return new InnerMessageId(alias, timestamp, direction, sequence);
-                        })
-                        .collect(Collectors.toMap(innerMessage ->
-                                        new StreamKey(innerMessage.getSessionAlias(),
-                                                innerMessage.getDirection()),
-                                Function.identity(), (messageID, messageID2) -> messageID2));
-
-                recoveryStateMessages.putAll(findPairedMessages(recoveryStateMessages, fromTimestamp, toTimestamp, resumeIds, sessionAliases));
-
-                if (!recoveryStateMessages.isEmpty()) {
                     RecoveryState newState;
+                    RecoveryState oldState = interval.getRecoveryState() == null
+                            ? null
+                            : RecoveryState.getStateFromJson(interval.getRecoveryState());
 
                     if (oldState == null) {
-                        Map<StreamKey, InnerMessageId> lastProcessedMessages = new HashMap<>(recoveryStateMessages);
-
-                        newState = new RecoveryState(null, lastProcessedMessages,
-                                0,
-                                numberOfMessages);
+                        newState = new RecoveryState(null, checkpoints, 0, numberOfMessages);
                     } else {
-                        Map<StreamKey, InnerMessageId> lastProcessedMessages = new HashMap<>();
+                        Map<StreamKey, InnerMessageId> old = oldState.getLastProcessedMessages();
+                        Map<StreamKey, InnerMessageId> lastProcessedMessages = old == null ? new HashMap<>() : new HashMap<>(old);
 
-                        if (oldState.getLastProcessedMessages() != null) {
-                            lastProcessedMessages.putAll(oldState.getLastProcessedMessages());
-                        }
-
-                        lastProcessedMessages.putAll(recoveryStateMessages);
+                        lastProcessedMessages.putAll(checkpoints);
 
                         newState = new RecoveryState(oldState.getLastProcessedEvent(), lastProcessedMessages,
                                 oldState.getLastNumberOfEvents(),
@@ -440,50 +397,146 @@ public class Crawler {
                 }
             }
 
+            resumeIds = requireNonNull(result.getStreamsInfo(), "response from data provider does not have the StreamsInfo")
+                    .getStreamsList()
+                    .stream()
+                    .collect(toUnmodifiableMap(
+                            stream -> new StreamKey(stream.getSession(), stream.getDirection()),
+                            Stream::getLastId
+                    ));
+
+            LOGGER.debug("New resume ids: {}", resumeIds);
+
             search = messages.size() == batchSize;
         }
 
         return new SendingReport(CrawlerAction.NONE, interval, dataProcessorName, dataProcessorVersion, 0, numberOfMessages);
     }
 
-    private Map<StreamKey, InnerMessageId> findPairedMessages
-            (Map<StreamKey, InnerMessageId> messages, Timestamp from, Timestamp to,
-             Map<StreamKey, MessageID> resumeIds, Collection<String> aliases) {
-        Map<StreamKey, InnerMessageId> result = new HashMap<>();
-
-        messages.forEach((key, value) -> {
-
-            Direction direction = key.getDirection();
-            String alias = key.getSessionAlias();
-
-            InnerMessageId message = CrawlerUtils.findPairedMessage(value, messages);
-
-            if (message != null) {
-                result.put(new StreamKey(alias, direction), message);
-            } else {
-                MessageSearchRequest.Builder searchBuilder = MessageSearchRequest.newBuilder();
-
-                int limit = 1; // TODO: need to take the necessary one
-
-                Iterator<StreamResponse> iterator = CrawlerUtils.searchMessages(dataProviderService,
-                        new CrawlerUtils.MessagesSearchInfo(searchBuilder, from, to, limit, resumeIds, aliases));
-
-                while (iterator.hasNext()) {
-                    iterator.next().getStreamInfo().getStreamsList().forEach(stream -> {
-                        Direction streamDirection = stream.getDirection();
-                        if (stream.getSession().equals(alias) && streamDirection != direction) {
-                            long sequence = stream.getLastId().getSequence();
-
-                            result.put(new StreamKey(alias, streamDirection),
-                                    new InnerMessageId(alias, null, streamDirection, sequence));
-
-                        }
-                    });
-                }
+    private Map.Entry<@NotNull Integer, @NotNull Map<StreamKey, InnerMessageId>> processServiceResponse(
+            Map<String, MessageID> responseIds,
+            SearchResult<MessageData> messages,
+            MessagesSearchParameters originalParams
+    ) {
+        if (responseIds.isEmpty()) {
+            return null;
+        }
+        Map<String, InternalStreamData> streamDataMap = responseIds.entrySet().stream()
+                .collect(toMap(Map.Entry::getKey, Crawler::createInternalStreamData));
+        int messageCount = 0;
+        for (MessageData data : messages.getData()) {
+            InternalStreamData streamData = streamDataMap.get(data.getSessionId().getSessionAlias());
+            if (streamData == null || streamData.processMessageId(data)) {
+                messageCount++;
             }
-        });
+        }
+        StreamsInfo searchWithLimit = null;
+        for (Map.Entry<String, InternalStreamData> entry : streamDataMap.entrySet()) {
+            var alias = entry.getKey();
+            var streamData = entry.getValue();
+            if (!streamData.finished) {
+                LOGGER.warn("MessageID {} from response was not found in messages", streamData.checkpointIDs.values());
+                continue;
+            }
+            if (streamData.checkpointIDs.size() > 1) {
+                LOGGER.trace("The pair message for alias {} was found in messages. Checkpoint: {}", alias, streamData.checkpointIDs);
+                continue;
+            }
+            if (streamData.hasBothDirections) {
+                if (searchWithLimit == null) {
+                    LOGGER.debug("Cannot find message ID pair for alias {}. Current id: {}", alias, streamData.checkpointIDs);
+                    SearchResult<MessageData> result = CrawlerUtils.searchMessages(dataProviderService, originalParams.copyWithNewLimit(1));
+                    searchWithLimit = requireNonNull(result.getStreamsInfo(), "search response for retrieving last ids does not contain streams info");
+                }
+                StreamsInfo info = searchWithLimit;
+                info.getStreamsList().stream()
+                        .filter(it -> alias.equals(it.getSession()) && !streamData.checkpointIDs.containsKey(it.getDirection()))
+                        .findFirst()
+                        .ifPresentOrElse(
+                                stream -> streamData.checkpointIDs.put(stream.getDirection(), new MessageIdHolder(null, stream.getLastId())),
+                                () -> {
+                                    if (LOGGER.isErrorEnabled()) {
+                                        // TODO: probably we should throw an exception here because it breaks the ability to recover the state at all
+                                        LOGGER.error("Cannot find pair for {} {} in stream info {}", alias, streamData.checkpointIDs, MessageUtils.toJson(info));
+                                    }
+                                }
+                        );
+            }
+        }
 
-        return result;
+        return Map.entry(messageCount, collectInnerMessageIDs(messages, streamDataMap));
+    }
+
+    @NotNull
+    private Map<StreamKey, InnerMessageId> collectInnerMessageIDs(SearchResult<MessageData> messages, Map<String, InternalStreamData> streamDataMap) {
+        return messages.getStreamsInfo().getStreamsList().stream()
+                .collect(toUnmodifiableMap(
+                        it -> new StreamKey(it.getSession(), it.getDirection()),
+                        it -> {
+                            InternalStreamData streamData = streamDataMap.get(it.getSession());
+                            if (streamData == null) {
+                                return fromMessageId(null, it.getLastId());
+                            }
+                            MessageIdHolder holder = streamData.checkpointIDs.get(it.getDirection());
+                            if (holder == null) {
+                                return fromMessageId(null, it.getLastId());
+                            }
+                            return fromMessageId(holder.getTimestamp(), holder.getMessageID());
+                        }));
+    }
+
+    private static InnerMessageId fromMessageId(Timestamp timestamp, MessageID messageID) {
+        return new InnerMessageId(
+                timestamp == null ? null : CrawlerUtils.fromTimestamp(timestamp),
+                messageID.getSequence()
+        );
+    }
+
+    private static class InternalStreamData {
+        boolean hasBothDirections;
+        Map<Direction, MessageIdHolder> checkpointIDs = new EnumMap<>(Direction.class);
+        boolean finished;
+
+        boolean processMessageId(MessageData message) {
+            var messageID = message.getMessageId();
+            var current = checkpointIDs.get(messageID.getDirection());
+            hasBothDirections = current == null || hasBothDirections;
+            if (finished) {
+                return false;
+            }
+            if (current != null && messageID.equals(current.getMessageID())) {
+                finished = true;
+            }
+            if (current == null || current.getMessageID().getSequence() <= messageID.getSequence()) {
+                checkpointIDs.put(messageID.getDirection(), new MessageIdHolder(message.getTimestamp(), messageID));
+            }
+            return true;
+        }
+    }
+
+    private static class MessageIdHolder {
+        private final Timestamp timestamp;
+        private final MessageID messageID;
+
+        public MessageIdHolder(Timestamp timestamp, MessageID messageID) {
+            this.timestamp = timestamp;
+            this.messageID = requireNonNull(messageID, "'Message id' parameter");
+        }
+
+        public Timestamp getTimestamp() {
+            return timestamp;
+        }
+
+        public MessageID getMessageID() {
+            return messageID;
+        }
+    }
+
+    private static InternalStreamData createInternalStreamData(Map.Entry<String, MessageID> entry) {
+        InternalStreamData streamData = new InternalStreamData();
+        MessageID messageID = entry.getValue();
+        streamData.checkpointIDs.put(messageID.getDirection(), new MessageIdHolder(null, messageID));
+        return streamData;
     }
 
     private SendingReport handshake(CrawlerId crawlerId, Interval interval, DataProcessorInfo dataProcessorInfo, long numberOfEvents, long numberOfMessages) {
@@ -513,9 +566,7 @@ public class Crawler {
 
             intervalsNumber++;
 
-            if (LOGGER.isTraceEnabled()) {
-                LOGGER.trace("Interval from Cassandra from {}, to {}", interval.getStartTime(), interval.getEndTime());
-            }
+            LOGGER.trace("Interval from Cassandra from {}, to {}", interval.getStartTime(), interval.getEndTime());
 
             boolean floatingAndMultiple = floatingToTime && !workAlone && !interval.isProcessed() && lastUpdateCheck;
             boolean floatingAndAlone = floatingToTime && workAlone && !interval.isProcessed();
