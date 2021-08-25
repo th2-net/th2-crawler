@@ -31,12 +31,14 @@ import mu.KotlinLogging
 import java.io.IOException
 import java.util.Deque
 import java.util.concurrent.ConcurrentLinkedDeque
+import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.locks.Condition
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.thread
 import kotlin.system.exitProcess
 
 private val LOGGER = KotlinLogging.logger { }
+private enum class State { WORK, WAIT, STOP }
 
 fun main(args: Array<String>) {
     LOGGER.info { "Starting com.exactpro.th2.crawler.Crawler" }
@@ -49,9 +51,7 @@ fun main(args: Array<String>) {
     // and you can run everything on main thread
     // you can omit the part with locks (but please keep the resources queue)
     val resources: Deque<AutoCloseable> = ConcurrentLinkedDeque()
-    val lock = ReentrantLock()
-    val condition: Condition = lock.newCondition()
-    configureShutdownHook(resources, lock, condition)
+    configureShutdownHook(resources)
 
     try {
         // You need to initialize the CommonFactory
@@ -85,8 +85,36 @@ fun main(args: Array<String>) {
 
         LOGGER.info { "Crawler was created and is going to start" }
 
+        val state = AtomicReference(State.WAIT)
+        resources += AutoCloseable {
+            LOGGER.info { "Awaiting the crawler finishes current processing" }
+
+            if (!state.compareAndSet(State.WAIT, State.STOP)) {
+                val timeout = configuration.shutdownTimeout
+                val unit = configuration.shutdownTimeoutUnit
+                val awaitTime = System.currentTimeMillis() + unit.toMillis(timeout)
+                while (!state.compareAndSet(State.WAIT, State.STOP) && System.currentTimeMillis() < awaitTime) {
+                    Thread.sleep(100) // await processing finished
+                }
+            }
+            if (state.get() == State.STOP) {
+                LOGGER.warn { "Crawler did not finish processing the current interval" }
+            } else {
+                LOGGER.info { "Crawler has finished processing the current interval" }
+            }
+        }
+
         while (!Thread.currentThread().isInterrupted) {
-            val sleepTime = crawler.process()
+            val sleepTime = try {
+                if (state.compareAndSet(State.WAIT, State.WORK)) {
+                    crawler.process()
+                } else {
+                    LOGGER.info { "Crawler has state ${state.get()} that does not allow to start processing" }
+                    return
+                }
+            } finally {
+                state.set(State.WAIT)
+            }
 
             Thread.sleep(sleepTime.toMillis())
         }
@@ -112,19 +140,13 @@ fun main(args: Array<String>) {
     }
 }
 
-private fun configureShutdownHook(resources: Deque<AutoCloseable>, lock: ReentrantLock, condition: Condition) {
+private fun configureShutdownHook(resources: Deque<AutoCloseable>) {
     Runtime.getRuntime().addShutdownHook(thread(
         start = false,
         name = "Shutdown hook"
     ) {
         LOGGER.info { "Shutdown start" }
         readiness = false
-        try {
-            lock.lock()
-            condition.signalAll()
-        } finally {
-            lock.unlock()
-        }
         resources.descendingIterator().forEachRemaining { resource ->
             try {
                 resource.close()
