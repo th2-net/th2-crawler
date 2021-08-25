@@ -14,18 +14,23 @@
  * limitations under the License.
  */
 
-package com.exactpro.th2.crawler.state;
+package com.exactpro.th2.crawler.state.v1;
 
 import java.time.Instant;
 import java.util.Map;
 
 import com.exactpro.th2.common.grpc.Direction;
+import com.exactpro.th2.crawler.state.StateService;
+import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
-import static com.exactpro.th2.crawler.state.RecoveryState.getStateFromJson;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class TestRecoveryState {
+    private final StateService<RecoveryState> stateService =
+            StateService.createFromClasspath(RecoveryState.class, Mockito.mock(DataProviderService.class));
     @Test
     void correctlySerializesAndDeserializes() {
         var state = new RecoveryState(
@@ -42,8 +47,8 @@ class TestRecoveryState {
                 10,
                 15
         );
-        String json = assertDoesNotThrow(state::convertToJson, () -> "Cannot convert state to json: " + state);
-        RecoveryState actualState = assertDoesNotThrow(() -> getStateFromJson(json), () -> "Cannot deserialize the state from: " + json);
+        String json = assertDoesNotThrow(() -> stateService.serialize(state), () -> "Cannot convert state to json: " + state);
+        RecoveryState actualState = assertDoesNotThrow(() -> stateService.deserialize(json), () -> "Cannot deserialize the state from: " + json);
         assertEquals(state, actualState, () -> "Deserialized state: '" + actualState + "' is not the same as the original one: " + state);
     }
 }

@@ -21,10 +21,11 @@ import com.exactpro.cradle.intervals.IntervalsWorker;
 import com.exactpro.th2.common.grpc.EventID;
 import com.exactpro.th2.common.grpc.MessageID;
 import com.exactpro.th2.common.message.MessageUtils;
-import com.exactpro.th2.crawler.state.InnerEventId;
-import com.exactpro.th2.crawler.state.InnerMessageId;
-import com.exactpro.th2.crawler.state.RecoveryState;
-import com.exactpro.th2.crawler.state.StreamKey;
+import com.exactpro.th2.crawler.state.StateService;
+import com.exactpro.th2.crawler.state.v1.InnerEventId;
+import com.exactpro.th2.crawler.state.v1.InnerMessageId;
+import com.exactpro.th2.crawler.state.v1.RecoveryState;
+import com.exactpro.th2.crawler.state.v1.StreamKey;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import com.exactpro.th2.dataprovider.grpc.EventData;
 import com.exactpro.th2.dataprovider.grpc.EventSearchRequest;
@@ -96,10 +97,13 @@ public class CrawlerUtils {
         return collectMessages(dataProviderService.searchMessages(request), info.to);
     }
 
-    public static Interval updateEventRecoveryState(IntervalsWorker worker, Interval interval,
-                                                    RecoveryState previousState, long numberOfEvents) throws IOException {
-        RecoveryState newState;
-        RecoveryState currentState = RecoveryState.getStateFromJson(interval.getRecoveryState());
+    public static Interval updateEventRecoveryState(
+            IntervalsWorker worker,
+            Interval interval,
+            StateService<RecoveryState> stateService,
+            long numberOfEvents
+    ) throws IOException {
+        RecoveryState currentState = stateService.deserialize(interval.getRecoveryState());
         InnerEventId lastProcessedEvent = null;
 
         if (currentState != null) {
@@ -107,7 +111,8 @@ public class CrawlerUtils {
         }
 
 
-        if (previousState == null) {
+        RecoveryState newState;
+        if (currentState == null) {
             newState = new RecoveryState(
                     lastProcessedEvent,
                     null,
@@ -116,25 +121,31 @@ public class CrawlerUtils {
         } else {
             newState = new RecoveryState(
                     lastProcessedEvent,
-                    previousState.getLastProcessedMessages(),
+                    currentState.getLastProcessedMessages(),
                     numberOfEvents,
-                    previousState.getLastNumberOfMessages());
+                    currentState.getLastNumberOfMessages());
         }
 
-        return worker.updateRecoveryState(interval, newState.convertToJson());
+        return worker.updateRecoveryState(interval, stateService.serialize(newState));
     }
 
-    public static Interval updateMessageRecoveryState(IntervalsWorker worker, Interval interval,
-                                                      RecoveryState previousState, long numberOfMessages) throws IOException {
-        RecoveryState newState;
-        RecoveryState currentState = RecoveryState.getStateFromJson(interval.getRecoveryState());
+    public static Interval updateMessageRecoveryState(
+            IntervalsWorker worker,
+            Interval interval,
+            StateService<RecoveryState> stateService,
+            long numberOfMessages
+    ) throws IOException {
+        RecoveryState currentState = interval.getRecoveryState() == null
+                ? null
+                : stateService.deserialize(interval.getRecoveryState());
         Map<StreamKey, InnerMessageId> lastProcessedMessages = new HashMap<>();
 
         if (currentState != null) {
             lastProcessedMessages.putAll(currentState.getLastProcessedMessages());
         }
 
-        if (previousState == null) {
+        RecoveryState newState;
+        if (currentState == null) {
             newState = new RecoveryState(
                     null,
                     lastProcessedMessages,
@@ -143,13 +154,13 @@ public class CrawlerUtils {
             );
         } else {
             newState = new RecoveryState(
-                    previousState.getLastProcessedEvent(),
+                    currentState.getLastProcessedEvent(),
                     lastProcessedMessages,
-                    previousState.getLastNumberOfEvents(),
+                    currentState.getLastNumberOfEvents(),
                     numberOfMessages);
         }
 
-        return worker.updateRecoveryState(interval, newState.convertToJson());
+        return worker.updateRecoveryState(interval, stateService.serialize(newState));
     }
 
     public static SearchResult<EventData> collectEvents(Iterator<StreamResponse> iterator, Timestamp to) {

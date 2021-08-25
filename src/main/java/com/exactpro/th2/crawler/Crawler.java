@@ -28,9 +28,10 @@ import com.exactpro.th2.crawler.dataprocessor.grpc.EventDataRequest;
 import com.exactpro.th2.crawler.dataprocessor.grpc.EventResponse;
 import com.exactpro.th2.crawler.dataprocessor.grpc.MessageDataRequest;
 import com.exactpro.th2.crawler.dataprocessor.grpc.MessageResponse;
-import com.exactpro.th2.crawler.state.InnerEventId;
-import com.exactpro.th2.crawler.state.InnerMessageId;
-import com.exactpro.th2.crawler.state.RecoveryState;
+import com.exactpro.th2.crawler.state.StateService;
+import com.exactpro.th2.crawler.state.v1.InnerEventId;
+import com.exactpro.th2.crawler.state.v1.InnerMessageId;
+import com.exactpro.th2.crawler.state.v1.RecoveryState;
 import com.exactpro.th2.common.event.EventUtils;
 import com.exactpro.th2.common.grpc.ConnectionID;
 import com.exactpro.th2.common.grpc.EventID;
@@ -38,7 +39,7 @@ import com.exactpro.th2.common.grpc.MessageID;
 import com.exactpro.th2.common.message.MessageUtils;
 import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException;
 import com.exactpro.th2.crawler.exception.ConfigurationException;
-import com.exactpro.th2.crawler.state.StreamKey;
+import com.exactpro.th2.crawler.state.v1.StreamKey;
 import com.exactpro.th2.crawler.util.CrawlerTime;
 import com.exactpro.th2.crawler.util.CrawlerUtils;
 import com.exactpro.th2.crawler.util.CrawlerUtils.EventsSearchParameters;
@@ -47,7 +48,6 @@ import com.exactpro.th2.crawler.util.SearchResult;
 import com.exactpro.th2.crawler.util.impl.CrawlerTimeImpl;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import com.exactpro.th2.dataprovider.grpc.EventData;
-import com.exactpro.th2.dataprovider.grpc.EventSearchRequest;
 import com.exactpro.th2.dataprovider.grpc.MessageData;
 import com.exactpro.th2.dataprovider.grpc.Stream;
 import com.exactpro.th2.dataprovider.grpc.StreamsInfo;
@@ -89,6 +89,7 @@ public class Crawler {
     private final int batchSize;
     private final DataProcessorInfo info;
     private final CrawlerId crawlerId;
+    private final StateService<RecoveryState> stateService;
 
     private final Instant from;
     private Instant to;
@@ -99,9 +100,15 @@ public class Crawler {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(Crawler.class);
 
-    public Crawler(@NotNull CradleStorage storage, @NotNull DataProcessorService dataProcessor,
-                   @NotNull DataProviderService dataProviderService, @NotNull CrawlerConfiguration configuration,
-                   CrawlerTime crawlerTime) {
+    public Crawler(
+            @NotNull StateService<RecoveryState> stateService,
+            @NotNull CradleStorage storage,
+            @NotNull DataProcessorService dataProcessor,
+            @NotNull DataProviderService dataProviderService,
+            @NotNull CrawlerConfiguration configuration,
+            @NotNull CrawlerTime crawlerTime
+    ) {
+        this.stateService = requireNonNull(stateService, "'state service' cannot be null");
         this.intervalsWorker = requireNonNull(storage, "Cradle storage cannot be null").getIntervalsWorker();
         this.dataProcessor = requireNonNull(dataProcessor, "Data service cannot be null");
         this.dataProviderService = requireNonNull(dataProviderService, "Data provider service cannot be null");
@@ -122,9 +129,14 @@ public class Crawler {
         prepare();
     }
 
-    public Crawler(@NotNull CradleStorage storage, @NotNull DataProcessorService dataProcessor,
-                   @NotNull DataProviderService dataProviderService, @NotNull CrawlerConfiguration configuration) {
-        this(storage, dataProcessor, dataProviderService, configuration, new CrawlerTimeImpl());
+    public Crawler(
+            @NotNull StateService<RecoveryState> stateService,
+            @NotNull CradleStorage storage,
+            @NotNull DataProcessorService dataProcessor,
+            @NotNull DataProviderService dataProviderService,
+            @NotNull CrawlerConfiguration configuration
+    ) {
+        this(stateService, storage, dataProcessor, dataProviderService, configuration, new CrawlerTimeImpl());
     }
 
     private void prepare() {
@@ -155,7 +167,7 @@ public class Crawler {
 
             if (EVENTS.equals(interval.getCrawlerType())) {
                 InnerEventId lastProcessedEvent;
-                RecoveryState state = RecoveryState.getStateFromJson(interval.getRecoveryState());
+                RecoveryState state = stateService.deserialize(interval.getRecoveryState());
 
                 lastProcessedEvent = state == null ? null : state.getLastProcessedEvent();
 
@@ -171,7 +183,7 @@ public class Crawler {
                         interval.getStartTime(), interval.getEndTime()));
 
             } else if (MESSAGES.equals(interval.getCrawlerType())) {
-                RecoveryState state = RecoveryState.getStateFromJson(interval.getRecoveryState());
+                RecoveryState state = stateService.deserialize(interval.getRecoveryState());
 
                 Map<StreamKey, InnerMessageId> lastProcessedMessages = state == null ? null : state.getLastProcessedMessages();
 
@@ -205,14 +217,12 @@ public class Crawler {
                 interval = sendingReport.interval;
                 interval = intervalsWorker.setIntervalProcessed(interval, true);
 
-                RecoveryState previousState = RecoveryState.getStateFromJson(interval.getRecoveryState());
-
                 if (EVENTS.equals(interval.getCrawlerType())) {
                     interval = CrawlerUtils.updateEventRecoveryState(intervalsWorker, interval,
-                            previousState, sendingReport.numberOfEvents);
+                            stateService, sendingReport.numberOfEvents);
                 } else if (MESSAGES.equals(interval.getCrawlerType())) {
                     interval = CrawlerUtils.updateMessageRecoveryState(intervalsWorker, interval,
-                            previousState, sendingReport.numberOfMessages);
+                            stateService, sendingReport.numberOfMessages);
                 }
 
                 LOGGER.info("Interval from {}, to {} was processed successfully", interval.getStartTime(), interval.getEndTime());
@@ -273,7 +283,7 @@ public class Crawler {
             }
 
             if (response.hasId()) {
-                RecoveryState oldState = RecoveryState.getStateFromJson(interval.getRecoveryState());
+                RecoveryState oldState = stateService.deserialize(interval.getRecoveryState());
 
                 InnerEventId event = null;
 
@@ -313,7 +323,7 @@ public class Crawler {
                                 oldState.getLastNumberOfMessages());
                     }
 
-                    interval = intervalsWorker.updateRecoveryState(interval, newState.convertToJson());
+                    interval = intervalsWorker.updateRecoveryState(interval, stateService.serialize(newState));
                 }
             }
 
@@ -375,9 +385,7 @@ public class Crawler {
                 if (!checkpoints.isEmpty()) {
 
                     RecoveryState newState;
-                    RecoveryState oldState = interval.getRecoveryState() == null
-                            ? null
-                            : RecoveryState.getStateFromJson(interval.getRecoveryState());
+                    RecoveryState oldState = stateService.deserialize(interval.getRecoveryState());
 
                     if (oldState == null) {
                         newState = new RecoveryState(null, checkpoints, 0, numberOfMessages);
@@ -392,7 +400,7 @@ public class Crawler {
                                 numberOfMessages);
                     }
 
-                    String recoveryStateJson = newState.convertToJson();
+                    String recoveryStateJson = stateService.serialize(newState);
                     LOGGER.debug("Recovery state is updated: {}", recoveryStateJson);
                     interval = intervalsWorker.updateRecoveryState(interval, recoveryStateJson);
                 }
@@ -707,7 +715,9 @@ public class Crawler {
                 .crawlerVersion(version)
                 .crawlerType(type)
                 .processed(false)
-                .recoveryState(new RecoveryState(null, null, 0, 0).convertToJson())
+                .recoveryState(stateService.serialize(
+                        new RecoveryState(null, null, 0, 0)
+                ))
                 .build();
 
         boolean intervalStored = intervalsWorker.storeInterval(newInterval);

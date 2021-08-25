@@ -26,7 +26,8 @@ import com.exactpro.th2.crawler.dataprocessor.grpc.EventDataRequest;
 import com.exactpro.th2.crawler.dataprocessor.grpc.EventResponse;
 import com.exactpro.th2.crawler.dataprocessor.grpc.MessageDataRequest;
 import com.exactpro.th2.crawler.dataprocessor.grpc.Status;
-import com.exactpro.th2.crawler.state.RecoveryState;
+import com.exactpro.th2.crawler.state.StateService;
+import com.exactpro.th2.crawler.state.v1.RecoveryState;
 import com.exactpro.cradle.utils.UpdateNotAppliedException;
 import com.exactpro.th2.common.grpc.ConnectionID;
 import com.exactpro.th2.common.grpc.Direction;
@@ -39,6 +40,7 @@ import com.exactpro.th2.dataprovider.grpc.EventSearchRequest;
 import com.exactpro.th2.dataprovider.grpc.MessageData;
 import com.exactpro.th2.dataprovider.grpc.MessageSearchRequest;
 import com.exactpro.th2.dataprovider.grpc.StreamResponse;
+import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -72,6 +74,7 @@ public class CrawlerTest {
     private final DataProviderService dataProviderMock = mock(DataProviderService.class);
     private final CradleStorage storageMock = mock(CradleStorage.class);
     private final IntervalsWorker intervalsWorkerMock = mock(IntervalsWorker.class);
+    private final StateService<RecoveryState> stateService = StateService.createFromClasspath(RecoveryState.class, dataProviderMock);
 
     private List<Interval> intervals;
     private List<StreamResponse> searchEventResponse;
@@ -130,7 +133,7 @@ public class CrawlerTest {
 
         when(intervalsWorkerMock.updateRecoveryState(any(Interval.class), anyString())).then(invocation -> {
             Interval interval = invocation.getArgument(0);
-            RecoveryState state = RecoveryState.getStateFromJson(invocation.getArgument(1));
+            RecoveryState state = stateService.deserialize(invocation.getArgument(1));
 
             List<Interval> intervalList = intervals.stream().filter(i -> i.getStartTime().equals(interval.getStartTime())
                     && i.getCrawlerName().equals(interval.getCrawlerName())
@@ -143,7 +146,7 @@ public class CrawlerTest {
                 throw new UpdateNotAppliedException("Failed to update recovery state at interval from "
                         +interval.getStartTime()+", to "+interval.getEndTime());
 
-            interval.setRecoveryState(state.convertToJson());
+            interval.setRecoveryState(stateService.serialize(state));
             interval.setLastUpdateDateTime(Instant.now());
 
             return interval;
@@ -217,7 +220,7 @@ public class CrawlerTest {
                 "EVENTS", "PT1H", 1, ChronoUnit.NANOS, 1, 10, 5,
                 ChronoUnit.MINUTES, true, new HashSet<>());
 
-        Crawler crawler = new Crawler(storageMock, dataServiceMock, dataProviderMock, configuration, new CrawlerTimeTestImpl());
+        Crawler crawler = createCrawler(configuration);
 
         crawler.process();
 
@@ -234,7 +237,7 @@ public class CrawlerTest {
                 "EVENTS", "PT1H", 1, ChronoUnit.NANOS, 1, 10, 5,
                 ChronoUnit.MINUTES, true, new HashSet<>());
 
-        Crawler crawler = new Crawler(storageMock, dataServiceMock, dataProviderMock, configuration, new CrawlerTimeTestImpl());
+        Crawler crawler = createCrawler(configuration);
 
         when(dataServiceMock.crawlerConnect(any(CrawlerInfo.class)))
                 .thenReturn(DataProcessorInfo.newBuilder().setEventId(toEventID("3")).setName("another_crawler").setVersion(version).build());
@@ -259,7 +262,7 @@ public class CrawlerTest {
                 "MESSAGES", "PT1H", 1, ChronoUnit.NANOS, 1, 10, 5,
                 ChronoUnit.MINUTES, true, new HashSet<>(Arrays.asList(aliases)));
 
-        Crawler crawler = new Crawler(storageMock, dataServiceMock, dataProviderMock, configuration, new CrawlerTimeTestImpl());
+        Crawler crawler = createCrawler(configuration);
 
         String exceptionMessage = "Test exception";
 
@@ -283,5 +286,10 @@ public class CrawlerTest {
         when(dataServiceMock.sendMessage(any(MessageDataRequest.class))).thenThrow(new RuntimeException(exceptionMessage));
 
         Assertions.assertThrows(RuntimeException.class, crawler::process, exceptionMessage);
+    }
+
+    @NotNull
+    private Crawler createCrawler(CrawlerConfiguration configuration) {
+        return new Crawler(stateService, storageMock, dataServiceMock, dataProviderMock, configuration, new CrawlerTimeTestImpl());
     }
 }

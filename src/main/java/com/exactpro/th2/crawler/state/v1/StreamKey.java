@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.exactpro.th2.crawler.state;
+package com.exactpro.th2.crawler.state.v1;
 
 import java.util.Objects;
 

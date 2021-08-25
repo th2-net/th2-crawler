@@ -14,47 +14,41 @@
  * limitations under the License.
  */
 
-package com.exactpro.th2.crawler.state;
+package com.exactpro.th2.crawler.state.v1;
 
 import java.time.Instant;
 import java.util.Objects;
 
-import com.exactpro.cradle.testevents.StoredTestEventWrapper;
 import com.exactpro.cradle.utils.CompressionUtils;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-public class InnerEventId {
-    private final Instant startTimestamp;
-    private final String id;
-
-    public InnerEventId(StoredTestEventWrapper event) {
-        this.startTimestamp = event.getStartTimestamp();
-        this.id = event.getId().toString();
-    }
+public class InnerMessageId {
+    private final Instant timestamp;
+    private final long sequence;
 
     @JsonCreator
-    public InnerEventId(
-            @JsonProperty("startTimestamp") Instant startTimestamp,
-            @JsonProperty("id") String id
+    public InnerMessageId(
+            @JsonProperty("timestamp") Instant timestamp,
+            @JsonProperty("sequence") long sequence
     ) {
-        this.startTimestamp = startTimestamp;
-        this.id = id;
+        this.timestamp = timestamp;
+        this.sequence = sequence;
     }
 
-    public Instant getStartTimestamp() {
-        return startTimestamp;
+    public Instant getTimestamp() {
+        return timestamp;
     }
 
-    public String getId() {
-        return id;
+    public long getSequence() {
+        return sequence;
     }
 
     @Override
     public String toString() {
-        return "InnerEvent{" + CompressionUtils.EOL
-                + "id=" + id + CompressionUtils.EOL
-                + "startTimestamp=" + startTimestamp + CompressionUtils.EOL
+        return "InnerMessage{" + CompressionUtils.EOL
+                + "timestamp=" + timestamp + CompressionUtils.EOL
+                + "sequence=" + sequence + CompressionUtils.EOL
                 + "}";
     }
 
@@ -62,12 +56,12 @@ public class InnerEventId {
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
-        InnerEventId that = (InnerEventId) o;
-        return startTimestamp.equals(that.startTimestamp) && id.equals(that.id);
+        InnerMessageId that = (InnerMessageId) o;
+        return sequence == that.sequence && Objects.equals(timestamp, that.timestamp);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(startTimestamp, id);
+        return Objects.hash(timestamp, sequence);
     }
 }

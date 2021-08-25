@@ -14,9 +14,12 @@
  * limitations under the License.
  */
 
-package com.exactpro.th2.crawler.state;
+package com.exactpro.th2.crawler.state.v1;
 
 import com.exactpro.cradle.utils.CompressionUtils;
+import com.exactpro.th2.crawler.state.BaseState;
+import com.exactpro.th2.crawler.state.Version;
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -24,12 +27,13 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.Map;
 import java.util.Objects;
 import java.util.StringJoiner;
 
-public class RecoveryState {
+public class RecoveryState implements BaseState {
     private final InnerEventId lastProcessedEvent;
 
     @JsonDeserialize(converter = StreamKeyMapConverter.Deserialize.class)
@@ -40,10 +44,7 @@ public class RecoveryState {
 
     private final long lastNumberOfMessages;
 
-    private static final ObjectMapper MAPPER = new ObjectMapper()
-            .registerModule(new JavaTimeModule())
-            .configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false);
-
+    @JsonCreator
     public RecoveryState(@JsonProperty("lastProcessedEvent") InnerEventId lastProcessedEvent,
                          @JsonProperty("lastProcessedMessages") Map<StreamKey, InnerMessageId> lastProcessedMessages,
                          @JsonProperty("lastNumberOfEvents") long lastNumberOfEvents,
@@ -61,14 +62,6 @@ public class RecoveryState {
     public long getLastNumberOfEvents() { return lastNumberOfEvents; }
 
     public long getLastNumberOfMessages() { return lastNumberOfMessages; }
-
-    public String convertToJson() throws JsonProcessingException {
-        return MAPPER.writeValueAsString(this);
-    }
-
-    public static RecoveryState getStateFromJson(String json) throws JsonProcessingException {
-        return MAPPER.readValue(json, RecoveryState.class);
-    }
 
     @Override
     public String toString() {

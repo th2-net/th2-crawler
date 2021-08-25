@@ -26,6 +26,7 @@ import com.exactpro.th2.crawler.Crawler
 import com.exactpro.th2.crawler.CrawlerConfiguration
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService
 import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException
+import com.exactpro.th2.crawler.state.StateService
 import com.exactpro.th2.dataprovider.grpc.DataProviderService
 import mu.KotlinLogging
 import java.io.IOException
@@ -73,6 +74,7 @@ fun main(args: Array<String>) {
         liveness = true
 
         val crawler = Crawler(
+            StateService.createFromClasspath(dataProviderService),
             cradleManager.storage,
             dataProcessor,
             dataProviderService,
