@@ -31,9 +31,8 @@ import mu.KotlinLogging
 import java.io.IOException
 import java.util.Deque
 import java.util.concurrent.ConcurrentLinkedDeque
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
-import java.util.concurrent.locks.Condition
-import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.thread
 import kotlin.system.exitProcess
 
@@ -87,20 +86,8 @@ fun main(args: Array<String>) {
 
         val state = AtomicReference(State.WAIT)
         resources += AutoCloseable {
-            LOGGER.info { "Awaiting the crawler finishes current processing" }
-
-            val timeout = configuration.shutdownTimeout
-            val unit = configuration.shutdownTimeoutUnit
-            if (!state.compareAndSet(State.WAIT, State.STOP)) {
-                val awaitTime = System.currentTimeMillis() + unit.toMillis(timeout)
-                while (!state.compareAndSet(State.WAIT, State.STOP) && System.currentTimeMillis() < awaitTime) {
-                    Thread.sleep(100) // await processing finished
-                }
-            }
-            if (state.get() == State.STOP) {
-                LOGGER.info { "Crawler has finished processing the current interval" }
-            } else {
-                LOGGER.warn { "Crawler did not finish processing the current interval in $timeout $unit" }
+            with(configuration) {
+                awaitCrawlerFinishesProcessing(state, shutdownTimeout, shutdownTimeoutUnit)
             }
         }
 
@@ -137,6 +124,28 @@ fun main(args: Array<String>) {
     } catch (ex: Exception) {
         LOGGER.error("Cannot start Crawler", ex)
         exitProcess(1)
+    }
+}
+
+private fun awaitCrawlerFinishesProcessing(
+    state: AtomicReference<State>,
+    timeout: Long,
+    unit: TimeUnit,
+) {
+    LOGGER.info { "Awaiting the crawler finishes current processing" }
+
+    val switchState: () -> Boolean = { state.compareAndSet(State.WAIT, State.STOP) }
+
+    if (!switchState()) {
+        val awaitTime = System.currentTimeMillis() + unit.toMillis(timeout)
+        while (!switchState() && System.currentTimeMillis() < awaitTime) {
+            Thread.sleep(100) // await processing finished
+        }
+    }
+    if (state.get() == State.STOP) {
+        LOGGER.info { "Crawler has finished processing the current interval" }
+    } else {
+        LOGGER.warn { "Crawler did not finish processing the current interval in $timeout $unit" }
     }
 }
 

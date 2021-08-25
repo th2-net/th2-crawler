@@ -42,7 +42,14 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.time.Instant;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 
 public class CrawlerUtils {
@@ -53,17 +60,15 @@ public class CrawlerUtils {
     }
 
     public static SearchResult<EventData> searchEvents(DataProviderService dataProviderService,
-                                               EventsSearchInfo info) {
+                                                       EventsSearchParameters info) {
 
-        EventSearchRequest.Builder eventSearchBuilder = info.searchBuilder;
-        EventSearchRequest request;
-
-        eventSearchBuilder
+        EventSearchRequest.Builder eventSearchBuilder = EventSearchRequest.newBuilder()
                 .setMetadataOnly(BoolValue.newBuilder().setValue(false).build())
                 .setStartTimestamp(info.from)
                 .setEndTimestamp(info.to)
                 .setResultCountLimit(Int32Value.of(info.batchSize));
 
+        EventSearchRequest request;
         if (info.resumeId == null)
             request = eventSearchBuilder.build();
         else
@@ -75,15 +80,13 @@ public class CrawlerUtils {
     public static SearchResult<MessageData> searchMessages(DataProviderService dataProviderService,
                                                    MessagesSearchParameters info) {
 
-        MessageSearchRequest.Builder messageSearchBuilder = info.searchBuilder;
-        MessageSearchRequest request;
-
-        messageSearchBuilder
+        MessageSearchRequest.Builder messageSearchBuilder = MessageSearchRequest.newBuilder()
                 .setStartTimestamp(info.from)
                 .setEndTimestamp(info.to)
                 .setResultCountLimit(Int32Value.of(info.batchSize))
                 .setStream(StringList.newBuilder().addAllListString(info.aliases).build());
 
+        MessageSearchRequest request;
         if (info.resumeIds == null || info.resumeIds.isEmpty()) {
             request = messageSearchBuilder.build();
         } else {
@@ -192,16 +195,14 @@ public class CrawlerUtils {
         return new SearchResult<>(data == null ? Collections.emptyList() : data, streamsInfo);
     }
 
-    public static class EventsSearchInfo {
-        private final EventSearchRequest.Builder searchBuilder;
+    public static class EventsSearchParameters {
         private final Timestamp from;
         private final Timestamp to;
         private final int batchSize;
         private final EventID resumeId;
 
-        public EventsSearchInfo(EventSearchRequest.Builder searchBuilder, Timestamp from, Timestamp to,
-                                int batchSize, EventID resumeId) {
-            this.searchBuilder = Objects.requireNonNull(searchBuilder, "Search builder must not be null");
+        public EventsSearchParameters(Timestamp from, Timestamp to,
+                                      int batchSize, EventID resumeId) {
             this.from = Objects.requireNonNull(from, "Timestamp 'from' must not be null");
             this.to = Objects.requireNonNull(to, "Timestamp 'to' must not be null");
             this.batchSize = batchSize;
@@ -210,16 +211,14 @@ public class CrawlerUtils {
     }
 
     public static class MessagesSearchParameters {
-        private final MessageSearchRequest.Builder searchBuilder;
         private final Timestamp from;
         private final Timestamp to;
         private final int batchSize;
         private final Map<StreamKey, MessageID> resumeIds;
         private final Collection<String> aliases;
 
-        public MessagesSearchParameters(MessageSearchRequest.Builder searchBuilder, Timestamp from, Timestamp to,
+        public MessagesSearchParameters(Timestamp from, Timestamp to,
                                         int batchSize, Map<StreamKey, MessageID> resumeIds, Collection<String> aliases) {
-            this.searchBuilder = Objects.requireNonNull(searchBuilder, "Search builder must not be null");
             this.from = Objects.requireNonNull(from, "Timestamp 'from' must not be null");
             this.to = Objects.requireNonNull(to, "Timestamp 'to' must not be null");
             this.batchSize = batchSize;
@@ -229,7 +228,6 @@ public class CrawlerUtils {
 
         public MessagesSearchParameters copyWithNewLimit(int limit) {
             return new MessagesSearchParameters(
-                    MessageSearchRequest.newBuilder(),
                     from, to, limit, resumeIds, aliases
             );
         }

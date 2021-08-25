@@ -41,6 +41,7 @@ import com.exactpro.th2.crawler.exception.ConfigurationException;
 import com.exactpro.th2.crawler.state.StreamKey;
 import com.exactpro.th2.crawler.util.CrawlerTime;
 import com.exactpro.th2.crawler.util.CrawlerUtils;
+import com.exactpro.th2.crawler.util.CrawlerUtils.EventsSearchParameters;
 import com.exactpro.th2.crawler.util.CrawlerUtils.MessagesSearchParameters;
 import com.exactpro.th2.crawler.util.SearchResult;
 import com.exactpro.th2.crawler.util.impl.CrawlerTimeImpl;
@@ -48,7 +49,6 @@ import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import com.exactpro.th2.dataprovider.grpc.EventData;
 import com.exactpro.th2.dataprovider.grpc.EventSearchRequest;
 import com.exactpro.th2.dataprovider.grpc.MessageData;
-import com.exactpro.th2.dataprovider.grpc.MessageSearchRequest;
 import com.exactpro.th2.dataprovider.grpc.Stream;
 import com.exactpro.th2.dataprovider.grpc.StreamsInfo;
 import com.google.protobuf.Timestamp;
@@ -247,11 +247,10 @@ public class Crawler {
 
         while (search) {
 
-            EventSearchRequest.Builder searchBuilder = EventSearchRequest.newBuilder();
             EventDataRequest.Builder eventRequestBuilder = EventDataRequest.newBuilder();
 
             SearchResult<EventData> result = CrawlerUtils.searchEvents(dataProviderService,
-                    new CrawlerUtils.EventsSearchInfo(searchBuilder, fromTimestamp, toTimestamp, batchSize, resumeId));
+                    new EventsSearchParameters(fromTimestamp, toTimestamp, batchSize, resumeId));
             List<EventData> events = result.getData();
 
             if (events.isEmpty()) {
@@ -340,10 +339,9 @@ public class Crawler {
 
         while (search) {
 
-            MessageSearchRequest.Builder searchBuilder = MessageSearchRequest.newBuilder();
             MessageDataRequest.Builder messageDataBuilder = MessageDataRequest.newBuilder();
 
-            MessagesSearchParameters searchParams = new MessagesSearchParameters(searchBuilder, fromTimestamp, toTimestamp, batchSize, resumeIds, info.aliases);
+            MessagesSearchParameters searchParams = new MessagesSearchParameters(fromTimestamp, toTimestamp, batchSize, resumeIds, info.aliases);
             SearchResult<MessageData> result = CrawlerUtils.searchMessages(dataProviderService, searchParams);
             List<MessageData> messages = result.getData();
 
