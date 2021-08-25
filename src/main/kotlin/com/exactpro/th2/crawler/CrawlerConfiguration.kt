@@ -20,7 +20,7 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import java.time.temporal.ChronoUnit
 import java.util.concurrent.TimeUnit
 
-class CrawlerConfiguration(
+class CrawlerConfiguration @JvmOverloads constructor(
     @JsonProperty
     val from: String,
     @JsonProperty
