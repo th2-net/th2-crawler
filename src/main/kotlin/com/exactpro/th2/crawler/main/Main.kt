@@ -19,34 +19,54 @@
 package com.exactpro.th2.crawler.main
 
 import com.exactpro.cradle.utils.UpdateNotAppliedException
-import com.exactpro.th2.crawler.Crawler
 import com.exactpro.th2.common.metrics.liveness
 import com.exactpro.th2.common.metrics.readiness
 import com.exactpro.th2.common.schema.factory.CommonFactory
-import com.exactpro.th2.common.schema.grpc.router.GrpcRouter
+import com.exactpro.th2.crawler.Crawler
 import com.exactpro.th2.crawler.CrawlerConfiguration
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService
 import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException
 import com.exactpro.th2.dataprovider.grpc.DataProviderService
 import mu.KotlinLogging
-import kotlin.system.exitProcess
-
 import java.io.IOException
+import java.util.Deque
+import java.util.concurrent.ConcurrentLinkedDeque
+import java.util.concurrent.locks.Condition
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.thread
+import kotlin.system.exitProcess
 
 private val LOGGER = KotlinLogging.logger { }
 
 fun main(args: Array<String>) {
     LOGGER.info { "Starting com.exactpro.th2.crawler.Crawler" }
+    // Here is an entry point to the th2-box.
 
-    var factory: CommonFactory? = null
+    // Configure shutdown hook for closing all resources
+    // and the lock condition to await termination.
+    //
+    // If you use the logic that doesn't require additional threads
+    // and you can run everything on main thread
+    // you can omit the part with locks (but please keep the resources queue)
+    val resources: Deque<AutoCloseable> = ConcurrentLinkedDeque()
+    val lock = ReentrantLock()
+    val condition: Condition = lock.newCondition()
+    configureShutdownHook(resources, lock, condition)
+
     try {
-        factory = CommonFactory.createFromArguments(*args)
+        // You need to initialize the CommonFactory
+
+        // You can use custom paths to each config that is required for the CommonFactory
+        // If args are empty the default path will be chosen.
+        val factory = CommonFactory.createFromArguments(*args)
+        // do not forget to add resource to the resources queue
+        resources += factory
+
+        val cradleManager = factory.cradleManager
 
         val grpcRouter = factory.grpcRouter
         val dataProcessor = grpcRouter.getService(DataProcessorService::class.java)
         val dataProviderService = grpcRouter.getService(DataProviderService::class.java)
-
-        val cradleManager = factory.cradleManager
 
         val configuration = factory.getCustomConfiguration(CrawlerConfiguration::class.java)
 
@@ -89,9 +109,30 @@ fun main(args: Array<String>) {
     } catch (ex: Exception) {
         LOGGER.error("Cannot start Crawler", ex)
         exitProcess(1)
-    } finally {
-        readiness = false
-        runCatching { factory?.close() }.onFailure { LOGGER.error(it) { "Cannot close common factory" } }
-        liveness = false
     }
+}
+
+private fun configureShutdownHook(resources: Deque<AutoCloseable>, lock: ReentrantLock, condition: Condition) {
+    Runtime.getRuntime().addShutdownHook(thread(
+        start = false,
+        name = "Shutdown hook"
+    ) {
+        LOGGER.info { "Shutdown start" }
+        readiness = false
+        try {
+            lock.lock()
+            condition.signalAll()
+        } finally {
+            lock.unlock()
+        }
+        resources.descendingIterator().forEachRemaining { resource ->
+            try {
+                resource.close()
+            } catch (e: Exception) {
+                LOGGER.error(e) { "Cannot close resource ${resource::class}" }
+            }
+        }
+        liveness = false
+        LOGGER.info { "Shutdown end" }
+    })
 }
