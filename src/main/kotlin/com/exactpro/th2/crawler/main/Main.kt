@@ -89,18 +89,18 @@ fun main(args: Array<String>) {
         resources += AutoCloseable {
             LOGGER.info { "Awaiting the crawler finishes current processing" }
 
+            val timeout = configuration.shutdownTimeout
+            val unit = configuration.shutdownTimeoutUnit
             if (!state.compareAndSet(State.WAIT, State.STOP)) {
-                val timeout = configuration.shutdownTimeout
-                val unit = configuration.shutdownTimeoutUnit
                 val awaitTime = System.currentTimeMillis() + unit.toMillis(timeout)
                 while (!state.compareAndSet(State.WAIT, State.STOP) && System.currentTimeMillis() < awaitTime) {
                     Thread.sleep(100) // await processing finished
                 }
             }
             if (state.get() == State.STOP) {
-                LOGGER.warn { "Crawler did not finish processing the current interval" }
-            } else {
                 LOGGER.info { "Crawler has finished processing the current interval" }
+            } else {
+                LOGGER.warn { "Crawler did not finish processing the current interval in $timeout $unit" }
             }
         }
 
