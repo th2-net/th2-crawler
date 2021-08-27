@@ -400,7 +400,7 @@ public class Crawler {
                         newState = new RecoveryState(null, startIntervalIDs, 0, numberOfMessages);
                     } else {
                         Map<StreamKey, InnerMessageId> old = oldState.getLastProcessedMessages();
-                        Map<StreamKey, InnerMessageId> lastProcessedMessages = old == null ? new HashMap<>() : new HashMap<>(old);
+                        Map<StreamKey, InnerMessageId> lastProcessedMessages = old == null ? new HashMap<>(startIDs) : new HashMap<>(old);
                         putAndCheck(checkpoints, lastProcessedMessages);
 
                         newState = new RecoveryState(oldState.getLastProcessedEvent(), lastProcessedMessages,
@@ -434,11 +434,11 @@ public class Crawler {
         return new SendingReport(CrawlerAction.NONE, interval, dataProcessorName, dataProcessorVersion, 0, numberOfMessages);
     }
 
-    private void putAndCheck(Map<StreamKey, InnerMessageId> checkpoints, Map<StreamKey, InnerMessageId> lastIntervalIDs) {
+    private void putAndCheck(Map<StreamKey, InnerMessageId> checkpoints, Map<StreamKey, InnerMessageId> destination) {
         for (Map.Entry<StreamKey, InnerMessageId> entry : checkpoints.entrySet()) {
             var streamKey = entry.getKey();
             var innerMessageId = entry.getValue();
-            InnerMessageId prevInnerMessageId = lastIntervalIDs.put(streamKey, innerMessageId);
+            InnerMessageId prevInnerMessageId = destination.put(streamKey, innerMessageId);
             if (prevInnerMessageId != null && prevInnerMessageId.getSequence() > innerMessageId.getSequence()) {
                 LOGGER.warn("The new checkpoint ID {} has less sequence than the previous one {} for stream key {}",
                         innerMessageId.getSequence(), prevInnerMessageId.getSequence(), streamKey);
