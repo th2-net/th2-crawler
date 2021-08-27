@@ -56,6 +56,6 @@ public class StreamKey {
 
     @Override
     public String toString() {
-        return sessionAlias + ", " + direction;
+        return sessionAlias + " (" + direction + ")";
     }
 }
