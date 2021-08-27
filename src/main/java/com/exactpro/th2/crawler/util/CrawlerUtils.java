@@ -19,7 +19,6 @@ package com.exactpro.th2.crawler.util;
 import com.exactpro.cradle.intervals.Interval;
 import com.exactpro.cradle.intervals.IntervalsWorker;
 import com.exactpro.th2.common.grpc.EventID;
-import com.exactpro.th2.common.grpc.MessageID;
 import com.exactpro.th2.common.message.MessageUtils;
 import com.exactpro.th2.crawler.state.StateService;
 import com.exactpro.th2.crawler.state.v1.InnerEventId;
@@ -34,6 +33,7 @@ import com.exactpro.th2.dataprovider.grpc.MessageSearchRequest;
 import com.exactpro.th2.dataprovider.grpc.StreamResponse;
 import com.exactpro.th2.dataprovider.grpc.StreamsInfo;
 import com.exactpro.th2.dataprovider.grpc.StringList;
+import com.exactpro.th2.dataprovider.grpc.TimeRelation;
 import com.google.protobuf.BoolValue;
 import com.google.protobuf.Int32Value;
 import com.google.protobuf.MessageOrBuilder;
@@ -44,7 +44,6 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -52,6 +51,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
+
+import static java.util.Objects.requireNonNullElse;
 
 public class CrawlerUtils {
     private static final Logger LOGGER = LoggerFactory.getLogger(CrawlerUtils.class);
@@ -82,19 +83,20 @@ public class CrawlerUtils {
                                                    MessagesSearchParameters info) {
 
         MessageSearchRequest.Builder messageSearchBuilder = MessageSearchRequest.newBuilder()
-                .setStartTimestamp(info.from)
-                .setEndTimestamp(info.to)
-                .setResultCountLimit(Int32Value.of(info.batchSize))
-                .setStream(StringList.newBuilder().addAllListString(info.aliases).build());
+                .setStartTimestamp(info.getFrom())
+                .setEndTimestamp(info.getTo())
+                .setResultCountLimit(Int32Value.of(info.getBatchSize()))
+                .setSearchDirection(requireNonNullElse(info.getTimeRelation(), TimeRelation.NEXT))
+                .setStream(StringList.newBuilder().addAllListString(info.getAliases()).build());
 
         MessageSearchRequest request;
-        if (info.resumeIds == null || info.resumeIds.isEmpty()) {
+        if (info.getResumeIds() == null || info.getResumeIds().isEmpty()) {
             request = messageSearchBuilder.build();
         } else {
-            request = messageSearchBuilder.addAllMessageId(info.resumeIds.values()).build();
+            request = messageSearchBuilder.addAllMessageId(info.getResumeIds().values()).build();
         }
 
-        return collectMessages(dataProviderService.searchMessages(request), info.to);
+        return collectMessages(dataProviderService.searchMessages(request), info.getTo());
     }
 
     public static Interval updateEventRecoveryState(
@@ -221,26 +223,4 @@ public class CrawlerUtils {
         }
     }
 
-    public static class MessagesSearchParameters {
-        private final Timestamp from;
-        private final Timestamp to;
-        private final int batchSize;
-        private final Map<StreamKey, MessageID> resumeIds;
-        private final Collection<String> aliases;
-
-        public MessagesSearchParameters(Timestamp from, Timestamp to,
-                                        int batchSize, Map<StreamKey, MessageID> resumeIds, Collection<String> aliases) {
-            this.from = Objects.requireNonNull(from, "Timestamp 'from' must not be null");
-            this.to = Objects.requireNonNull(to, "Timestamp 'to' must not be null");
-            this.batchSize = batchSize;
-            this.resumeIds = resumeIds;
-            this.aliases = aliases;
-        }
-
-        public MessagesSearchParameters copyWithNewLimit(int limit) {
-            return new MessagesSearchParameters(
-                    from, to, limit, resumeIds, aliases
-            );
-        }
-    }
 }

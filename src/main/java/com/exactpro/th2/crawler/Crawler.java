@@ -42,16 +42,16 @@ import com.exactpro.th2.crawler.state.v1.StreamKey;
 import com.exactpro.th2.crawler.util.CrawlerTime;
 import com.exactpro.th2.crawler.util.CrawlerUtils;
 import com.exactpro.th2.crawler.util.CrawlerUtils.EventsSearchParameters;
-import com.exactpro.th2.crawler.util.CrawlerUtils.MessagesSearchParameters;
+import com.exactpro.th2.crawler.util.MessagesSearchParameters;
 import com.exactpro.th2.crawler.util.SearchResult;
 import com.exactpro.th2.crawler.util.impl.CrawlerTimeImpl;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import com.exactpro.th2.dataprovider.grpc.EventData;
 import com.exactpro.th2.dataprovider.grpc.MessageData;
 import com.exactpro.th2.dataprovider.grpc.Stream;
+import com.exactpro.th2.dataprovider.grpc.TimeRelation;
 import com.google.protobuf.Timestamp;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -65,15 +65,23 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BinaryOperator;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toMap;
 import static java.util.stream.Collectors.toUnmodifiableMap;
+import static java.util.stream.Stream.concat;
+import static java.util.stream.Stream.empty;
 
 
 public class Crawler {
+    private static final Logger LOGGER = LoggerFactory.getLogger(Crawler.class);
+
+    public static final BinaryOperator<MessageID> LATEST_SEQUENCE = (first, second) -> first.getSequence() < second.getSequence() ? second : first;
+    public static final BinaryOperator<MessageID> EARLIEST_SEQUENCE = (first, second) -> first.getSequence() > second.getSequence() ? second : first;
+
     private final DataProcessorService dataProcessor;
     private final DataProviderService dataProviderService;
     private final IntervalsWorker intervalsWorker;
@@ -96,8 +104,6 @@ public class Crawler {
 
     private static final String EVENTS = "EVENTS";
     private static final String MESSAGES = "MESSAGES";
-
-    private static final Logger LOGGER = LoggerFactory.getLogger(Crawler.class);
 
     public Crawler(
             @NotNull StateService<RecoveryState> stateService,
@@ -340,6 +346,7 @@ public class Crawler {
         Timestamp toTimestamp = MessageUtils.toTimestamp(info.to);
         Map<StreamKey, MessageID> resumeIds = info.startIds;
         Map<StreamKey, InnerMessageId> startIDs = toInnerMessageIDs(resumeIds == null ? initialStartIds(fromTimestamp, info.aliases) : resumeIds);
+        LOGGER.debug("Initials IDs for interval: {}", startIDs);
         long numberOfMessages = 0L;
 
         long diff = 0L;
@@ -351,7 +358,7 @@ public class Crawler {
 
             MessageDataRequest.Builder messageDataBuilder = MessageDataRequest.newBuilder();
 
-            MessagesSearchParameters searchParams = new MessagesSearchParameters(fromTimestamp, toTimestamp, batchSize, resumeIds, info.aliases);
+            MessagesSearchParameters searchParams = MessagesSearchParameters.builder().setFrom(fromTimestamp).setTo(toTimestamp).setBatchSize(batchSize).setResumeIds(resumeIds).setAliases(info.aliases).build();
             SearchResult<MessageData> result = CrawlerUtils.searchMessages(dataProviderService, searchParams);
             List<MessageData> messages = result.getData();
 
@@ -440,20 +447,40 @@ public class Crawler {
     }
 
     private Map<StreamKey, MessageID> initialStartIds(Timestamp fromTimestamp, Collection<String> aliases) {
-        var parameters = new MessagesSearchParameters(fromTimestamp, fromTimestamp, 0/*Might don't work*/, null, aliases);
+        int batchSize = 1;
+        var parameters = MessagesSearchParameters.builder()
+                .setFrom(fromTimestamp)
+                .setTo(fromTimestamp)
+                .setBatchSize(batchSize)
+                .setAliases(aliases)
+                .build();
         SearchResult<MessageData> searchResult = CrawlerUtils.searchMessages(dataProviderService, parameters);
+        SearchResult<MessageData> oppositeRequest = null;
+
         if (!searchResult.getData().isEmpty()) {
             if (LOGGER.isWarnEnabled()) {
                 LOGGER.warn("Initialising start IDs request has returned unexpected data: " + searchResult.getData().stream()
                         .map(MessageUtils::toJson).collect(Collectors.joining(", ")));
+                oppositeRequest = CrawlerUtils.searchMessages(dataProviderService, MessagesSearchParameters.builder()
+                        .setFrom(fromTimestamp)
+                        .setTo(fromTimestamp)
+                        .setBatchSize(batchSize)
+                        .setResumeIds(associateWithStreamKey(searchResult.getData().stream().map(MessageData::getMessageId), EARLIEST_SEQUENCE))
+                        .setAliases(aliases)
+                        .setTimeRelation(TimeRelation.PREVIOUS)
+                        .build());
             }
         }
-        return requireNonNull(searchResult.getStreamsInfo(), "stream info is null for initial start IDs response")
-                .getStreamsList().stream()
-                .collect(toUnmodifiableMap(
-                        it -> new StreamKey(it.getSession(), it.getDirection()),
-                        Stream::getLastId
-                ));
+        return concat(
+                requireNonNull(searchResult.getStreamsInfo(), "stream info is null for initial start IDs response")
+                        .getStreamsList().stream()
+                        .map(Stream::getLastId),
+                oppositeRequest == null ? empty() : oppositeRequest.getData().stream().map(MessageData::getMessageId)
+        ).collect(toUnmodifiableMap(
+                this::createStreamKeyFrom,
+                Function.identity(),
+                LATEST_SEQUENCE
+        ));
     }
 
     private Map.Entry<@NotNull Integer, @NotNull Map<StreamKey, InnerMessageId>> processServiceResponse(
@@ -463,12 +490,7 @@ public class Crawler {
         if (responseIds.isEmpty()) {
             return null;
         }
-        Map<StreamKey, MessageID> checkpointByDirection = responseIds.stream()
-                .collect(toMap(
-                        this::createStreamKeyFrom,
-                        Function.identity(),
-                        (first, second) -> first.getSequence() < second.getSequence() ? second : first
-                ));
+        Map<StreamKey, MessageID> checkpointByDirection = associateWithStreamKey(responseIds.stream(), LATEST_SEQUENCE);
 
         int messageCount = 0;
         var skipAliases = new HashSet<String>(responseIds.size());
@@ -486,6 +508,15 @@ public class Crawler {
         }
 
         return Map.entry(messageCount, toInnerMessageIDs(checkpointByDirection));
+    }
+
+    @NotNull
+    private Map<StreamKey, MessageID> associateWithStreamKey(java.util.stream.Stream<MessageID> stream, BinaryOperator<MessageID> mergeFunction) {
+        return stream.collect(toMap(
+                        this::createStreamKeyFrom,
+                        Function.identity(),
+                        mergeFunction
+                ));
     }
 
     @NotNull

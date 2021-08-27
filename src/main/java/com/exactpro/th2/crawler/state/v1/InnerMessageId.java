@@ -18,6 +18,7 @@ package com.exactpro.th2.crawler.state.v1;
 
 import java.time.Instant;
 import java.util.Objects;
+import java.util.StringJoiner;
 
 import com.exactpro.cradle.utils.CompressionUtils;
 import com.fasterxml.jackson.annotation.JsonCreator;
@@ -46,10 +47,10 @@ public class InnerMessageId {
 
     @Override
     public String toString() {
-        return "InnerMessage{" + CompressionUtils.EOL
-                + "timestamp=" + timestamp + CompressionUtils.EOL
-                + "sequence=" + sequence + CompressionUtils.EOL
-                + "}";
+        return new StringJoiner(", ", InnerMessageId.class.getSimpleName() + "[", "]")
+                .add("timestamp=" + timestamp)
+                .add("sequence=" + sequence)
+                .toString();
     }
 
     @Override
