@@ -24,27 +24,40 @@ import com.exactpro.th2.common.grpc.MessageID;
 import com.exactpro.th2.crawler.state.v1.StreamKey;
 import com.exactpro.th2.dataprovider.grpc.TimeRelation;
 import com.google.protobuf.Timestamp;
+import org.jetbrains.annotations.Nullable;
 
 public class MessagesSearchParameters {
     private final Timestamp from;
     private final Timestamp to;
-    private int batchSize = 1;
-    private Map<StreamKey, MessageID> resumeIds;
-    private Collection<String> aliases;
-    private TimeRelation timeRelation = TimeRelation.NEXT;
+    private final int batchSize;
+    private final Map<StreamKey, MessageID> resumeIds;
+    private final Collection<String> aliases;
+    private final TimeRelation timeRelation;
 
     private MessagesSearchParameters(
             Timestamp from,
-            Timestamp to
+            Timestamp to,
+            int batchSize,
+            Map<StreamKey, MessageID> resumeIds,
+            Collection<String> aliases,
+            TimeRelation timeRelation
     ) {
+        if (aliases == null && resumeIds == null) {
+            throw new IllegalArgumentException("either aliases or resumeIds must be set");
+        }
         this.from = Objects.requireNonNull(from, "Timestamp 'from' must not be null");
-        this.to = Objects.requireNonNull(to, "Timestamp 'to' must not be null");
+        this.to = to;
+        this.batchSize = batchSize;
+        this.resumeIds = resumeIds;
+        this.aliases = aliases;
+        this.timeRelation = Objects.requireNonNull(timeRelation, "'Time relation' parameter");
     }
 
     public Timestamp getFrom() {
         return from;
     }
 
+    @Nullable
     public Timestamp getTo() {
         return to;
     }
@@ -53,10 +66,12 @@ public class MessagesSearchParameters {
         return batchSize;
     }
 
+    @Nullable
     public Map<StreamKey, MessageID> getResumeIds() {
         return resumeIds;
     }
 
+    @Nullable
     public Collection<String> getAliases() {
         return aliases;
     }
@@ -110,15 +125,7 @@ public class MessagesSearchParameters {
         }
 
         public MessagesSearchParameters build() {
-            if (aliases == null && resumeIds == null) {
-                throw new IllegalArgumentException("either aliases or resumeIds must be set");
-            }
-            MessagesSearchParameters parameters = new MessagesSearchParameters(from, to);
-            parameters.batchSize = batchSize;
-            parameters.aliases = aliases;
-            parameters.resumeIds = resumeIds;
-            parameters.timeRelation = timeRelation;
-            return parameters;
+            return new MessagesSearchParameters(from, to, batchSize, resumeIds, aliases, timeRelation);
         }
     }
 }

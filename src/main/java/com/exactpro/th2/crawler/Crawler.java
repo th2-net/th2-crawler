@@ -346,7 +346,7 @@ public class Crawler {
         Timestamp toTimestamp = MessageUtils.toTimestamp(info.to);
         Map<StreamKey, MessageID> resumeIds = info.startIds;
         Map<StreamKey, InnerMessageId> startIDs = toInnerMessageIDs(resumeIds == null ? initialStartIds(fromTimestamp, info.aliases) : resumeIds);
-        LOGGER.debug("Initials IDs for interval: {}", startIDs);
+        LOGGER.debug("Start IDs for interval: {}", startIDs);
         long numberOfMessages = 0L;
 
         long diff = 0L;
@@ -461,9 +461,11 @@ public class Crawler {
             if (LOGGER.isWarnEnabled()) {
                 LOGGER.warn("Initialising start IDs request has returned unexpected data: " + searchResult.getData().stream()
                         .map(MessageUtils::toJson).collect(Collectors.joining(", ")));
+                // We have a message with timestamp equal the `fromTimestamp`
+                // Because of that we need to make a request in opposite direction
+                // and select the first message for each pair alias + direction that were in the response (should be a single message)
                 oppositeRequest = CrawlerUtils.searchMessages(dataProviderService, MessagesSearchParameters.builder()
                         .setFrom(fromTimestamp)
-                        .setTo(fromTimestamp)
                         .setBatchSize(batchSize)
                         .setResumeIds(associateWithStreamKey(searchResult.getData().stream().map(MessageData::getMessageId), EARLIEST_SEQUENCE))
                         .setAliases(aliases)

@@ -83,9 +83,11 @@ public class CrawlerUtils {
                                                    MessagesSearchParameters info) {
 
         MessageSearchRequest.Builder messageSearchBuilder = MessageSearchRequest.newBuilder()
-                .setStartTimestamp(info.getFrom())
-                .setEndTimestamp(info.getTo())
-                .setResultCountLimit(Int32Value.of(info.getBatchSize()))
+                .setStartTimestamp(info.getFrom());
+        if (info.getTo() != null) {
+            messageSearchBuilder.setEndTimestamp(info.getTo());
+        }
+        messageSearchBuilder.setResultCountLimit(Int32Value.of(info.getBatchSize()))
                 .setSearchDirection(requireNonNullElse(info.getTimeRelation(), TimeRelation.NEXT))
                 .setStream(StringList.newBuilder().addAllListString(info.getAliases()).build());
 
@@ -196,7 +198,7 @@ public class CrawlerUtils {
                 data = new ArrayList<>();
             }
 
-            if (!to.equals(timeExtractor.apply(object))) {
+            if (to != null && !to.equals(timeExtractor.apply(object))) {
                 data.add(object);
 
                 if (LOGGER.isTraceEnabled()) {
