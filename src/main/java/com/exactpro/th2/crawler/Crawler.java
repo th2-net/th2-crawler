@@ -448,7 +448,7 @@ public class Crawler {
             var alias = entry.getKey();
             var streamData = entry.getValue();
             if (!streamData.finished) {
-                LOGGER.warn("MessageID {} from response was not found in messages", streamData.checkpointIDs.values());
+                LOGGER.warn("MessageID {} from response was not found in messages: {}", responseIds.get(alias), streamData.checkpointIDs.values());
                 continue;
             }
             if (streamData.checkpointIDs.size() > 1) {

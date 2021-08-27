@@ -140,7 +140,7 @@ public class CrawlerUtils {
                 : stateService.deserialize(interval.getRecoveryState());
         Map<StreamKey, InnerMessageId> lastProcessedMessages = new HashMap<>();
 
-        if (currentState != null) {
+        if (currentState != null && currentState.getLastProcessedMessages() != null) {
             lastProcessedMessages.putAll(currentState.getLastProcessedMessages());
         }
 
