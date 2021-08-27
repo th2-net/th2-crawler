@@ -18,6 +18,7 @@ package com.exactpro.th2.crawler.state
 
 import com.exactpro.th2.dataprovider.grpc.DataProviderService
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.kotlin.MissingKotlinParameterException
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
@@ -58,7 +59,8 @@ class TestStateService {
             }),
             TestStateProvider(TestVersion.C, StateC::class.java),
         ).associateBy { it.version },
-        dataProvider
+        dataProvider,
+        defaultImplementation = StateA::class.java
     )
 
     @Test
@@ -83,6 +85,27 @@ class TestStateService {
         Assertions.assertNotNull(stateC)
         stateC!!
         Assertions.assertEquals(42, stateC.value)
+    }
+
+    @Test
+    fun `uses default implementation if cannot deserialize by the version ID`() {
+        val stateC = stateService.deserialize("""{ "content": "42" }""")
+        Assertions.assertNotNull(stateC)
+        stateC!!
+        Assertions.assertEquals(42, stateC.value)
+    }
+
+    @Test
+    fun `fails if cannot deserialize using default implementation`() {
+        Assertions.assertThrows(MissingKotlinParameterException::class.java) {
+            stateService.deserialize("""{ "data": "42" }""")
+        }.also {
+            val messageToCheck =
+                "failed for JSON property content due to missing (therefore NULL) value for creator parameter content which is a non-nullable type"
+            Assertions.assertTrue(it.message?.contains(messageToCheck) ?: false) {
+                "Does not contain message: '$messageToCheck'. The actual exception is $it"
+            }
+        }
     }
 
     @Test

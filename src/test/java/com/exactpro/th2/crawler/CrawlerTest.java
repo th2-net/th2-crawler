@@ -74,7 +74,11 @@ public class CrawlerTest {
     private final DataProviderService dataProviderMock = mock(DataProviderService.class);
     private final CradleStorage storageMock = mock(CradleStorage.class);
     private final IntervalsWorker intervalsWorkerMock = mock(IntervalsWorker.class);
-    private final StateService<RecoveryState> stateService = StateService.createFromClasspath(RecoveryState.class, dataProviderMock);
+    private final StateService<RecoveryState> stateService = StateService.createFromClasspath(
+            RecoveryState.class,
+            dataProviderMock,
+            null
+    );
 
     private List<Interval> intervals;
     private List<StreamResponse> searchEventResponse;

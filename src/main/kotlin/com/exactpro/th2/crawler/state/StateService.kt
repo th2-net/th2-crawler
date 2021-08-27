@@ -17,9 +17,13 @@
 package com.exactpro.th2.crawler.state
 
 import com.exactpro.th2.dataprovider.grpc.DataProviderService
+import com.fasterxml.jackson.databind.DeserializationContext
+import com.fasterxml.jackson.databind.JavaType
 import com.fasterxml.jackson.databind.SerializationFeature
+import com.fasterxml.jackson.databind.deser.DeserializationProblemHandler
 import com.fasterxml.jackson.databind.json.JsonMapper
 import com.fasterxml.jackson.databind.jsontype.NamedType
+import com.fasterxml.jackson.databind.jsontype.TypeIdResolver
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.readValue
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
@@ -31,6 +35,7 @@ class StateService<CUR : BaseState>(
     private val currentStateClass: Class<out CUR>,
     private val providers: Map<VersionMarker, StateProvider>,
     private val dataProvide: DataProviderService,
+    private val defaultImplementation: Class<out BaseState>? = null
 ) {
     private val classToVersion: Map<Class<out BaseState>, VersionMarker> =
         providers.entries.map { (version, provider) -> provider.stateClass to version }
@@ -45,16 +50,22 @@ class StateService<CUR : BaseState>(
         .configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false)
         .apply {
             registerSubtypes(*providers.map { it.run { NamedType(value.stateClass, key.name) } }.toTypedArray())
+            defaultImplementation?.also { addHandler(DeserializationProblemHandlerImpl(it)) }
         }
     private val versions = providers.keys.sortedBy(VersionMarker::number)
     private val currentVersion = versions.last()
 
     init {
         val version = requireNotNull(classToVersion[currentStateClass]) {
-            "Current state ${currentStateClass.simpleName} does not have a provider"
+            "Current state ${currentStateClass.canonicalName} does not have a provider"
         }
         require(currentVersion == version) {
-            "$currentVersion does not match version $version for ${currentStateClass.simpleName}"
+            "$currentVersion does not match version $version for ${currentStateClass.canonicalName}"
+        }
+        defaultImplementation?.also {
+            requireNotNull(classToVersion[it]) {
+                "The default implementation ${it.canonicalName} does not have a provider"
+            }
         }
         require(versions.size == versions.map(VersionMarker::number).toSet().size) {
             "Some versions have duplicated numbers: ${versions.joinToString(", ") { "${it.name}=${it.number}" } }"
@@ -102,26 +113,48 @@ class StateService<CUR : BaseState>(
         }.let(currentStateClass::cast)
     }
 
+    private class DeserializationProblemHandlerImpl(
+        private val defaultImplementation: Class<out BaseState>
+    ): DeserializationProblemHandler() {
+        override fun handleMissingTypeId(
+            ctxt: DeserializationContext,
+            baseType: JavaType,
+            idResolver: TypeIdResolver,
+            failureMsg: String
+        ): JavaType? {
+            return when {
+                baseType.isTypeOrSubTypeOf(BaseState::class.java) -> {
+                    LOGGER.info { "Using default implementation $defaultImplementation to deserialize state" }
+                    ctxt.typeFactory.constructSimpleType(defaultImplementation, emptyArray())
+                }
+                else -> null
+            }
+        }
+    }
+
     companion object {
         private val LOGGER = KotlinLogging.logger { }
 
         @JvmStatic
         inline fun <reified T : BaseState> create(
             providers: Map<VersionMarker, StateProvider>,
-            dataProvide: DataProviderService,
-        ): StateService<T> = create(T::class.java, providers, dataProvide)
+            dataProvider: DataProviderService,
+            defaultImplementation: Class<out BaseState>? = null,
+        ): StateService<T> = create(T::class.java, providers, dataProvider, defaultImplementation)
 
         @JvmStatic
         fun <T : BaseState> create(
             currentStateClass: Class<out T>,
             providers: Map<VersionMarker, StateProvider>,
-            dataProvide: DataProviderService
-        ) = StateService(currentStateClass, providers, dataProvide)
+            dataProvider: DataProviderService,
+            defaultImplementation: Class<out BaseState>? = null,
+        ) = StateService(currentStateClass, providers, dataProvider, defaultImplementation)
 
         @JvmStatic
         inline fun <reified T : BaseState> createFromClasspath(
-            dataProvide: DataProviderService,
-        ): StateService<T> = createFromClasspath(T::class.java, dataProvide)
+            dataProvider: DataProviderService,
+            defaultImplementation: Class<out BaseState>? = null,
+        ): StateService<T> = createFromClasspath(T::class.java, dataProvider, defaultImplementation)
 
         /**
          * Loads state providers using [ServiceLoader] from the classpath
@@ -129,7 +162,8 @@ class StateService<CUR : BaseState>(
         @JvmStatic
         fun <T : BaseState> createFromClasspath(
             currentStateClass: Class<out T>,
-            dataProvide: DataProviderService
+            dataProvider: DataProviderService,
+            defaultImplementation: Class<out BaseState>? = null,
         ): StateService<T> =
             create(
                 currentStateClass,
@@ -139,7 +173,8 @@ class StateService<CUR : BaseState>(
                         require(first) { "Duplicated providers for version $key: ${current.className}, ${element.className}" }
                         element
                     },
-                dataProvide
+                dataProvider,
+                defaultImplementation,
             )
 
         private val Any?.className: String?

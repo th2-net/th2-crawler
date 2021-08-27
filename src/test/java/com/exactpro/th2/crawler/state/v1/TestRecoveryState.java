@@ -30,7 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class TestRecoveryState {
     private final StateService<RecoveryState> stateService =
-            StateService.createFromClasspath(RecoveryState.class, Mockito.mock(DataProviderService.class));
+            StateService.createFromClasspath(RecoveryState.class, Mockito.mock(DataProviderService.class), null);
     @Test
     void correctlySerializesAndDeserializes() {
         var state = new RecoveryState(
