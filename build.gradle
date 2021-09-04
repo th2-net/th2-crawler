@@ -41,6 +41,7 @@ dependencies {
     // the library for interaction with infra API
     implementation 'com.exactpro.th2:common:3.24.2'
 
+    implementation group: 'com.google.protobuf', name: 'protobuf-java-util', version: '3.18.0-rc-2'
     implementation "com.exactpro.th2:grpc-crawler-data-processor:${grpcCrawlerVersion}"
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310") {
         because('we need to process java Instant class')

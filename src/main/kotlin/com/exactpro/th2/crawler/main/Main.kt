@@ -48,7 +48,7 @@ private enum class State { WORK, WAIT, STOP }
 // TODO find the solution and delete this code
 @Throws(NoSuchFieldException::class, IllegalAccessException::class)
 private fun changeRecursionLimit() {
-    val recursionLimitField = CodedInputStream::class.java.getDeclaredField("DEFAULT_RECURSION_LIMIT")
+    val recursionLimitField = CodedInputStream::class.java.getDeclaredField("defaultRecursionLimit")
     recursionLimitField.isAccessible = true
     val modifiersField = Field::class.java.getDeclaredField("modifiers")
     modifiersField.isAccessible = true
