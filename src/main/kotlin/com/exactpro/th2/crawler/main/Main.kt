@@ -29,8 +29,11 @@ import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException
 import com.exactpro.th2.crawler.state.StateService
 import com.exactpro.th2.crawler.state.v1.RecoveryState
 import com.exactpro.th2.dataprovider.grpc.DataProviderService
+import com.google.protobuf.CodedInputStream
 import mu.KotlinLogging
 import java.io.IOException
+import java.lang.reflect.Field
+import java.lang.reflect.Modifier
 import java.util.Deque
 import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.TimeUnit
@@ -41,7 +44,20 @@ import kotlin.system.exitProcess
 private val LOGGER = KotlinLogging.logger { }
 private enum class State { WORK, WAIT, STOP }
 
+// Problem: https://github.com/grpc/grpc-java/issues/8256
+// TODO find the solution and delete this code
+@Throws(NoSuchFieldException::class, IllegalAccessException::class)
+private fun changeRecursionLimit() {
+    val recursionLimitField = CodedInputStream::class.java.getDeclaredField("DEFAULT_RECURSION_LIMIT")
+    recursionLimitField.isAccessible = true
+    val modifiersField = Field::class.java.getDeclaredField("modifiers")
+    modifiersField.isAccessible = true
+    modifiersField.setInt(recursionLimitField, recursionLimitField.modifiers and Modifier.FINAL.inv())
+    recursionLimitField[null] = 400
+}
+
 fun main(args: Array<String>) {
+    changeRecursionLimit()
     LOGGER.info { "Starting com.exactpro.th2.crawler.Crawler" }
     // Here is an entry point to the th2-box.
 
