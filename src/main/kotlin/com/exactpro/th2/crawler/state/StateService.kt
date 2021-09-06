@@ -74,6 +74,15 @@ class StateService<CUR : BaseState>(
         require(versions.size == names.size) {
             "Some versions have duplicated names: $names"
         }
+        val converterVersions = providers.mapNotNull { it.value.converter?.target }
+        val expectedConverterVersion = versions.drop(1)
+        require(converterVersions == expectedConverterVersion) {
+            if (converterVersions.containsAll(expectedConverterVersion)) {
+                "Unordered converters. Expected order: $expectedConverterVersion but actual order: $converterVersions"
+            } else {
+                "No all versions have expected converters. Missing converters to versions: ${(expectedConverterVersion - converterVersions)}"
+            }
+        }
         LOGGER.info { "StateService initialized with following versions loaded: ${providers.keys}. Current version: $currentVersion" }
     }
 

@@ -58,5 +58,6 @@ interface StateProvider {
 }
 
 interface StateConverter<IN, out OUT> {
+    val target: VersionMarker
     fun convert(input: IN, dataProvider: DataProviderService): OUT
 }

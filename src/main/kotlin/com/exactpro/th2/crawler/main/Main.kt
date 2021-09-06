@@ -19,8 +19,8 @@
 package com.exactpro.th2.crawler.main
 
 import com.exactpro.cradle.utils.UpdateNotAppliedException
-import com.exactpro.th2.common.metrics.liveness
-import com.exactpro.th2.common.metrics.readiness
+import com.exactpro.th2.common.metrics.LIVENESS_MONITOR
+import com.exactpro.th2.common.metrics.READINESS_MONITOR
 import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.exactpro.th2.crawler.Crawler
 import com.exactpro.th2.crawler.CrawlerConfiguration
@@ -72,7 +72,7 @@ fun main(args: Array<String>) {
         val configuration = factory.getCustomConfiguration(CrawlerConfiguration::class.java)
 
         // The BOX is alive
-        liveness = true
+        LIVENESS_MONITOR.enable()
 
         val crawler = Crawler(
             StateService.createFromClasspath(
@@ -87,7 +87,7 @@ fun main(args: Array<String>) {
         )
 
         // The BOX is ready to work
-        readiness = true
+        READINESS_MONITOR.enable()
 
         LOGGER.info { "Crawler was created and is going to start" }
 
@@ -162,7 +162,7 @@ private fun configureShutdownHook(resources: Deque<AutoCloseable>) {
         name = "Shutdown hook"
     ) {
         LOGGER.info { "Shutdown start" }
-        readiness = false
+        READINESS_MONITOR.disable()
         resources.descendingIterator().forEachRemaining { resource ->
             try {
                 resource.close()
@@ -170,7 +170,7 @@ private fun configureShutdownHook(resources: Deque<AutoCloseable>) {
                 LOGGER.error(e) { "Cannot close resource ${resource::class}" }
             }
         }
-        liveness = false
+        LIVENESS_MONITOR.disable()
         LOGGER.info { "Shutdown end" }
     })
 }

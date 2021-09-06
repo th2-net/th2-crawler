@@ -19,7 +19,8 @@ package com.exactpro.th2.crawler.state
 import com.exactpro.th2.dataprovider.grpc.DataProviderService
 
 abstract class StdStateConverter<IN : BaseState, OUT>(
-    private val inputClass: Class<IN>
+    private val inputClass: Class<IN>,
+    override val target: VersionMarker,
 ) : StateConverter<BaseState, OUT> {
     final override fun convert(input: BaseState, dataProvider: DataProviderService): OUT {
         return convertState(inputClass.cast(input), dataProvider)
@@ -29,12 +30,19 @@ abstract class StdStateConverter<IN : BaseState, OUT>(
 
     companion object {
         @JvmStatic
-        inline fun <reified IN : BaseState, OUT> create(noinline action: (IN, DataProviderService) -> OUT): StateConverter<BaseState, OUT> =
-            create(IN::class.java, action)
+        inline fun <reified IN : BaseState, OUT> create(
+            target: VersionMarker,
+            noinline action: (IN, DataProviderService) -> OUT
+        ): StateConverter<BaseState, OUT> =
+            create(IN::class.java, target, action)
 
         @JvmStatic
-        fun <IN : BaseState, OUT> create(input: Class<IN>, action: (IN, DataProviderService) -> OUT): StateConverter<BaseState, OUT> =
-            object : StdStateConverter<IN, OUT>(input) {
+        fun <IN : BaseState, OUT> create(
+            input: Class<IN>,
+            target: VersionMarker,
+            action: (IN, DataProviderService) -> OUT
+        ): StateConverter<BaseState, OUT> =
+            object : StdStateConverter<IN, OUT>(input, target) {
                 override fun convertState(input: IN, dataProvider: DataProviderService): OUT = action(input, dataProvider)
             }
     }
