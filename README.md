@@ -50,6 +50,13 @@ the interval that another Crawler is processing at the moment.
 
 **sessionAliases: [alias1, alias2]** - aliases that Crawler will search messages by.
 
+## Configuration update instructions
+
+In order to update **sessionAliases** property, you will need to update the version
+and/or the name of the data-processor that Crawler is currently sending messages to. 
+Remember that after the update Crawler will start collecting messages from 
+**from** time, not from the time it has ended working before the restart.  
+
 ## Example of infra-schema
 
 schema component description example (crawler.yml):
