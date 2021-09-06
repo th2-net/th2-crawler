@@ -594,6 +594,9 @@ public class Crawler {
         }
 
         LOGGER.info("Crawler retrieved {} intervals from {} to {}", intervalsNumber, from, to);
+        if (lastInterval != null) {
+            LOGGER.info("Last interval: {} - {}; state={}", lastInterval.getStartTime(), lastInterval.getEndTime(), lastInterval.getRecoveryState());
+        }
 
         return new GetIntervalReport(foundInterval, lastInterval, processFromStart);
     }

@@ -74,7 +74,7 @@ class StateService<CUR : BaseState>(
         require(versions.size == names.size) {
             "Some versions have duplicated names: $names"
         }
-        LOGGER.info { "StateService initialized with following versions loaded: ${providers.keys}" }
+        LOGGER.info { "StateService initialized with following versions loaded: ${providers.keys}. Current version: $currentVersion" }
     }
 
     fun serialize(state: CUR): String {
@@ -91,24 +91,25 @@ class StateService<CUR : BaseState>(
         val deserializedVersion = checkNotNull(classToVersion[stateClass]) {
             "Unknown state class: ${stateClass.canonicalName}"
         }
+        check(deserializedVersion <= currentVersion) { "Current version $currentVersion is lower than deserialized $deserializedVersion" }
         if (deserializedVersion == currentVersion) {
             return currentStateClass.cast(baseState)
         }
 
         val versionsGap = versions.dropWhile { it.number != deserializedVersion.number }
         return versionsGap.fold(baseState) { state, version ->
-            if (version.number >= currentVersion.number) { // skip conversion
+            if (version.number == currentVersion.number) { // skip conversion
                 return@fold state
             }
             val provider = checkNotNull(providers[version]) {
-                "Cannot find provider for version $deserializedVersion"
+                "Cannot find provider for version $version"
             }
             LOGGER.trace { "Converting state from $version to the next one" }
             try {
                 provider.converter?.convert(state, dataProvide)
                     ?: error("provider for version $version does not have converter")
             } catch (ex: Exception) {
-                throw IllegalStateException("cannot convert ${state.className} to the next version after $version")
+                throw IllegalStateException("cannot convert ${state.className} to the next version after $version", ex)
             }
         }.let(currentStateClass::cast)
     }

@@ -56,6 +56,7 @@ import static java.util.Objects.requireNonNullElse;
 
 public class CrawlerUtils {
     private static final Logger LOGGER = LoggerFactory.getLogger(CrawlerUtils.class);
+    private static final BoolValue METADATA_ONLY = BoolValue.newBuilder().setValue(false).build();
 
     public static Instant fromTimestamp(Timestamp timestamp) {
         return Instant.ofEpochSecond(timestamp.getSeconds(), timestamp.getNanos());
@@ -65,16 +66,17 @@ public class CrawlerUtils {
                                                        EventsSearchParameters info) {
 
         EventSearchRequest.Builder eventSearchBuilder = EventSearchRequest.newBuilder()
-                .setMetadataOnly(BoolValue.newBuilder().setValue(false).build())
+                .setMetadataOnly(METADATA_ONLY)
                 .setStartTimestamp(info.from)
                 .setEndTimestamp(info.to)
                 .setResultCountLimit(Int32Value.of(info.batchSize));
 
         EventSearchRequest request;
-        if (info.resumeId == null)
+        if (info.resumeId == null) {
             request = eventSearchBuilder.build();
-        else
+        } else {
             request = eventSearchBuilder.setResumeFromId(info.resumeId).build();
+        }
 
         return collectEvents(dataProviderService.searchEvents(request), info.to);
     }
@@ -88,8 +90,11 @@ public class CrawlerUtils {
             messageSearchBuilder.setEndTimestamp(info.getTo());
         }
         messageSearchBuilder.setResultCountLimit(Int32Value.of(info.getBatchSize()))
-                .setSearchDirection(requireNonNullElse(info.getTimeRelation(), TimeRelation.NEXT))
-                .setStream(StringList.newBuilder().addAllListString(info.getAliases()).build());
+                .setSearchDirection(requireNonNullElse(info.getTimeRelation(), TimeRelation.NEXT));
+        if (info.getAliases() != null) {
+            messageSearchBuilder.setStream(StringList.newBuilder().addAllListString(info.getAliases()).build());
+        }
+
 
         MessageSearchRequest request;
         if (info.getResumeIds() == null || info.getResumeIds().isEmpty()) {
@@ -118,7 +123,7 @@ public class CrawlerUtils {
         RecoveryState newState;
         if (currentState == null) {
             newState = new RecoveryState(
-                    lastProcessedEvent,
+                    null,
                     null,
                     numberOfEvents,
                     0);

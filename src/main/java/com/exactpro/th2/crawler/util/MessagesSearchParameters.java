@@ -42,7 +42,7 @@ public class MessagesSearchParameters {
             Collection<String> aliases,
             TimeRelation timeRelation
     ) {
-        if (aliases == null && resumeIds == null) {
+        if ((aliases == null || aliases.isEmpty()) && (resumeIds == null || resumeIds.isEmpty())) {
             throw new IllegalArgumentException("either aliases or resumeIds must be set");
         }
         this.from = Objects.requireNonNull(from, "Timestamp 'from' must not be null");

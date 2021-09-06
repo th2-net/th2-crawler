@@ -35,6 +35,8 @@ interface BaseState
 interface VersionMarker {
     val name: String
     val number: Int
+
+    operator fun compareTo(other: VersionMarker): Int = this.number.compareTo(other.number)
 }
 
 /**
@@ -45,7 +47,8 @@ interface VersionMarker {
 enum class Version : VersionMarker {
     V_1;
 
-    override val number: Int = ordinal
+    override val number: Int
+        get() = ordinal
 }
 
 interface StateProvider {

@@ -39,7 +39,9 @@ import com.exactpro.th2.dataprovider.grpc.EventData;
 import com.exactpro.th2.dataprovider.grpc.EventSearchRequest;
 import com.exactpro.th2.dataprovider.grpc.MessageData;
 import com.exactpro.th2.dataprovider.grpc.MessageSearchRequest;
+import com.exactpro.th2.dataprovider.grpc.Stream;
 import com.exactpro.th2.dataprovider.grpc.StreamResponse;
+import com.exactpro.th2.dataprovider.grpc.StreamsInfo;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
@@ -270,16 +272,38 @@ public class CrawlerTest {
 
         String exceptionMessage = "Test exception";
 
+        MessageData.Builder responseMessage = MessageData.newBuilder()
+                .setDirectionValue(1).setMessageId(MessageID.newBuilder()
+                        .setDirection(Direction.FIRST).setConnectionId(ConnectionID.newBuilder()
+                                .setSessionAlias("alias1").build()).setSequence(2).build());
         when(dataProviderMock.searchMessages(any(MessageSearchRequest.class))).then(invocation -> {
             List<StreamResponse> responses = new ArrayList<>();
 
-            StreamResponse response = StreamResponse.newBuilder()
-                    .setMessage(MessageData.newBuilder()
-                            .setDirectionValue(1).setMessageId(MessageID.newBuilder()
-                                    .setDirection(Direction.FIRST).setConnectionId(ConnectionID.newBuilder()
-                                            .setSessionAlias("alias1").build()).setSequence(1).build())).build();
+            MessageSearchRequest request = invocation.getArgument(0);
+            MessageID messageId = responseMessage.getMessageId();
+            if (!request.getStartTimestamp().equals(request.getEndTimestamp())) {
+                StreamResponse response = StreamResponse.newBuilder()
+                        .setMessage(responseMessage).build();
 
-            responses.add(response);
+                responses.add(response);
+                responses.add(StreamResponse.newBuilder()
+                        .setStreamInfo(StreamsInfo.newBuilder()
+                                .addStreams(Stream.newBuilder()
+                                        .setSession(messageId.getConnectionId().getSessionAlias())
+                                        .setDirection(messageId.getDirection())
+                                        .setLastId(messageId).build())
+                                .build())
+                        .build());
+            } else {
+                responses.add(StreamResponse.newBuilder()
+                        .setStreamInfo(StreamsInfo.newBuilder()
+                                .addStreams(Stream.newBuilder()
+                                        .setSession(messageId.getConnectionId().getSessionAlias())
+                                        .setDirection(messageId.getDirection())
+                                        .setLastId(messageId.toBuilder().setSequence(1)).build())
+                                .build())
+                        .build());
+            }
 
             return responses.iterator();
         });
