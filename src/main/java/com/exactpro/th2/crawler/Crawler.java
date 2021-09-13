@@ -27,6 +27,7 @@ import com.exactpro.th2.crawler.dataprocessor.grpc.EventDataRequest;
 import com.exactpro.th2.crawler.dataprocessor.grpc.EventResponse;
 import com.exactpro.th2.crawler.dataprocessor.grpc.MessageDataRequest;
 import com.exactpro.th2.crawler.dataprocessor.grpc.MessageResponse;
+import com.exactpro.th2.crawler.exception.UnsupportedRecoveryStateException;
 import com.exactpro.th2.crawler.state.StateService;
 import com.exactpro.th2.crawler.state.v1.InnerEventId;
 import com.exactpro.th2.crawler.state.v1.InnerMessageId;
@@ -69,6 +70,7 @@ import java.util.function.BinaryOperator;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toMap;
 import static java.util.stream.Collectors.toUnmodifiableMap;
@@ -101,6 +103,7 @@ public class Crawler {
     private final Instant from;
     private Instant to;
     private boolean reachedTo;
+    private Instant lastIntervalCompatibilityChecked;
 
     private static final String EVENTS = "EVENTS";
     private static final String MESSAGES = "MESSAGES";
@@ -569,6 +572,20 @@ public class Crawler {
 
             intervalsNumber++;
 
+            if (compatibilityCheckRequired(interval)) {
+                LOGGER.debug("Checking compatibility for interval from {} to {}", interval.getStartTime(), interval.getEndTime());
+                try {
+                    stateService.checkStateCompatibility(interval.getRecoveryState());
+                    lastIntervalCompatibilityChecked = getTimeForLastCompatibilityCheck(interval);
+                } catch (Exception ex) {
+                    throw new UnsupportedRecoveryStateException(
+                            format("The recovery state on interval from %s to %s incompatible: %s",
+                                    interval.getStartTime(), interval.getEndTime(), interval.getRecoveryState()),
+                            ex
+                    );
+                }
+            }
+
             LOGGER.trace("Interval from Cassandra from {}, to {}", interval.getStartTime(), interval.getEndTime());
 
             boolean floatingAndMultiple = floatingToTime && !workAlone && !interval.isProcessed() && lastUpdateCheck;
@@ -599,6 +616,15 @@ public class Crawler {
         }
 
         return new GetIntervalReport(foundInterval, lastInterval, processFromStart);
+    }
+
+    private boolean compatibilityCheckRequired(Interval interval) {
+        return lastIntervalCompatibilityChecked != null
+                && getTimeForLastCompatibilityCheck(interval).compareTo(lastIntervalCompatibilityChecked) > 0;
+    }
+
+    private Instant getTimeForLastCompatibilityCheck(Interval interval) {
+        return interval.getStartTime();
     }
 
     private FetchIntervalReport getOrCreateInterval(String name, String version, String type) throws IOException {

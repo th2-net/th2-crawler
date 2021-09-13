@@ -90,22 +90,36 @@ class StateService<CUR : BaseState>(
         return mapper.writeValueAsString(state)
     }
 
+    /**
+     * Checks if the state is compatible with the current crawler.
+     * Throws [IllegalStateException] if the state is not compatible
+     */
+    fun checkStateCompatibility(data: String?) {
+        if (data.isNullOrBlank()) {
+            return
+        }
+        val (state, version) = deserializeState(data)
+        version.untilCurrent().forEach {
+            val converter: StateConverter<BaseState, BaseState>? = requireNotNull(providers[it]) {
+                "cannot get provider for $it version"
+            }.converter
+            if (converter is UnsupportedMigrationConverter) {
+                error("state ${state.className} incompatible with version $it. $UNSUPPORTED_MIGRATION_ERROR_MESSAGE")
+            }
+        }
+    }
+
     @Contract("null -> null; !null -> !null")
     fun deserialize(data: String?): CUR? {
         if (data == null) {
             return null
         }
-        val baseState = mapper.readValue<BaseState>(data)
-        val stateClass = baseState::class.java
-        val deserializedVersion = checkNotNull(classToVersion[stateClass]) {
-            "Unknown state class: ${stateClass.canonicalName}"
-        }
-        check(deserializedVersion <= currentVersion) { "Current version $currentVersion is lower than deserialized $deserializedVersion" }
+        val (baseState, deserializedVersion) = deserializeState(data)
         if (deserializedVersion == currentVersion) {
             return currentStateClass.cast(baseState)
         }
 
-        val versionsGap = versions.dropWhile { it.number != deserializedVersion.number }
+        val versionsGap = deserializedVersion.untilCurrent()
         return versionsGap.fold(baseState) { state, version ->
             if (version.number == currentVersion.number) { // skip conversion
                 return@fold state
@@ -121,6 +135,23 @@ class StateService<CUR : BaseState>(
                 throw IllegalStateException("cannot convert ${state.className} to the next version after $version", ex)
             }
         }.let(currentStateClass::cast)
+    }
+
+    private fun deserializeState(data: String): Pair<BaseState, VersionMarker> {
+        val baseState = mapper.readValue<BaseState>(data)
+        val deserializedVersion = stateVersion(baseState)
+        return baseState to deserializedVersion
+    }
+
+    private fun VersionMarker.untilCurrent(): List<VersionMarker> = versions.dropWhile { it.number != number }
+
+    private fun stateVersion(baseState: BaseState): VersionMarker {
+        val stateClass = baseState::class.java
+        val deserializedVersion = checkNotNull(classToVersion[stateClass]) {
+            "Unknown state class: ${stateClass.canonicalName}"
+        }
+        check(deserializedVersion <= currentVersion) { "Current version $currentVersion is lower than deserialized $deserializedVersion" }
+        return deserializedVersion
     }
 
     private class DeserializationProblemHandlerImpl(
@@ -142,8 +173,20 @@ class StateService<CUR : BaseState>(
         }
     }
 
+    private class UnsupportedMigrationConverter<IN, OUT> (
+        override val target: VersionMarker
+    ) : StateConverter<IN, OUT> {
+        override fun convert(input: IN, dataProvider: DataProviderService): OUT = throw error(UNSUPPORTED_MIGRATION_ERROR_MESSAGE)
+    }
+
     companion object {
         private val LOGGER = KotlinLogging.logger { }
+
+        internal const val UNSUPPORTED_MIGRATION_ERROR_MESSAGE = "The crawler that works/worked with interval has incompatible recovery state version. " +
+                "Please, update the version or name of the data processor that works with the current crawler or change the start time in crawler's configuration to exclude the current interval from processing"
+
+        @JvmStatic
+        fun <IN, OUT> unsupportedMigrationTo(target: VersionMarker): StateConverter<IN, OUT> = UnsupportedMigrationConverter(target)
 
         @JvmStatic
         inline fun <reified T : BaseState> create(

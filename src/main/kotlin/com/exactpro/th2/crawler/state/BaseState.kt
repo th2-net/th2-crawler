@@ -54,6 +54,14 @@ enum class Version : VersionMarker {
 interface StateProvider {
     val version: VersionMarker
     val stateClass: Class<out BaseState>
+
+    /**
+     * Returns the converter from the current state to the next one in versions hierarchy.
+     *
+     * If the state provided by the current provider is a terminal state (the current one) return `null`.
+     *
+     * If the state is not terminal but the conversion to the next state is not supported use [StateService.unsupportedMigrationTo] method to create a converter
+     */
     val converter: StateConverter<BaseState, BaseState>?
 }
 

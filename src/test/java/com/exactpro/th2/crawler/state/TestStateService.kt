@@ -245,4 +245,37 @@ class TestStateService {
             }
         }
     }
+
+    @Nested
+    inner class UnsupportedMigration {
+        @Test
+        fun `current state cannot be migrated`() {
+            val stateService = StateService.create<StateC>(
+                listOf(
+                    TestStateProvider(
+                        TestVersion.A,
+                        StateA::class.java,
+                        StateService.unsupportedMigrationTo(TestVersion.B)
+                    ),
+                    TestStateProvider(
+                        TestVersion.B,
+                        StateB::class.java,
+                        StdStateConverter.create<StateB, StateC>(TestVersion.C) { input, _ ->
+                            StateC(input.data)
+                        }),
+                    TestStateProvider(TestVersion.C, StateC::class.java),
+                ).associateBy { it.version },
+                dataProvider,
+                defaultImplementation = StateA::class.java
+            )
+            assertThrows<IllegalStateException> {
+                stateService.checkStateCompatibility("""{"version":"A","content":"5"}""")
+            }.also {
+                assertEquals(
+                    "state com.exactpro.th2.crawler.state.TestStateService.StateA incompatible with version A. ${StateService.UNSUPPORTED_MIGRATION_ERROR_MESSAGE}",
+                    it.message
+                )
+            }
+        }
+    }
 }
