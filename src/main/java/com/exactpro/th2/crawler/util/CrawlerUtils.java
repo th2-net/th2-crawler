@@ -20,6 +20,8 @@ import com.exactpro.cradle.intervals.Interval;
 import com.exactpro.cradle.intervals.IntervalsWorker;
 import com.exactpro.th2.common.grpc.EventID;
 import com.exactpro.th2.common.message.MessageUtils;
+import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
+import com.exactpro.th2.crawler.metrics.CrawlerMetrics.ProviderMethod;
 import com.exactpro.th2.crawler.state.StateService;
 import com.exactpro.th2.crawler.state.v1.InnerEventId;
 import com.exactpro.th2.crawler.state.v1.InnerMessageId;
@@ -63,7 +65,7 @@ public class CrawlerUtils {
     }
 
     public static SearchResult<EventData> searchEvents(DataProviderService dataProviderService,
-                                                       EventsSearchParameters info) {
+                                                       EventsSearchParameters info, CrawlerMetrics metrics) {
 
         EventSearchRequest.Builder eventSearchBuilder = EventSearchRequest.newBuilder()
                 .setMetadataOnly(METADATA_ONLY)
@@ -78,11 +80,12 @@ public class CrawlerUtils {
             request = eventSearchBuilder.setResumeFromId(info.resumeId).build();
         }
 
+        metrics.providerMethodInvoked(ProviderMethod.SEARCH_EVENTS);
         return collectEvents(dataProviderService.searchEvents(request), info.to);
     }
 
     public static SearchResult<MessageData> searchMessages(DataProviderService dataProviderService,
-                                                   MessagesSearchParameters info) {
+                                                   MessagesSearchParameters info, CrawlerMetrics metrics) {
 
         MessageSearchRequest.Builder messageSearchBuilder = MessageSearchRequest.newBuilder()
                 .setStartTimestamp(info.getFrom());
@@ -103,6 +106,7 @@ public class CrawlerUtils {
             request = messageSearchBuilder.addAllMessageId(info.getResumeIds().values()).build();
         }
 
+        metrics.providerMethodInvoked(ProviderMethod.SEARCH_MESSAGES);
         return collectMessages(dataProviderService.searchMessages(request), info.getTo());
     }
 

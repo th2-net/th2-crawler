@@ -24,10 +24,13 @@ import com.exactpro.th2.common.metrics.READINESS_MONITOR
 import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.exactpro.th2.crawler.Crawler
 import com.exactpro.th2.crawler.CrawlerConfiguration
+import com.exactpro.th2.crawler.CrawlerContext
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService
 import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException
+import com.exactpro.th2.crawler.metrics.impl.PrometheusMetrics
 import com.exactpro.th2.crawler.state.StateService
 import com.exactpro.th2.crawler.state.v1.RecoveryState
+import com.exactpro.th2.crawler.util.impl.CrawlerTimeImpl
 import com.exactpro.th2.dataprovider.grpc.DataProviderService
 import mu.KotlinLogging
 import java.io.IOException
@@ -74,6 +77,9 @@ fun main(args: Array<String>) {
         // The BOX is alive
         LIVENESS_MONITOR.enable()
 
+        val context = CrawlerContext()
+            .setCrawlerTime(CrawlerTimeImpl())
+            .setMetrics(PrometheusMetrics())
         val crawler = Crawler(
             StateService.createFromClasspath(
                 dataProvider = dataProviderService,
@@ -83,7 +89,8 @@ fun main(args: Array<String>) {
             cradleManager.storage,
             dataProcessor,
             dataProviderService,
-            configuration
+            configuration,
+            context
         )
 
         // The BOX is ready to work
@@ -116,20 +123,20 @@ fun main(args: Array<String>) {
         LOGGER.info { "Crawler is going to shutdown" }
 
     } catch (ex: IOException) {
-        LOGGER.error("Error while interacting with Cradle in Crawler", ex)
+        LOGGER.error(ex) { "Error while interacting with Cradle in Crawler" }
         exitProcess(1)
     } catch (ex: InterruptedException) {
-        LOGGER.error("Crawler's sleep was interrupted", ex)
+        LOGGER.error(ex) { "Crawler's sleep was interrupted" }
         Thread.currentThread().interrupt()
         exitProcess(1)
     } catch (ex: UnexpectedDataProcessorException) {
-        LOGGER.info("Data processor changed its name and/or version", ex)
+        LOGGER.info(ex) { "Data processor changed its name and/or version" }
         exitProcess(0)
     } catch (ex: UpdateNotAppliedException) {
-        LOGGER.info("Failed to update some fields of table with intervals", ex)
+        LOGGER.info(ex) { "Failed to update some fields of table with intervals" }
         exitProcess(0)
     } catch (ex: Exception) {
-        LOGGER.error("Cannot start Crawler", ex)
+        LOGGER.error(ex) { "Cannot start Crawler" }
         exitProcess(1)
     }
 }
