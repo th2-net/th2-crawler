@@ -619,8 +619,8 @@ public class Crawler {
     }
 
     private boolean compatibilityCheckRequired(Interval interval) {
-        return lastIntervalCompatibilityChecked != null
-                && getTimeForLastCompatibilityCheck(interval).compareTo(lastIntervalCompatibilityChecked) > 0;
+        return lastIntervalCompatibilityChecked == null
+                || getTimeForLastCompatibilityCheck(interval).compareTo(lastIntervalCompatibilityChecked) > 0;
     }
 
     private Instant getTimeForLastCompatibilityCheck(Interval interval) {
