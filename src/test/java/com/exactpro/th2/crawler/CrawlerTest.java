@@ -39,6 +39,7 @@ import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import com.exactpro.th2.dataprovider.grpc.EventData;
 import com.exactpro.th2.dataprovider.grpc.EventSearchRequest;
 import com.exactpro.th2.dataprovider.grpc.MessageData;
+import com.exactpro.th2.dataprovider.grpc.MessageData.Builder;
 import com.exactpro.th2.dataprovider.grpc.MessageSearchRequest;
 import com.exactpro.th2.dataprovider.grpc.Stream;
 import com.exactpro.th2.dataprovider.grpc.StreamResponse;
@@ -122,7 +123,7 @@ public class CrawlerTest {
         }).collect(Collectors.toList()).iterator());
 
         when(dataServiceMock.crawlerConnect(any(CrawlerInfo.class)))
-                .thenReturn(DataProcessorInfo.newBuilder().setEventId(toEventID("3")).setName(name).setVersion(version).build());
+                .thenReturn(DataProcessorInfo.newBuilder().setName(name).setVersion(version).build());
 
         when(dataServiceMock.sendEvent(any(EventDataRequest.class))).then(invocation -> {
                     EventDataRequest request = invocation.getArgument(0);
@@ -247,7 +248,7 @@ public class CrawlerTest {
         Crawler crawler = createCrawler(configuration);
 
         when(dataServiceMock.crawlerConnect(any(CrawlerInfo.class)))
-                .thenReturn(DataProcessorInfo.newBuilder().setEventId(toEventID("3")).setName("another_crawler").setVersion(version).build());
+                .thenReturn(DataProcessorInfo.newBuilder().setName("another_crawler").setVersion(version).build());
 
         when(dataServiceMock.sendEvent(any(EventDataRequest.class))).then(invocation -> {
             EventDataRequest request = invocation.getArgument(0);
@@ -273,7 +274,7 @@ public class CrawlerTest {
 
         String exceptionMessage = "Test exception";
 
-        MessageData.Builder responseMessage = MessageData.newBuilder()
+        Builder responseMessage = MessageData.newBuilder()
                 .setDirectionValue(1).setMessageId(MessageID.newBuilder()
                         .setDirection(Direction.FIRST).setConnectionId(ConnectionID.newBuilder()
                                 .setSessionAlias("alias1").build()).setSequence(2).build());
@@ -310,7 +311,7 @@ public class CrawlerTest {
         });
 
         when(dataServiceMock.crawlerConnect(any(CrawlerInfo.class)))
-                .thenReturn(DataProcessorInfo.newBuilder().setEventId(toEventID("3")).setName("another_crawler").setVersion(version).build());
+                .thenReturn(DataProcessorInfo.newBuilder().setName("another_crawler").setVersion(version).build());
 
         when(dataServiceMock.sendMessage(any(MessageDataRequest.class))).thenThrow(new RuntimeException(exceptionMessage));
 

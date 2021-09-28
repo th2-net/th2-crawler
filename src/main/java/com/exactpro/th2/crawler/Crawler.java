@@ -25,7 +25,9 @@ import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorInfo;
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService;
 import com.exactpro.th2.crawler.dataprocessor.grpc.EventDataRequest;
 import com.exactpro.th2.crawler.dataprocessor.grpc.EventResponse;
+import com.exactpro.th2.crawler.dataprocessor.grpc.IntervalInfo;
 import com.exactpro.th2.crawler.dataprocessor.grpc.MessageDataRequest;
+import com.exactpro.th2.crawler.dataprocessor.grpc.MessageIDs;
 import com.exactpro.th2.crawler.dataprocessor.grpc.MessageResponse;
 import com.exactpro.th2.crawler.exception.UnsupportedRecoveryStateException;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
@@ -68,6 +70,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 import java.util.function.BinaryOperator;
 import java.util.function.Function;
@@ -171,9 +174,12 @@ public class Crawler {
             SendingReport sendingReport;
 
             DataType crawlerType = DataType.byTypeName(interval.getCrawlerType());
+
+            RecoveryState state = stateService.deserialize(interval.getRecoveryState());
+            intervalStartForProcessor(dataProcessor, interval, crawlerType, state);
+
             if (crawlerType == EVENTS) {
                 InnerEventId lastProcessedEvent;
-                RecoveryState state = stateService.deserialize(interval.getRecoveryState());
 
                 lastProcessedEvent = state == null ? null : state.getLastProcessedEvent();
 
@@ -190,8 +196,6 @@ public class Crawler {
                 sendingReport = metrics.measureTime(EVENTS, () -> sendEvents(eventsInfo));
 
             } else if (crawlerType == MESSAGES) {
-                RecoveryState state = stateService.deserialize(interval.getRecoveryState());
-
                 Map<StreamKey, InnerMessageId> lastProcessedMessages = state == null ? null : state.getLastProcessedMessages();
 
                 Map<StreamKey, MessageID> startIds = null;
@@ -199,7 +203,7 @@ public class Crawler {
                 if (lastProcessedMessages != null) {
                     if (!fetchIntervalReport.processFromStart) {
                         startIds = lastProcessedMessages.entrySet().stream()
-                                .collect(Collectors.toMap(
+                                .collect(toMap(
                                         it -> new StreamKey(it.getKey().getSessionAlias(), it.getKey().getDirection()),
                                         it -> {
                                             StreamKey key = it.getKey();
@@ -214,7 +218,7 @@ public class Crawler {
                     }
                 }
 
-                MessagesInfo messagesInfo = new MessagesInfo(interval, this.info, startIds,
+                MessagesInfo messagesInfo = new MessagesInfo(interval, info, startIds,
                         sessionAliases, interval.getStartTime(), interval.getEndTime());
                 sendingReport = metrics.measureTime(MESSAGES, () -> sendMessages(messagesInfo));
             } else {
@@ -248,6 +252,34 @@ public class Crawler {
         long sleepTime = fetchIntervalReport.sleepTime;
 
         return Duration.of(sleepTime, ChronoUnit.MILLIS);
+    }
+
+    private void intervalStartForProcessor(DataProcessorService dataProcessor, Interval interval, DataType crawlerType, RecoveryState state) {
+        var intervalInfoBuilder = IntervalInfo.newBuilder()
+                .setStartTime(MessageUtils.toTimestamp(interval.getStartTime()))
+                .setEndTime(MessageUtils.toTimestamp(interval.getEndTime()));
+        if (crawlerType == EVENTS && state.getLastProcessedEvent() != null) {
+            intervalInfoBuilder.setLastEventId(EventUtils.toEventID(state.getLastProcessedEvent().getId()));
+        } else if (crawlerType == MESSAGES && !state.getLastProcessedMessages().isEmpty()) {
+            intervalInfoBuilder.setLastMessageIds(MessageIDs.newBuilder()
+                    .addAllMessageIds(state.getLastProcessedMessages().entrySet().stream()
+                            .map(this::toMessageId)
+                            .collect(Collectors.toList()))
+                    .build());
+        }
+        dataProcessor.intervalStart(intervalInfoBuilder.build());
+        metrics.processorMethodInvoked(ProcessorMethod.INTERVAL_START);
+    }
+
+    @NotNull
+    private MessageID toMessageId(Entry<StreamKey, InnerMessageId> entry) {
+        var streamKey = entry.getKey();
+        var innerId = entry.getValue();
+        return MessageID.newBuilder()
+                .setConnectionId(ConnectionID.newBuilder().setSessionAlias(streamKey.getSessionAlias()))
+                .setDirection(streamKey.getDirection())
+                .setSequence(innerId.getSequence())
+                .build();
     }
 
     private SendingReport sendEvents(EventsInfo info) throws IOException {

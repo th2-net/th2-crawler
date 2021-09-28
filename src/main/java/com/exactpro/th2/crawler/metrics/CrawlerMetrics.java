@@ -39,7 +39,7 @@ public interface CrawlerMetrics {
 
     <T> T measureTime(DataType dataType, CrawlerDataOperation<T> function) throws IOException;
 
-    enum ProcessorMethod { CRAWLER_CONNECT, SEND_EVENT, SEND_MESSAGE }
+    enum ProcessorMethod { CRAWLER_CONNECT, INTERVAL_START, SEND_EVENT, SEND_MESSAGE }
 
     enum ProviderMethod { SEARCH_MESSAGES, SEARCH_EVENTS }
 
