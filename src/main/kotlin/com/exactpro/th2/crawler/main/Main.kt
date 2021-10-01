@@ -19,26 +19,27 @@
 package com.exactpro.th2.crawler.main
 
 import com.exactpro.cradle.utils.UpdateNotAppliedException
-import com.exactpro.th2.crawler.Crawler
-import com.exactpro.th2.common.metrics.liveness
-import com.exactpro.th2.common.metrics.readiness
+import com.exactpro.th2.common.metrics.LIVENESS_MONITOR
+import com.exactpro.th2.common.metrics.READINESS_MONITOR
 import com.exactpro.th2.common.schema.factory.CommonFactory
+import com.exactpro.th2.crawler.Crawler
 import com.exactpro.th2.crawler.CrawlerConfiguration
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService
-import com.exactpro.th2.crawler.exception.FailedUpdateException
-import com.exactpro.th2.crawler.exception.UnexpectedDataServiceException
+import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException
+import com.exactpro.th2.crawler.state.StateService
+import com.exactpro.th2.crawler.state.v1.RecoveryState
 import com.exactpro.th2.dataprovider.grpc.DataProviderService
 import mu.KotlinLogging
+import java.io.IOException
 import java.util.Deque
 import java.util.concurrent.ConcurrentLinkedDeque
-import java.util.concurrent.locks.Condition
-import java.util.concurrent.locks.ReentrantLock
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
 import kotlin.system.exitProcess
 
-import java.io.IOException
-
 private val LOGGER = KotlinLogging.logger { }
+private enum class State { WORK, WAIT, STOP }
 
 fun main(args: Array<String>) {
     LOGGER.info { "Starting com.exactpro.th2.crawler.Crawler" }
@@ -51,9 +52,7 @@ fun main(args: Array<String>) {
     // and you can run everything on main thread
     // you can omit the part with locks (but please keep the resources queue)
     val resources: Deque<AutoCloseable> = ConcurrentLinkedDeque()
-    val lock = ReentrantLock()
-    val condition: Condition = lock.newCondition()
-    configureShutdownHook(resources, lock, condition)
+    configureShutdownHook(resources)
 
     try {
         // You need to initialize the CommonFactory
@@ -67,20 +66,20 @@ fun main(args: Array<String>) {
         val cradleManager = factory.cradleManager
 
         val grpcRouter = factory.grpcRouter
-
-        resources += grpcRouter
-
         val dataProcessor = grpcRouter.getService(DataProcessorService::class.java)
         val dataProviderService = grpcRouter.getService(DataProviderService::class.java)
 
         val configuration = factory.getCustomConfiguration(CrawlerConfiguration::class.java)
 
         // The BOX is alive
-        liveness = true
-
-        // Do additional initialization required to your logic
+        LIVENESS_MONITOR.enable()
 
         val crawler = Crawler(
+            StateService.createFromClasspath(
+                dataProvider = dataProviderService,
+                // make sure that the default implementation is not changed when you create a new version of state
+                defaultImplementation = RecoveryState::class.java,
+            ),
             cradleManager.storage,
             dataProcessor,
             dataProviderService,
@@ -88,15 +87,33 @@ fun main(args: Array<String>) {
         )
 
         // The BOX is ready to work
-        readiness = true
+        READINESS_MONITOR.enable()
 
         LOGGER.info { "Crawler was created and is going to start" }
 
-        crawler.start()
+        val state = AtomicReference(State.WAIT)
+        resources += AutoCloseable {
+            with(configuration) {
+                awaitCrawlerFinishesProcessing(state, shutdownTimeout, shutdownTimeoutUnit)
+            }
+        }
+
+        while (!Thread.currentThread().isInterrupted) {
+            val sleepTime = try {
+                if (state.compareAndSet(State.WAIT, State.WORK)) {
+                    crawler.process()
+                } else {
+                    LOGGER.info { "Crawler has state ${state.get()} that does not allow to start processing" }
+                    return
+                }
+            } finally {
+                state.set(State.WAIT)
+            }
+
+            Thread.sleep(sleepTime.toMillis())
+        }
 
         LOGGER.info { "Crawler is going to shutdown" }
-
-        exitProcess(0)
 
     } catch (ex: IOException) {
         LOGGER.error("Error while interacting with Cradle in Crawler", ex)
@@ -105,7 +122,7 @@ fun main(args: Array<String>) {
         LOGGER.error("Crawler's sleep was interrupted", ex)
         Thread.currentThread().interrupt()
         exitProcess(1)
-    } catch (ex: UnexpectedDataServiceException) {
+    } catch (ex: UnexpectedDataProcessorException) {
         LOGGER.info("Data processor changed its name and/or version", ex)
         exitProcess(0)
     } catch (ex: UpdateNotAppliedException) {
@@ -114,25 +131,38 @@ fun main(args: Array<String>) {
     } catch (ex: Exception) {
         LOGGER.error("Cannot start Crawler", ex)
         exitProcess(1)
-    } finally {
-        liveness = false
-        readiness = false
     }
 }
 
-private fun configureShutdownHook(resources: Deque<AutoCloseable>, lock: ReentrantLock, condition: Condition) {
+private fun awaitCrawlerFinishesProcessing(
+    state: AtomicReference<State>,
+    timeout: Long,
+    unit: TimeUnit,
+) {
+    LOGGER.info { "Awaiting the crawler finishes current processing" }
+
+    val switchState: () -> Boolean = { state.compareAndSet(State.WAIT, State.STOP) }
+
+    if (!switchState()) {
+        val awaitTime = System.currentTimeMillis() + unit.toMillis(timeout)
+        while (!switchState() && System.currentTimeMillis() < awaitTime) {
+            Thread.sleep(100) // await processing finished
+        }
+    }
+    if (state.get() == State.STOP) {
+        LOGGER.info { "Crawler has finished processing the current interval" }
+    } else {
+        LOGGER.warn { "Crawler did not finish processing the current interval in $timeout $unit" }
+    }
+}
+
+private fun configureShutdownHook(resources: Deque<AutoCloseable>) {
     Runtime.getRuntime().addShutdownHook(thread(
         start = false,
         name = "Shutdown hook"
     ) {
         LOGGER.info { "Shutdown start" }
-        readiness = false
-        try {
-            lock.lock()
-            condition.signalAll()
-        } finally {
-            lock.unlock()
-        }
+        READINESS_MONITOR.disable()
         resources.descendingIterator().forEachRemaining { resource ->
             try {
                 resource.close()
@@ -140,8 +170,7 @@ private fun configureShutdownHook(resources: Deque<AutoCloseable>, lock: Reentra
                 LOGGER.error(e) { "Cannot close resource ${resource::class}" }
             }
         }
-        liveness = false
+        LIVENESS_MONITOR.disable()
         LOGGER.info { "Shutdown end" }
     })
 }
-

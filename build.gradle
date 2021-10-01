@@ -1,8 +1,9 @@
 plugins {
     id 'java'
-    id 'org.jetbrains.kotlin.jvm' version '1.4.21'
+    id 'org.jetbrains.kotlin.jvm' version "$kotlin_version"
     id 'com.palantir.docker' version '0.25.0'
     id 'application'
+    id 'org.jetbrains.kotlin.kapt' version "$kotlin_version"
 }
 
 group 'com.exactpro.th2'
@@ -14,7 +15,6 @@ targetCompatibility = JavaVersion.VERSION_11
 compileKotlin {
     kotlinOptions {
         jvmTarget = "11"
-
     }
 }
 
@@ -25,8 +25,8 @@ compileTestKotlin {
 }
 
 ext {
-    cradleVersion = '2.14.0'
-    grpcCrawlerVersion = '0.0.1'
+    cradleVersion = '2.17.0'
+    grpcCrawlerVersion = '0.2.0-message_ids_response-SNAPSHOT'
     sharedDir = file("${project.rootDir}/shared")
 }
 
@@ -39,9 +39,15 @@ dependencies {
     implementation "com.exactpro.th2:cradle-cassandra:${cradleVersion}"
 
     // the library for interaction with infra API
-    implementation 'com.exactpro.th2:common:3.16.2'
+    implementation 'com.exactpro.th2:common:3.24.2'
 
     implementation "com.exactpro.th2:grpc-crawler-data-processor:${grpcCrawlerVersion}"
+    implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310") {
+        because('we need to process java Instant class')
+    }
+    implementation('com.fasterxml.jackson.module:jackson-module-kotlin') {
+        because('we need to be able crate a mapper for state deserialization')
+    }
 
     // Logging. All versions are specified in BOM dependency
     implementation "org.slf4j:slf4j-log4j12"
@@ -51,9 +57,15 @@ dependencies {
     implementation 'io.github.microutils:kotlin-logging:2.0.4'
 
     implementation "org.jetbrains.kotlin:kotlin-stdlib"
+    implementation("org.jetbrains.kotlin:kotlin-reflect") {
+        because('the old kotlin version in classpath')
+    }
 
-    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.6.0'
-    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine'
+    compileOnly 'com.google.auto.service:auto-service-annotations:1.0'
+    kapt 'com.google.auto.service:auto-service:1.0'
+    annotationProcessor 'com.google.auto.service:auto-service:1.0'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.6.0'
 
     // https://mvnrepository.com/artifact/org.mockito/mockito-core
     testImplementation group: 'org.mockito', name: 'mockito-core', version: '3.11.2'

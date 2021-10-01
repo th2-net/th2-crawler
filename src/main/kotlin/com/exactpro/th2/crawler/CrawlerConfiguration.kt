@@ -18,8 +18,9 @@ package com.exactpro.th2.crawler
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import java.time.temporal.ChronoUnit
+import java.util.concurrent.TimeUnit
 
-class CrawlerConfiguration(
+class CrawlerConfiguration @JvmOverloads constructor(
     @JsonProperty
     val from: String,
     @JsonProperty
@@ -41,5 +42,12 @@ class CrawlerConfiguration(
     @JsonProperty
     val toLag: Int = 1,
     @JsonProperty
-    val toLagOffsetUnit: ChronoUnit = ChronoUnit.HOURS
+    val toLagOffsetUnit: ChronoUnit = ChronoUnit.HOURS,
+    @JsonProperty
+    val workAlone: Boolean = false,
+    @JsonProperty
+    val sessionAliases: Set<String> = emptySet(),
+
+    val shutdownTimeout: Long = 10,
+    val shutdownTimeoutUnit: TimeUnit = TimeUnit.SECONDS
 )

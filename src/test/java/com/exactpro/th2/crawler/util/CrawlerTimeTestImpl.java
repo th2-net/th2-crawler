@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2021 Exactpro (Exactpro Systems Limited)
+ * Copyright 2021-2021 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,14 +14,18 @@
  * limitations under the License.
  */
 
-package com.exactpro.th2.crawler.exception;
+package com.exactpro.th2.crawler.util;
 
-public class UnexpectedDataServiceException extends Exception {
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 
-    public UnexpectedDataServiceException() { super(); }
+public class CrawlerTimeTestImpl implements CrawlerTime {
+    private final Instant instant = Instant.parse("2021-07-11T18:00:00.00Z");
+    private long count = -1;
 
-    public UnexpectedDataServiceException(String message) { super(message); }
-
-    public UnexpectedDataServiceException(String message, Throwable e) { super(message, e); }
-
+    @Override
+    public Instant now() {
+        count++;
+        return instant.plus(10 * count, ChronoUnit.SECONDS);
+    }
 }

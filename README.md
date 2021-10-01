@@ -44,6 +44,26 @@ The default value is **1**.
 Allowed values are described [here](https://docs.oracle.com/en/java/javase/11/docs/api/java.base/java/time/temporal/ChronoUnit.html) in **Enum Constants** block.
 The default value is **HOURS**.
 
+**workAlone: false** - flag that indicates if Crawler works alone or there are a few Crawlers
+processing the same intervals. If it is set to false, Crawler will not try to capture 
+the interval that another Crawler is processing at the moment. The default value is `false`.
+
+**sessionAliases: [alias1, alias2]** - aliases that Crawler will search messages by.
+
+**shutdownTimeout: 10** - the timeout to wait until crawler finished the current processing task if it has one.
+The value will be interpreted as _shutdownTimeoutUnit_ unit. The default value is 10
+
+**shutdownTimeoutUnit: SECONDS** - the time unit for **shutdownTimeout** parameter.
+Allowed values are described [here](https://docs.oracle.com/en/java/javase/11/docs/api/java.base/java/time/temporal/ChronoUnit.html) in **Enum Constants** block.
+The default value is **SECONDS**.
+
+## Configuration update instructions
+
+In order to update **sessionAliases** property, you will need to update the version
+and/or the name of the data-processor that Crawler is currently sending messages to. 
+Remember that after the update Crawler will start collecting messages from 
+**from** time, not from the time it has ended working before the restart.  
+
 ## Example of infra-schema
 
 schema component description example (crawler.yml):
