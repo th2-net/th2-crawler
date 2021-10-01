@@ -20,6 +20,7 @@ import com.exactpro.cradle.intervals.Interval;
 import com.exactpro.cradle.intervals.IntervalsWorker;
 import com.exactpro.th2.common.grpc.EventID;
 import com.exactpro.th2.common.message.MessageUtils;
+import com.exactpro.th2.crawler.InternalInterval;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics.ProviderMethod;
 import com.exactpro.th2.crawler.state.StateService;
@@ -116,13 +117,12 @@ public class CrawlerUtils {
         return collectMessages(dataProviderService.searchMessages(request), info.getTo());
     }
 
-    public static Interval updateEventRecoveryState(
+    public static void updateEventRecoveryState(
             IntervalsWorker worker,
-            Interval interval,
-            StateService<RecoveryState> stateService,
+            InternalInterval interval,
             long numberOfEvents
     ) throws IOException {
-        RecoveryState currentState = stateService.deserialize(interval.getRecoveryState());
+        RecoveryState currentState = interval.getState();
         InnerEventId lastProcessedEvent = null;
 
         if (currentState != null) {
@@ -145,7 +145,7 @@ public class CrawlerUtils {
                     currentState.getLastNumberOfMessages());
         }
 
-        return worker.updateRecoveryState(interval, stateService.serialize(newState));
+        interval.updateState(newState, worker);
     }
 
     public static Interval updateMessageRecoveryState(

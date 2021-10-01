@@ -87,7 +87,7 @@ public class CrawlerTest {
     private List<Interval> intervals;
     private List<StreamResponse> searchEventResponse;
 
-    private final String[] aliases = new String[] {"alias1", "alias2"};
+    private final String[] aliases = {"alias1", "alias2"};
 
     @BeforeEach
     void prepare() throws IOException {
