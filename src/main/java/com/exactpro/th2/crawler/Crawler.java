@@ -242,6 +242,7 @@ public class Crawler {
                         "New name: "+sendingReport.newName+", new version: "+sendingReport.newVersion);
             }
 
+            metrics.currentInterval(CrawlerUtils.EMPTY);
         }
 
         long sleepTime = fetchIntervalReport.sleepTime;

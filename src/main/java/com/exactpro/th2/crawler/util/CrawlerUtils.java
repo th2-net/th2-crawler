@@ -59,6 +59,12 @@ import static java.util.Objects.requireNonNullElse;
 public class CrawlerUtils {
     private static final Logger LOGGER = LoggerFactory.getLogger(CrawlerUtils.class);
     private static final BoolValue METADATA_ONLY = BoolValue.newBuilder().setValue(false).build();
+    public static final Interval EMPTY = Interval.builder()
+            .crawlerName("Empty")
+            .crawlerType("Empty")
+            .startTime(Instant.EPOCH)
+            .endTime(Instant.EPOCH)
+            .build();
 
     public static Instant fromTimestamp(Timestamp timestamp) {
         return Instant.ofEpochSecond(timestamp.getSeconds(), timestamp.getNanos());
