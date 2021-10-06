@@ -26,6 +26,7 @@ import com.exactpro.th2.crawler.dataprocessor.grpc.EventDataRequest;
 import com.exactpro.th2.crawler.dataprocessor.grpc.EventResponse;
 import com.exactpro.th2.crawler.dataprocessor.grpc.MessageDataRequest;
 import com.exactpro.th2.crawler.dataprocessor.grpc.Status;
+import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
 import com.exactpro.th2.crawler.state.StateService;
 import com.exactpro.th2.crawler.state.v1.RecoveryState;
 import com.exactpro.cradle.utils.UpdateNotAppliedException;
@@ -88,7 +89,7 @@ public class CrawlerTest {
     private final String[] aliases = new String[] {"alias1", "alias2"};
 
     @BeforeEach
-    private void prepare() throws IOException {
+    void prepare() throws IOException {
         intervals = new ArrayList<>();
         searchEventResponse = addEvents();
 
@@ -199,7 +200,7 @@ public class CrawlerTest {
 
     private List<StreamResponse> addEvents() {
         CrawlerConfiguration configuration = new CrawlerConfiguration("2021-06-16T12:00:00.00Z", null, name,
-                "EVENTS", "PT1H", 1, ChronoUnit.NANOS, 1, 10, 5,
+                DataType.EVENTS, "PT1H", 1, ChronoUnit.NANOS, 1, 10, 5,
                 ChronoUnit.MINUTES, true, new HashSet<>());
 
         List<StreamResponse> responses = new ArrayList<>();
@@ -223,7 +224,7 @@ public class CrawlerTest {
     @DisplayName("Calling method process()")
     public void processMethodCall() throws IOException, UnexpectedDataProcessorException {
         CrawlerConfiguration configuration = new CrawlerConfiguration("2021-06-16T12:00:00.00Z", null, name,
-                "EVENTS", "PT1H", 1, ChronoUnit.NANOS, 1, 10, 5,
+                DataType.EVENTS, "PT1H", 1, ChronoUnit.NANOS, 1, 10, 5,
                 ChronoUnit.MINUTES, true, new HashSet<>());
 
         Crawler crawler = createCrawler(configuration);
@@ -238,9 +239,9 @@ public class CrawlerTest {
 
     @Test
     @DisplayName("Requiring handshake, getting other name and version")
-    public void handshakeNeededAnother() {
+    public void handshakeNeededAnother() throws IOException {
         CrawlerConfiguration configuration = new CrawlerConfiguration("2021-06-16T12:00:00.00Z", null, name,
-                "EVENTS", "PT1H", 1, ChronoUnit.NANOS, 1, 10, 5,
+                DataType.EVENTS, "PT1H", 1, ChronoUnit.NANOS, 1, 10, 5,
                 ChronoUnit.MINUTES, true, new HashSet<>());
 
         Crawler crawler = createCrawler(configuration);
@@ -263,9 +264,9 @@ public class CrawlerTest {
 
     @Test
     @DisplayName("Crawler's actions when a data service fails")
-    public void dataServiceFail() {
+    public void dataServiceFail() throws IOException {
         CrawlerConfiguration configuration = new CrawlerConfiguration("2021-06-16T12:00:00.00Z", null, name,
-                "MESSAGES", "PT1H", 1, ChronoUnit.NANOS, 1, 10, 5,
+                DataType.MESSAGES, "PT1H", 1, ChronoUnit.NANOS, 1, 10, 5,
                 ChronoUnit.MINUTES, true, new HashSet<>(Arrays.asList(aliases)));
 
         Crawler crawler = createCrawler(configuration);
@@ -317,7 +318,13 @@ public class CrawlerTest {
     }
 
     @NotNull
-    private Crawler createCrawler(CrawlerConfiguration configuration) {
-        return new Crawler(stateService, storageMock, dataServiceMock, dataProviderMock, configuration, new CrawlerTimeTestImpl());
+    private Crawler createCrawler(CrawlerConfiguration configuration) throws IOException {
+        CrawlerMetrics metrics = mock(CrawlerMetrics.class);
+        when(metrics.measureTime(any(DataType.class), any())).then(invk ->
+                invk.<CrawlerMetrics.CrawlerDataOperation<?>>getArgument(1).call());
+        CrawlerContext crawlerContext = new CrawlerContext()
+                .setCrawlerTime(new CrawlerTimeTestImpl())
+                .setMetrics(metrics);
+        return new Crawler(stateService, storageMock, dataServiceMock, dataProviderMock, configuration, crawlerContext);
     }
 }

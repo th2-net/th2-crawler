@@ -20,6 +20,8 @@ import com.exactpro.cradle.intervals.Interval;
 import com.exactpro.cradle.intervals.IntervalsWorker;
 import com.exactpro.th2.common.grpc.EventID;
 import com.exactpro.th2.common.message.MessageUtils;
+import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
+import com.exactpro.th2.crawler.metrics.CrawlerMetrics.ProviderMethod;
 import com.exactpro.th2.crawler.state.StateService;
 import com.exactpro.th2.crawler.state.v1.InnerEventId;
 import com.exactpro.th2.crawler.state.v1.InnerMessageId;
@@ -57,13 +59,19 @@ import static java.util.Objects.requireNonNullElse;
 public class CrawlerUtils {
     private static final Logger LOGGER = LoggerFactory.getLogger(CrawlerUtils.class);
     private static final BoolValue METADATA_ONLY = BoolValue.newBuilder().setValue(false).build();
+    public static final Interval EMPTY = Interval.builder()
+            .crawlerName("Empty")
+            .crawlerType("Empty")
+            .startTime(Instant.EPOCH)
+            .endTime(Instant.EPOCH)
+            .build();
 
     public static Instant fromTimestamp(Timestamp timestamp) {
         return Instant.ofEpochSecond(timestamp.getSeconds(), timestamp.getNanos());
     }
 
     public static SearchResult<EventData> searchEvents(DataProviderService dataProviderService,
-                                                       EventsSearchParameters info) {
+                                                       EventsSearchParameters info, CrawlerMetrics metrics) {
 
         EventSearchRequest.Builder eventSearchBuilder = EventSearchRequest.newBuilder()
                 .setMetadataOnly(METADATA_ONLY)
@@ -78,11 +86,12 @@ public class CrawlerUtils {
             request = eventSearchBuilder.setResumeFromId(info.resumeId).build();
         }
 
+        metrics.providerMethodInvoked(ProviderMethod.SEARCH_EVENTS);
         return collectEvents(dataProviderService.searchEvents(request), info.to);
     }
 
     public static SearchResult<MessageData> searchMessages(DataProviderService dataProviderService,
-                                                   MessagesSearchParameters info) {
+                                                   MessagesSearchParameters info, CrawlerMetrics metrics) {
 
         MessageSearchRequest.Builder messageSearchBuilder = MessageSearchRequest.newBuilder()
                 .setStartTimestamp(info.getFrom());
@@ -103,6 +112,7 @@ public class CrawlerUtils {
             request = messageSearchBuilder.addAllMessageId(info.getResumeIds().values()).build();
         }
 
+        metrics.providerMethodInvoked(ProviderMethod.SEARCH_MESSAGES);
         return collectMessages(dataProviderService.searchMessages(request), info.getTo());
     }
 

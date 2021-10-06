@@ -28,6 +28,8 @@ import com.exactpro.th2.crawler.dataprocessor.grpc.EventResponse;
 import com.exactpro.th2.crawler.dataprocessor.grpc.MessageDataRequest;
 import com.exactpro.th2.crawler.dataprocessor.grpc.MessageResponse;
 import com.exactpro.th2.crawler.exception.UnsupportedRecoveryStateException;
+import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
+import com.exactpro.th2.crawler.metrics.CrawlerMetrics.ProcessorMethod;
 import com.exactpro.th2.crawler.state.StateService;
 import com.exactpro.th2.crawler.state.v1.InnerEventId;
 import com.exactpro.th2.crawler.state.v1.InnerMessageId;
@@ -45,14 +47,15 @@ import com.exactpro.th2.crawler.util.CrawlerUtils;
 import com.exactpro.th2.crawler.util.CrawlerUtils.EventsSearchParameters;
 import com.exactpro.th2.crawler.util.MessagesSearchParameters;
 import com.exactpro.th2.crawler.util.SearchResult;
-import com.exactpro.th2.crawler.util.impl.CrawlerTimeImpl;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import com.exactpro.th2.dataprovider.grpc.EventData;
 import com.exactpro.th2.dataprovider.grpc.MessageData;
 import com.exactpro.th2.dataprovider.grpc.Stream;
 import com.exactpro.th2.dataprovider.grpc.TimeRelation;
 import com.google.protobuf.Timestamp;
+import kotlin.Pair;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -70,6 +73,8 @@ import java.util.function.BinaryOperator;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import static com.exactpro.th2.crawler.DataType.EVENTS;
+import static com.exactpro.th2.crawler.DataType.MESSAGES;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toMap;
@@ -94,19 +99,17 @@ public class Crawler {
     private final Set<String> sessionAliases;
     private final boolean floatingToTime;
     private final boolean workAlone;
-    private final String crawlerType;
+    private final DataType crawlerType;
     private final int batchSize;
     private final DataProcessorInfo info;
     private final CrawlerId crawlerId;
     private final StateService<RecoveryState> stateService;
+    private final CrawlerMetrics metrics;
 
     private final Instant from;
     private Instant to;
     private boolean reachedTo;
     private Instant lastIntervalCompatibilityChecked;
-
-    private static final String EVENTS = "EVENTS";
-    private static final String MESSAGES = "MESSAGES";
 
     public Crawler(
             @NotNull StateService<RecoveryState> stateService,
@@ -114,7 +117,7 @@ public class Crawler {
             @NotNull DataProcessorService dataProcessor,
             @NotNull DataProviderService dataProviderService,
             @NotNull CrawlerConfiguration configuration,
-            @NotNull CrawlerTime crawlerTime
+            @NotNull CrawlerContext crawlerContext
     ) {
         this.stateService = requireNonNull(stateService, "'state service' cannot be null");
         this.intervalsWorker = requireNonNull(storage, "Cradle storage cannot be null").getIntervalsWorker();
@@ -124,34 +127,27 @@ public class Crawler {
         this.from = Instant.parse(configuration.getFrom());
         this.floatingToTime = configuration.getTo() == null;
         this.workAlone = configuration.getWorkAlone();
+        this.crawlerTime = requireNonNull(crawlerContext.getCrawlerTime(), "Crawler time cannot be null");
         this.to = floatingToTime ? crawlerTime.now() : Instant.parse(configuration.getTo());
         this.defaultIntervalLength = Duration.parse(configuration.getDefaultLength());
         this.defaultSleepTime = configuration.getDelay() * 1000;
         this.crawlerType = configuration.getType();
         this.batchSize = configuration.getBatchSize();
         this.crawlerId = CrawlerId.newBuilder().setName(configuration.getName()).build();
-        this.info = dataProcessor.crawlerConnect(CrawlerInfo.newBuilder().setId(crawlerId).build());
         this.sessionAliases = configuration.getSessionAliases();
-        this.crawlerTime = requireNonNull(crawlerTime, "Crawler time cannot be null");
+        metrics = requireNonNull(crawlerContext.getMetrics(), "'metrics' must not be null");
+        info = crawlerConnect(dataProcessor, CrawlerInfo.newBuilder().setId(crawlerId).build());
 
         prepare();
     }
 
-    public Crawler(
-            @NotNull StateService<RecoveryState> stateService,
-            @NotNull CradleStorage storage,
-            @NotNull DataProcessorService dataProcessor,
-            @NotNull DataProviderService dataProviderService,
-            @NotNull CrawlerConfiguration configuration
-    ) {
-        this(stateService, storage, dataProcessor, dataProviderService, configuration, new CrawlerTimeImpl());
+    private DataProcessorInfo crawlerConnect(@NotNull DataProcessorService dataProcessor, CrawlerInfo crawlerInfo) {
+        final DataProcessorInfo info = dataProcessor.crawlerConnect(crawlerInfo);
+        metrics.processorMethodInvoked(ProcessorMethod.CRAWLER_CONNECT);
+        return info;
     }
 
     private void prepare() {
-        if (!(EVENTS.equals(crawlerType) || MESSAGES.equals(crawlerType))) {
-            throw new ConfigurationException("Type must be either EVENTS or MESSAGES");
-        }
-
         if (!floatingToTime && Duration.between(from, to).abs().compareTo(defaultIntervalLength) < 0)
             throw new IllegalArgumentException("Distance between \"from\" and \"to\" parameters cannot be less" +
                     "than default length of intervals");
@@ -168,12 +164,14 @@ public class Crawler {
         Interval interval = fetchIntervalReport.interval;
 
         if (interval != null) {
+            metrics.currentInterval(interval);
 
             reachedTo = !floatingToTime && interval.getEndTime().equals(to);
 
             SendingReport sendingReport;
 
-            if (EVENTS.equals(interval.getCrawlerType())) {
+            DataType crawlerType = DataType.byTypeName(interval.getCrawlerType());
+            if (crawlerType == EVENTS) {
                 InnerEventId lastProcessedEvent;
                 RecoveryState state = stateService.deserialize(interval.getRecoveryState());
 
@@ -187,10 +185,11 @@ public class Crawler {
                     }
                 }
 
-                sendingReport = sendEvents(new EventsInfo(interval, info, startId,
-                        interval.getStartTime(), interval.getEndTime()));
+                EventsInfo eventsInfo = new EventsInfo(interval, this.info, startId,
+                        interval.getStartTime(), interval.getEndTime());
+                sendingReport = metrics.measureTime(EVENTS, () -> sendEvents(eventsInfo));
 
-            } else if (MESSAGES.equals(interval.getCrawlerType())) {
+            } else if (crawlerType == MESSAGES) {
                 RecoveryState state = stateService.deserialize(interval.getRecoveryState());
 
                 Map<StreamKey, InnerMessageId> lastProcessedMessages = state == null ? null : state.getLastProcessedMessages();
@@ -215,8 +214,9 @@ public class Crawler {
                     }
                 }
 
-                sendingReport = sendMessages(new MessagesInfo(interval, info, startIds,
-                        sessionAliases, interval.getStartTime(), interval.getEndTime()));
+                MessagesInfo messagesInfo = new MessagesInfo(interval, this.info, startIds,
+                        sessionAliases, interval.getStartTime(), interval.getEndTime());
+                sendingReport = metrics.measureTime(MESSAGES, () -> sendMessages(messagesInfo));
             } else {
                 throw new ConfigurationException("Type must be either EVENTS or MESSAGES");
             }
@@ -225,10 +225,10 @@ public class Crawler {
                 interval = sendingReport.interval;
                 interval = intervalsWorker.setIntervalProcessed(interval, true);
 
-                if (EVENTS.equals(interval.getCrawlerType())) {
+                if (crawlerType == EVENTS) {
                     interval = CrawlerUtils.updateEventRecoveryState(intervalsWorker, interval,
                             stateService, sendingReport.numberOfEvents);
-                } else if (MESSAGES.equals(interval.getCrawlerType())) {
+                } else {
                     interval = CrawlerUtils.updateMessageRecoveryState(intervalsWorker, interval,
                             stateService, sendingReport.numberOfMessages);
                 }
@@ -242,6 +242,7 @@ public class Crawler {
                         "New name: "+sendingReport.newName+", new version: "+sendingReport.newVersion);
             }
 
+            metrics.currentInterval(CrawlerUtils.EMPTY);
         }
 
         long sleepTime = fetchIntervalReport.sleepTime;
@@ -268,7 +269,7 @@ public class Crawler {
             EventDataRequest.Builder eventRequestBuilder = EventDataRequest.newBuilder();
 
             SearchResult<EventData> result = CrawlerUtils.searchEvents(dataProviderService,
-                    new EventsSearchParameters(fromTimestamp, toTimestamp, batchSize, resumeId));
+                    new EventsSearchParameters(fromTimestamp, toTimestamp, batchSize, resumeId), metrics);
             List<EventData> events = result.getData();
 
             if (events.isEmpty()) {
@@ -282,7 +283,7 @@ public class Crawler {
 
             EventDataRequest eventRequest = eventRequestBuilder.setId(crawlerId).addAllEventData(events).build();
 
-            response = dataProcessor.sendEvent(eventRequest);
+            response = sendEventsToProcessor(dataProcessor, eventRequest);
 
             if (response.hasStatus()) {
                 if (response.getStatus().getHandshakeRequired()) {
@@ -290,28 +291,25 @@ public class Crawler {
                 }
             }
 
-            if (response.hasId()) {
+            boolean hasCheckpoint = response.hasId();
+            var countAndCheckpoint = processServiceResponse(hasCheckpoint ? response.getId() : null, events);
+
+            long processedEventsCount = countAndCheckpoint.getFirst();
+
+            numberOfEvents += processedEventsCount + diff;
+
+            diff = events.size() - processedEventsCount;
+
+            if (hasCheckpoint) {
                 RecoveryState oldState = stateService.deserialize(interval.getRecoveryState());
 
                 InnerEventId event = null;
+                EventData checkpointEvent = countAndCheckpoint.getSecond();
+                if (checkpointEvent != null) {
+                    Instant startTimeStamp = CrawlerUtils.fromTimestamp(checkpointEvent.getStartTimestamp());
+                    String id = checkpointEvent.getEventId().getId();
 
-                EventID responseId = response.getId();
-
-                long processedEventsCount = events.stream().takeWhile(eventData -> eventData.getEventId().equals(responseId)).count();
-
-                numberOfEvents += processedEventsCount + diff;
-
-                diff = batchSize - processedEventsCount;
-
-                for (EventData eventData: events) {
-                    if (eventData.getEventId().equals(responseId)) {
-                        Instant startTimeStamp = Instant.ofEpochSecond(eventData.getStartTimestamp().getSeconds(),
-                                eventData.getStartTimestamp().getNanos());
-                        String id = eventData.getEventId().getId();
-
-                        event = new InnerEventId(startTimeStamp, id);
-                        break;
-                    }
+                    event = new InnerEventId(startTimeStamp, id);
                 }
 
                 if (event != null) {
@@ -338,7 +336,33 @@ public class Crawler {
             search = events.size() == batchSize;
         }
 
-        return new SendingReport(CrawlerAction.NONE, interval, dataProcessorName, dataProcessorVersion, numberOfEvents, 0);
+        return new SendingReport(CrawlerAction.NONE, interval, dataProcessorName, dataProcessorVersion, numberOfEvents + diff, 0);
+    }
+
+    private EventResponse sendEventsToProcessor(DataProcessorService dataProcessor, EventDataRequest eventRequest) {
+        EventResponse response = dataProcessor.sendEvent(eventRequest);
+        metrics.processorMethodInvoked(ProcessorMethod.SEND_EVENT);
+        return response;
+    }
+
+    private Pair<@NotNull Integer, @Nullable EventData> processServiceResponse(@Nullable EventID checkpoint, List<EventData> events) {
+        if (checkpoint == null) {
+            return new Pair<>(events.size(), null);
+        }
+        int processed = 0;
+        EventData checkpointEvent = null;
+        for (EventData event : events) {
+            if (checkpointEvent == null) {
+                processed++;
+            }
+            if (event.getEventId().equals(checkpoint)) {
+                checkpointEvent = event;
+            }
+        }
+        if (!events.isEmpty()) {
+            metrics.lastEvent(events.get(events.size() - 1));
+        }
+        return new Pair<>(processed, checkpointEvent);
     }
 
     private SendingReport sendMessages(MessagesInfo info) throws IOException {
@@ -362,7 +386,7 @@ public class Crawler {
             MessageDataRequest.Builder messageDataBuilder = MessageDataRequest.newBuilder();
 
             MessagesSearchParameters searchParams = MessagesSearchParameters.builder().setFrom(fromTimestamp).setTo(toTimestamp).setBatchSize(batchSize).setResumeIds(resumeIds).setAliases(info.aliases).build();
-            SearchResult<MessageData> result = CrawlerUtils.searchMessages(dataProviderService, searchParams);
+            SearchResult<MessageData> result = CrawlerUtils.searchMessages(dataProviderService, searchParams, metrics);
             List<MessageData> messages = result.getData();
 
             if (messages.isEmpty()) {
@@ -372,7 +396,7 @@ public class Crawler {
 
             MessageDataRequest messageRequest = messageDataBuilder.setId(crawlerId).addAllMessageData(messages).build();
 
-            response = dataProcessor.sendMessage(messageRequest);
+            response = sendMessagesToProcessor(dataProcessor, messageRequest);
 
             if (response.hasStatus()) {
                 if (response.getStatus().getHandshakeRequired()) {
@@ -434,7 +458,13 @@ public class Crawler {
             search = messages.size() == batchSize;
         }
 
-        return new SendingReport(CrawlerAction.NONE, interval, dataProcessorName, dataProcessorVersion, 0, numberOfMessages);
+        return new SendingReport(CrawlerAction.NONE, interval, dataProcessorName, dataProcessorVersion, 0, numberOfMessages + diff);
+    }
+
+    private MessageResponse sendMessagesToProcessor(DataProcessorService dataProcessor, MessageDataRequest messageRequest) {
+        MessageResponse response = dataProcessor.sendMessage(messageRequest);
+        metrics.processorMethodInvoked(ProcessorMethod.SEND_MESSAGE);
+        return response;
     }
 
     private void putAndCheck(Map<StreamKey, InnerMessageId> checkpoints, Map<StreamKey, InnerMessageId> destination) {
@@ -457,7 +487,7 @@ public class Crawler {
                 .setBatchSize(batchSize)
                 .setAliases(aliases)
                 .build();
-        SearchResult<MessageData> searchResult = CrawlerUtils.searchMessages(dataProviderService, parameters);
+        SearchResult<MessageData> searchResult = CrawlerUtils.searchMessages(dataProviderService, parameters, metrics);
         SearchResult<MessageData> oppositeRequest = null;
 
         if (!searchResult.getData().isEmpty()) {
@@ -473,7 +503,7 @@ public class Crawler {
                         .setResumeIds(associateWithStreamKey(searchResult.getData().stream().map(MessageData::getMessageId), EARLIEST_SEQUENCE))
                         .setAliases(aliases)
                         .setTimeRelation(TimeRelation.PREVIOUS)
-                        .build());
+                        .build(), metrics);
             }
         }
         return concat(
@@ -503,6 +533,8 @@ public class Crawler {
             MessageID messageId = data.getMessageId();
             MessageID checkpointId = checkpointByDirection.get(createStreamKeyFrom(messageId));
             String sessionAlias = messageId.getConnectionId().getSessionAlias();
+            // Update the last message for alias + direction
+            metrics.lastMessage(sessionAlias, messageId.getDirection(), data);
             if (skipAliases.contains(sessionAlias)) {
                 continue;
             }
@@ -546,7 +578,7 @@ public class Crawler {
     }
 
     private SendingReport handshake(CrawlerId crawlerId, Interval interval, DataProcessorInfo dataProcessorInfo, long numberOfEvents, long numberOfMessages) {
-        DataProcessorInfo info = dataProcessor.crawlerConnect(CrawlerInfo.newBuilder().setId(crawlerId).build());
+        DataProcessorInfo info = crawlerConnect(dataProcessor, CrawlerInfo.newBuilder().setId(crawlerId).build());
 
         String dataProcessorName = info.getName();
         String dataProcessorVersion = info.getVersion();
@@ -627,7 +659,7 @@ public class Crawler {
         return interval.getStartTime();
     }
 
-    private FetchIntervalReport getOrCreateInterval(String name, String version, String type) throws IOException {
+    private FetchIntervalReport getOrCreateInterval(String name, String version, DataType type) throws IOException {
 
         Instant lagNow = crawlerTime.now().minus(configuration.getToLag(), configuration.getToLagOffsetUnit());
 
@@ -640,7 +672,7 @@ public class Crawler {
             return new FetchIntervalReport(null, getSleepTime(lagNow, from), true);
         }
 
-        Iterable<Interval> intervals = intervalsWorker.getIntervals(from, to, name, version, type);
+        Iterable<Interval> intervals = intervalsWorker.getIntervals(from, to, name, version, type.getTypeName());
 
         Duration length = defaultIntervalLength;
         Interval lastInterval;
@@ -704,7 +736,7 @@ public class Crawler {
         }
     }
 
-    private FetchIntervalReport createAndStoreInterval(Instant from, Instant to, String name, String version, String type, Instant lagTime) throws IOException {
+    private FetchIntervalReport createAndStoreInterval(Instant from, Instant to, String name, String version, DataType type, Instant lagTime) throws IOException {
 
         long sleepTime = defaultSleepTime;
 
@@ -723,7 +755,7 @@ public class Crawler {
                 .lastUpdateTime(crawlerTime.now())
                 .crawlerName(name)
                 .crawlerVersion(version)
-                .crawlerType(type)
+                .crawlerType(type.getTypeName())
                 .processed(false)
                 .recoveryState(stateService.serialize(
                         new RecoveryState(null, null, 0, 0)

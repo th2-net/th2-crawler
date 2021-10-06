@@ -28,7 +28,7 @@ class CrawlerConfiguration @JvmOverloads constructor(
     @JsonProperty
     val name: String,
     @JsonProperty
-    val type: String = "EVENTS",
+    val type: DataType = DataType.EVENTS,
     @JsonProperty
     val defaultLength: String = "PT1H",
     @JsonProperty
