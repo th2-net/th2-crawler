@@ -323,7 +323,7 @@ public class CrawlerTest {
     private Crawler createCrawler(CrawlerConfiguration configuration) throws IOException {
         CrawlerMetrics metrics = mock(CrawlerMetrics.class);
         when(metrics.measureTime(any(DataType.class), any(Method.class), any())).then(invk ->
-                invk.<CrawlerMetrics.CrawlerDataOperation<?>>getArgument(1).call());
+                invk.<CrawlerMetrics.CrawlerDataOperation<?>>getArgument(2).call());
         CrawlerContext crawlerContext = new CrawlerContext()
                 .setCrawlerTime(new CrawlerTimeTestImpl())
                 .setMetrics(metrics);
