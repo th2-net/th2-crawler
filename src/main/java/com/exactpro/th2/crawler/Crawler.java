@@ -26,6 +26,7 @@ import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService;
 import com.exactpro.th2.crawler.dataprocessor.grpc.IntervalInfo;
 import com.exactpro.th2.crawler.exception.UnsupportedRecoveryStateException;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
+import com.exactpro.th2.crawler.metrics.CrawlerMetrics.Method;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics.ProcessorMethod;
 import com.exactpro.th2.crawler.state.StateService;
 import com.exactpro.th2.crawler.state.v1.RecoveryState;
@@ -178,6 +179,11 @@ public class Crawler {
                 sendingReport = currentData.getHasData()
                         ? processData(currentInt, parameters, currentData)
                         : requireNonNullElse(sendingReport, Report.empty());
+
+                if (currentData.getHasData()) {
+                    metrics.updateProcessedData(crawlerType, currentData.size());
+                }
+
                 Continuation checkpoint = sendingReport.getCheckpoint();
                 processedEvents += sendingReport.getProcessedData() + remaining;
                 if (checkpoint != null) {
@@ -217,11 +223,11 @@ public class Crawler {
     }
 
     private Report<Continuation> processData(InternalInterval current, DataParameters parameters, CrawlerData<Continuation> currentData) throws IOException {
-        return metrics.measureTime(crawlerType, () -> typeStrategy.processData(dataProcessor, current, parameters, currentData));
+        return metrics.measureTime(crawlerType, Method.PROCESS_DATA, () -> typeStrategy.processData(dataProcessor, current, parameters, currentData));
     }
 
     private CrawlerData<Continuation> requestData(Timestamp startTime, Timestamp endTime, Continuation continuation, DataParameters parameters) throws IOException {
-        return metrics.measureTime(crawlerType, () -> typeStrategy.requestData(startTime, endTime, parameters, continuation));
+        return metrics.measureTime(crawlerType, Method.REQUEST_DATA, () -> typeStrategy.requestData(startTime, endTime, parameters, continuation));
     }
 
     private void intervalStartForProcessor(DataProcessorService dataProcessor, Interval interval, RecoveryState state) {

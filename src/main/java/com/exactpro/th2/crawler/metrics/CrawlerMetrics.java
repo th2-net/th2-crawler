@@ -17,7 +17,6 @@
 package com.exactpro.th2.crawler.metrics;
 
 import java.io.IOException;
-import java.util.concurrent.Callable;
 
 import com.exactpro.cradle.intervals.Interval;
 import com.exactpro.th2.common.grpc.Direction;
@@ -37,7 +36,11 @@ public interface CrawlerMetrics {
 
     void providerMethodInvoked(ProviderMethod method);
 
-    <T> T measureTime(DataType dataType, CrawlerDataOperation<T> function) throws IOException;
+    <T> T measureTime(DataType dataType, Method method, CrawlerDataOperation<T> function) throws IOException;
+
+    void updateProcessedData(DataType dataType, long count);
+
+    enum Method { REQUEST_DATA, PROCESS_DATA }
 
     enum ProcessorMethod { CRAWLER_CONNECT, INTERVAL_START, SEND_EVENT, SEND_MESSAGE }
 

@@ -80,6 +80,7 @@ interface CrawlerData<C : Continuation> {
     val isNeedsNextRequest: Boolean
     val hasData: Boolean
     val continuation: C?
+    fun size(): Int
 }
 
 interface Continuation

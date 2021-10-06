@@ -27,6 +27,7 @@ import com.exactpro.th2.crawler.dataprocessor.grpc.EventResponse;
 import com.exactpro.th2.crawler.dataprocessor.grpc.MessageDataRequest;
 import com.exactpro.th2.crawler.dataprocessor.grpc.Status;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
+import com.exactpro.th2.crawler.metrics.CrawlerMetrics.Method;
 import com.exactpro.th2.crawler.state.StateService;
 import com.exactpro.th2.crawler.state.v1.RecoveryState;
 import com.exactpro.cradle.utils.UpdateNotAppliedException;
@@ -321,7 +322,7 @@ public class CrawlerTest {
     @NotNull
     private Crawler createCrawler(CrawlerConfiguration configuration) throws IOException {
         CrawlerMetrics metrics = mock(CrawlerMetrics.class);
-        when(metrics.measureTime(any(DataType.class), any())).then(invk ->
+        when(metrics.measureTime(any(DataType.class), any(Method.class), any())).then(invk ->
                 invk.<CrawlerMetrics.CrawlerDataOperation<?>>getArgument(1).call());
         CrawlerContext crawlerContext = new CrawlerContext()
                 .setCrawlerTime(new CrawlerTimeTestImpl())

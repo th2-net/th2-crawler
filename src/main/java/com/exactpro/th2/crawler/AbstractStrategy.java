@@ -50,5 +50,10 @@ public abstract class AbstractStrategy<T extends CrawlerData<C>, C extends Conti
         public final boolean isNeedsNextRequest() {
             return needsNextRequest;
         }
+
+        @Override
+        public int size() {
+            return data.size();
+        }
     }
 }

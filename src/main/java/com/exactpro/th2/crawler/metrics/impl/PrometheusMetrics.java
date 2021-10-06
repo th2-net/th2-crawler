@@ -17,7 +17,6 @@
 package com.exactpro.th2.crawler.metrics.impl;
 
 import java.io.IOException;
-import java.util.concurrent.Callable;
 
 import com.exactpro.cradle.intervals.Interval;
 import com.exactpro.th2.common.grpc.Direction;
@@ -37,6 +36,11 @@ public class PrometheusMetrics implements CrawlerMetrics {
     private final Histogram processingTime = Histogram.build()
             .name("th2_crawler_processing_data_time_seconds")
             .help("time in seconds to process an interval")
+            .labelNames("data_type", "method")
+            .register();
+    private final Counter processedDataCount = Counter.build()
+            .name("th2_crawler_processed_data_count")
+            .help("number of data processed by the crawler")
             .labelNames("data_type")
             .register();
     //region Message's metrics
@@ -107,12 +111,17 @@ public class PrometheusMetrics implements CrawlerMetrics {
     }
 
     @Override
-    public <T> T measureTime(DataType dataType, CrawlerDataOperation<T> function) throws IOException {
-        Histogram.Timer timer = processingTime.labels(dataType.getTypeName()).startTimer();
+    public <T> T measureTime(DataType dataType, Method method, CrawlerDataOperation<T> function) throws IOException {
+        Histogram.Timer timer = processingTime.labels(dataType.getTypeName(), method.name()).startTimer();
         try {
             return function.call();
         } finally {
             timer.observeDuration();
         }
+    }
+
+    @Override
+    public void updateProcessedData(DataType dataType, long count) {
+        processedDataCount.labels(dataType.getTypeName()).inc(count);
     }
 }
