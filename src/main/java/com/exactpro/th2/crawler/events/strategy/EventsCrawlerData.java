@@ -25,28 +25,28 @@ import org.jetbrains.annotations.Nullable;
 import com.exactpro.th2.common.grpc.EventID;
 import com.exactpro.th2.crawler.AbstractStrategy.AbstractCrawlerData;
 import com.exactpro.th2.crawler.Continuation;
-import com.exactpro.th2.crawler.events.strategy.EventsCrawlerData.ResumeId;
+import com.exactpro.th2.crawler.events.strategy.EventsCrawlerData.ResumeEventId;
 import com.exactpro.th2.dataprovider.grpc.EventData;
 
-public class EventsCrawlerData extends AbstractCrawlerData<ResumeId, EventData> {
-    private final ResumeId resumeId;
+public class EventsCrawlerData extends AbstractCrawlerData<ResumeEventId, EventData> {
+    private final ResumeEventId resumeEventId;
 
-    public EventsCrawlerData(List<EventData> data, ResumeId resumeId, boolean needsNextRequest) {
+    public EventsCrawlerData(List<EventData> data, ResumeEventId resumeEventId, boolean needsNextRequest) {
         super(data, needsNextRequest);
-        this.resumeId = resumeId;
+        this.resumeEventId = resumeEventId;
     }
 
     @Nullable
     @Override
-    public ResumeId getContinuation() {
-        return resumeId;
+    public ResumeEventId getContinuation() {
+        return resumeEventId;
     }
 
-    public static class ResumeId implements Continuation {
+    public static class ResumeEventId implements Continuation {
         private final EventID resumeId;
         private final Instant timestamp;
 
-        public ResumeId(EventID resumeId, Instant timestamp) {
+        public ResumeEventId(EventID resumeId, Instant timestamp) {
             this.resumeId = Objects.requireNonNull(resumeId, "'Resume id' parameter");
             this.timestamp = Objects.requireNonNull(timestamp, "'Timestamp' parameter");
         }

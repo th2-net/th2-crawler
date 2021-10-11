@@ -90,6 +90,7 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
 
     @Override
     public void setupIntervalInfo(@NotNull IntervalInfo.Builder info, @Nullable RecoveryState state) {
+        requireNonNull(info, "'info' parameter");
         Map<StreamKey, InnerMessageId> lastProcessedMessages = state == null ? null : state.getLastProcessedMessages();
         if (lastProcessedMessages != null && !lastProcessedMessages.isEmpty()) {
             info.setLastMessageIds(MessageIDs.newBuilder()
@@ -100,9 +101,10 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
         }
     }
 
-    @Nullable
+    @NotNull
     @Override
     public ResumeMessageIDs continuationFromState(@NotNull RecoveryState state) {
+        requireNonNull(state, "'state' parameter");
         Map<StreamKey, InnerMessageId> ids = requireNonNullElse(state.getLastProcessedMessages(), Map.of());
         return new ResumeMessageIDs(Map.of(), toMessageIDs(ids));
     }
@@ -110,6 +112,7 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
     @NotNull
     @Override
     public RecoveryState continuationToState(@Nullable RecoveryState current, @NotNull ResumeMessageIDs continuation, long processedData) {
+        requireNonNull(continuation, "'continuation' parameter");
         if (current == null) {
             Map<StreamKey, MessageID> startIntervalIDs = new HashMap<>(continuation.getStartIDs());
             putAndCheck(continuation.getIds(), startIntervalIDs);
@@ -129,6 +132,9 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
     @Override
     public MessagesCrawlerData requestData(@NotNull Timestamp start, @NotNull Timestamp end, @NotNull DataParameters parameters,
                                            @Nullable ResumeMessageIDs continuation) {
+        requireNonNull(start, "'start' parameter");
+        requireNonNull(end, "'end' parameter");
+        requireNonNull(parameters, "'parameters' parameter");
         Map<StreamKey, MessageID> resumeIds = continuation == null ? null : continuation.getIds();
         Map<StreamKey, MessageID> startIDs = resumeIds == null ? initialStartIds(start, parameters.getSessionAliases()) : resumeIds;
         int batchSize = config.getBatchSize();
@@ -168,6 +174,10 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
             @NotNull DataParameters parameters,
             @NotNull MessagesCrawlerData data
     ) {
+        requireNonNull(processor, "'processor' parameter");
+        requireNonNull(interval, "'interval' parameter");
+        requireNonNull(parameters, "'parameters' parameter");
+        requireNonNull(data, "'data' parameter");
 
         CrawlerId crawlerId = parameters.getCrawlerId();
         Interval original = interval.getOriginal();
@@ -293,7 +303,6 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
         var skipAliases = new HashSet<String>(responseIds.size());
         for (MessageData data : messages) {
             MessageID messageId = data.getMessageId();
-            MessageID checkpointId = checkpointByDirection.get(createStreamKeyFrom(messageId));
             String sessionAlias = messageId.getConnectionId().getSessionAlias();
             // Update the last message for alias + direction
             metrics.lastMessage(sessionAlias, messageId.getDirection(), data);
@@ -301,7 +310,8 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
                 continue;
             }
             messageCount++;
-            if (checkpointId.equals(messageId)) {
+            MessageID checkpointId = checkpointByDirection.get(createStreamKeyFrom(messageId));
+            if (messageId.equals(checkpointId)) {
                 skipAliases.add(sessionAlias);
             }
         }

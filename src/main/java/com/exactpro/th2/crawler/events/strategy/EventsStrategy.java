@@ -16,6 +16,8 @@
 
 package com.exactpro.th2.crawler.events.strategy;
 
+import static java.util.Objects.requireNonNull;
+
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
@@ -40,7 +42,7 @@ import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService;
 import com.exactpro.th2.crawler.dataprocessor.grpc.EventDataRequest;
 import com.exactpro.th2.crawler.dataprocessor.grpc.EventResponse;
 import com.exactpro.th2.crawler.dataprocessor.grpc.IntervalInfo.Builder;
-import com.exactpro.th2.crawler.events.strategy.EventsCrawlerData.ResumeId;
+import com.exactpro.th2.crawler.events.strategy.EventsCrawlerData.ResumeEventId;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics.ProcessorMethod;
 import com.exactpro.th2.crawler.state.v1.InnerEventId;
@@ -54,7 +56,7 @@ import com.google.protobuf.Timestamp;
 
 import kotlin.Pair;
 
-public class EventsStrategy extends AbstractStrategy<EventsCrawlerData, ResumeId> {
+public class EventsStrategy extends AbstractStrategy<EventsCrawlerData, ResumeEventId> {
     private static final Logger LOGGER = LoggerFactory.getLogger(EventsStrategy.class);
 
     private final DataProviderService provider;
@@ -72,6 +74,7 @@ public class EventsStrategy extends AbstractStrategy<EventsCrawlerData, ResumeId
 
     @Override
     public void setupIntervalInfo(@NotNull Builder info, @Nullable RecoveryState state) {
+        requireNonNull(info, "'info' parameter");
         InnerEventId lastProcessedEvent = state == null ? null : state.getLastProcessedEvent();
         if (lastProcessedEvent != null) {
             info.setLastEventId(EventUtils.toEventID(lastProcessedEvent.getId()));
@@ -81,7 +84,10 @@ public class EventsStrategy extends AbstractStrategy<EventsCrawlerData, ResumeId
     @NotNull
     @Override
     public EventsCrawlerData requestData(@NotNull Timestamp start, @NotNull Timestamp end, @NotNull DataParameters parameters,
-                                         @Nullable ResumeId prevResult) {
+                                         @Nullable EventsCrawlerData.ResumeEventId prevResult) {
+        requireNonNull(start, "'start' parameter");
+        requireNonNull(end, "'end' parameter");
+        requireNonNull(parameters, "'parameters' parameter");
         EventID resumeId = getResumeId(prevResult);
         int batchSize = config.getBatchSize();
         SearchResult<EventData> result = CrawlerUtils.searchEvents(provider,
@@ -98,12 +104,16 @@ public class EventsStrategy extends AbstractStrategy<EventsCrawlerData, ResumeId
 
     @NotNull
     @Override
-    public Report<ResumeId> processData(
+    public Report<ResumeEventId> processData(
             @NotNull DataProcessorService processor,
             @NotNull InternalInterval interval,
             @NotNull DataParameters parameters,
             @NotNull EventsCrawlerData data
     ) {
+        requireNonNull(processor, "'processor' parameter");
+        requireNonNull(interval, "'interval' parameter");
+        requireNonNull(parameters, "'parameters' parameter");
+        requireNonNull(data, "'data' parameter");
 
         CrawlerId crawlerId = parameters.getCrawlerId();
         Interval original = interval.getOriginal();
@@ -132,12 +142,12 @@ public class EventsStrategy extends AbstractStrategy<EventsCrawlerData, ResumeId
         long processedEventsCount = countAndCheckpoint.getFirst();
         long remaining = events.size() - processedEventsCount;
 
-        ResumeId continuation = null;
+        ResumeEventId continuation = null;
         if (hasCheckpoint) {
             EventData checkpointEvent = countAndCheckpoint.getSecond();
             if (checkpointEvent != null) {
                 Instant startTimeStamp = CrawlerUtils.fromTimestamp(checkpointEvent.getStartTimestamp());
-                continuation = new ResumeId(checkpointEvent.getEventId(), startTimeStamp);
+                continuation = new ResumeEventId(checkpointEvent.getEventId(), startTimeStamp);
             }
         }
 
@@ -146,9 +156,10 @@ public class EventsStrategy extends AbstractStrategy<EventsCrawlerData, ResumeId
 
     @Nullable
     @Override
-    public ResumeId continuationFromState(@NotNull RecoveryState state) {
+    public EventsCrawlerData.ResumeEventId continuationFromState(@NotNull RecoveryState state) {
+        requireNonNull(state, "'state' parameter");
         InnerEventId innerId = state.getLastProcessedEvent();
-        return innerId == null ? null : new ResumeId(
+        return innerId == null ? null : new ResumeEventId(
                 EventUtils.toEventID(innerId.getId()),
                 innerId.getStartTimestamp()
         );
@@ -156,8 +167,9 @@ public class EventsStrategy extends AbstractStrategy<EventsCrawlerData, ResumeId
 
     @NotNull
     @Override
-    public RecoveryState continuationToState(@Nullable RecoveryState current, @NotNull ResumeId continuation, long processedData) {
-        Function<ResumeId, InnerEventId> toInnerId = cont ->
+    public RecoveryState continuationToState(@Nullable RecoveryState current, @NotNull EventsCrawlerData.ResumeEventId continuation, long processedData) {
+        requireNonNull(continuation, "'continuation' parameter");
+        Function<ResumeEventId, InnerEventId> toInnerId = cont ->
                 new InnerEventId(cont.getTimestamp(), cont.getResumeId().getId());
         if (current == null) {
             return new RecoveryState(
@@ -201,12 +213,12 @@ public class EventsStrategy extends AbstractStrategy<EventsCrawlerData, ResumeId
         return new Pair<>(processed, checkpointEvent);
     }
 
-    private static ResumeId resumeIdFromEvent(EventData data) {
-        return new ResumeId(data.getEventId(), CrawlerUtils.fromTimestamp(data.getStartTimestamp()));
+    private static ResumeEventId resumeIdFromEvent(EventData data) {
+        return new ResumeEventId(data.getEventId(), CrawlerUtils.fromTimestamp(data.getStartTimestamp()));
     }
 
     @Nullable
-    private static EventID getResumeId(@Nullable ResumeId continuation) {
+    private static EventID getResumeId(@Nullable EventsCrawlerData.ResumeEventId continuation) {
         return continuation == null ? null : continuation.getResumeId();
     }
 }

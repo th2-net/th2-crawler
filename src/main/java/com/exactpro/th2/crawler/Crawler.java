@@ -158,7 +158,7 @@ public class Crawler {
 
             DataType crawlerType = DataType.byTypeName(interval.getCrawlerType());
             if (crawlerType != this.crawlerType) {
-                throw new IllegalStateException("Unexpected data type in state: " + crawlerType);
+                throw new IllegalStateException("Unexpected data type in state: " + crawlerType + ". Expected type is " + this.crawlerType);
             }
 
             InternalInterval currentInt = new InternalInterval(stateService, interval);
@@ -192,12 +192,11 @@ public class Crawler {
                 }
             } while (data.isNeedsNextRequest());
 
-            switch (sendingReport.getAction()) {
+            Action action = sendingReport.getAction();
+            switch (action) {
             case HANDSHAKE:
                 DataProcessorInfo info = crawlerConnect(dataProcessor, CrawlerInfo.newBuilder().setId(crawlerId).build());
                 if (!dataProcessorName.equals(info.getName()) || !dataProcessorVersion.equals(info.getVersion())) {
-                    LOGGER.info("Got another name ({}) or version ({}) from repeated crawlerConnect, restarting component", dataProcessorName,
-                            dataProcessorVersion);
                     throw new UnexpectedDataProcessorException("Need to restart Crawler because of changed name and/or version of data-service. " +
                             "Old name: " + dataProcessorName + ", old version: " + dataProcessorVersion + ". " +
                             "New name: " + info.getName() + ", new version: " + info.getVersion());
@@ -213,6 +212,8 @@ public class Crawler {
                 );
                 LOGGER.info("Interval from {}, to {} was processed successfully", interval.getStartTime(), interval.getEndTime());
                 break;
+            default:
+                throw new IllegalStateException("Unsupported report action: " + action);
             }
             metrics.currentInterval(CrawlerUtils.EMPTY);
         }
