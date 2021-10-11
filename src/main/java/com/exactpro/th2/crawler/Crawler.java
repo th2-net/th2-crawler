@@ -367,6 +367,11 @@ public class Crawler {
                 break;
             }
 
+            messages.forEach(m -> {
+                String id = m.getSessionId().getSessionAlias() + ":" + m.getMessageId().getDirection().name() + ":" + m.getMessageId().getSequence();
+                LOGGER.debug("Sending to the processor message {} with messageType {}", id, m.getMessageType());
+            });
+
             MessageDataRequest messageRequest = messageDataBuilder.setId(crawlerId).addAllMessageData(messages).build();
 
             response = dataProcessor.sendMessage(messageRequest);
