@@ -27,6 +27,7 @@ import com.exactpro.th2.crawler.dataprocessor.grpc.EventResponse;
 import com.exactpro.th2.crawler.dataprocessor.grpc.MessageDataRequest;
 import com.exactpro.th2.crawler.dataprocessor.grpc.Status;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
+import com.exactpro.th2.crawler.metrics.CrawlerMetrics.Method;
 import com.exactpro.th2.crawler.state.StateService;
 import com.exactpro.th2.crawler.state.v1.RecoveryState;
 import com.exactpro.cradle.utils.UpdateNotAppliedException;
@@ -39,6 +40,7 @@ import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import com.exactpro.th2.dataprovider.grpc.EventData;
 import com.exactpro.th2.dataprovider.grpc.EventSearchRequest;
 import com.exactpro.th2.dataprovider.grpc.MessageData;
+import com.exactpro.th2.dataprovider.grpc.MessageData.Builder;
 import com.exactpro.th2.dataprovider.grpc.MessageSearchRequest;
 import com.exactpro.th2.dataprovider.grpc.Stream;
 import com.exactpro.th2.dataprovider.grpc.StreamResponse;
@@ -86,7 +88,7 @@ public class CrawlerTest {
     private List<Interval> intervals;
     private List<StreamResponse> searchEventResponse;
 
-    private final String[] aliases = new String[] {"alias1", "alias2"};
+    private final String[] aliases = {"alias1", "alias2"};
 
     @BeforeEach
     void prepare() throws IOException {
@@ -122,7 +124,7 @@ public class CrawlerTest {
         }).collect(Collectors.toList()).iterator());
 
         when(dataServiceMock.crawlerConnect(any(CrawlerInfo.class)))
-                .thenReturn(DataProcessorInfo.newBuilder().setEventId(toEventID("3")).setName(name).setVersion(version).build());
+                .thenReturn(DataProcessorInfo.newBuilder().setName(name).setVersion(version).build());
 
         when(dataServiceMock.sendEvent(any(EventDataRequest.class))).then(invocation -> {
                     EventDataRequest request = invocation.getArgument(0);
@@ -247,7 +249,7 @@ public class CrawlerTest {
         Crawler crawler = createCrawler(configuration);
 
         when(dataServiceMock.crawlerConnect(any(CrawlerInfo.class)))
-                .thenReturn(DataProcessorInfo.newBuilder().setEventId(toEventID("3")).setName("another_crawler").setVersion(version).build());
+                .thenReturn(DataProcessorInfo.newBuilder().setName("another_crawler").setVersion(version).build());
 
         when(dataServiceMock.sendEvent(any(EventDataRequest.class))).then(invocation -> {
             EventDataRequest request = invocation.getArgument(0);
@@ -273,7 +275,7 @@ public class CrawlerTest {
 
         String exceptionMessage = "Test exception";
 
-        MessageData.Builder responseMessage = MessageData.newBuilder()
+        Builder responseMessage = MessageData.newBuilder()
                 .setDirectionValue(1).setMessageId(MessageID.newBuilder()
                         .setDirection(Direction.FIRST).setConnectionId(ConnectionID.newBuilder()
                                 .setSessionAlias("alias1").build()).setSequence(2).build());
@@ -310,7 +312,7 @@ public class CrawlerTest {
         });
 
         when(dataServiceMock.crawlerConnect(any(CrawlerInfo.class)))
-                .thenReturn(DataProcessorInfo.newBuilder().setEventId(toEventID("3")).setName("another_crawler").setVersion(version).build());
+                .thenReturn(DataProcessorInfo.newBuilder().setName("another_crawler").setVersion(version).build());
 
         when(dataServiceMock.sendMessage(any(MessageDataRequest.class))).thenThrow(new RuntimeException(exceptionMessage));
 
@@ -320,8 +322,8 @@ public class CrawlerTest {
     @NotNull
     private Crawler createCrawler(CrawlerConfiguration configuration) throws IOException {
         CrawlerMetrics metrics = mock(CrawlerMetrics.class);
-        when(metrics.measureTime(any(DataType.class), any())).then(invk ->
-                invk.<CrawlerMetrics.CrawlerDataOperation<?>>getArgument(1).call());
+        when(metrics.measureTime(any(DataType.class), any(Method.class), any())).then(invk ->
+                invk.<CrawlerMetrics.CrawlerDataOperation<?>>getArgument(2).call());
         CrawlerContext crawlerContext = new CrawlerContext()
                 .setCrawlerTime(new CrawlerTimeTestImpl())
                 .setMetrics(metrics);
