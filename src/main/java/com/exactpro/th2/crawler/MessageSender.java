@@ -113,6 +113,7 @@ public class MessageSender {
                     .setResumeIds(resumeIds).setAliases(info.getAliases()).build();
             SearchResult<MessageData> result = CrawlerUtils.searchMessages(dataProviderService, searchParams);
             List<MessageData> messages = result.getData();
+            LOGGER.debug("Requested {} messages", messages.size());
 
             if (messages.isEmpty()) {
                 LOGGER.info("No more messages in interval from: {}, to: {}", interval.getStartTime(), interval.getEndTime());
