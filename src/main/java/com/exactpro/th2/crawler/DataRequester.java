@@ -52,56 +52,36 @@ public class DataRequester {
         this.dataProviderService = dataProviderService;
     }
 
-    public SearchResult<EventData> searchEvents(EventsSearchParameters info) {
-
-        EventSearchRequest.Builder eventSearchBuilder = EventSearchRequest.newBuilder()
-                .setMetadataOnly(BoolValue.newBuilder().setValue(false).build())
-                .setStartTimestamp(info.getFrom())
-                .setEndTimestamp(info.getTo())
-                .setResultCountLimit(Int32Value.of(info.getBatchSize()));
-
-        EventSearchRequest request;
-        if (info.getResumeId() == null)
-            request = eventSearchBuilder.build();
-        else
-            request = eventSearchBuilder.setResumeFromId(info.getResumeId()).build();
-
-        return collectEvents(dataProviderService.searchEvents(request), info.getTo());
+    public SearchResult<EventData> searchEvents(EventsSearchParameters params) {
+        EventSearchRequest request = buildEventSearchRequest(params);
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("Send events. Request: {}", MessageUtils.toJson(request));
+        }
+        return collectEvents(dataProviderService.searchEvents(request), params.getTo());
     }
 
-    public SearchResult<MessageData> searchMessages(MessagesSearchParameters info) {
-        LOGGER.debug("Requesting messages from DataProviderService...");
-        MessageSearchRequest.Builder messageSearchBuilder = MessageSearchRequest.newBuilder()
-                .setStartTimestamp(info.getFrom());
-        if (info.getTo() != null) {
-            messageSearchBuilder.setEndTimestamp(info.getTo());
-        }
-        messageSearchBuilder.setResultCountLimit(Int32Value.of(info.getBatchSize()))
-                .setSearchDirection(requireNonNullElse(info.getTimeRelation(), TimeRelation.NEXT))
-                .setStream(StringList.newBuilder().addAllListString(info.getAliases()).build());
+    public SearchResult<MessageData> searchMessages(MessagesSearchParameters params) {
+        MessageSearchRequest request = buildMessageSearchRequest(params);
 
-        MessageSearchRequest request;
-        if (info.getResumeIds() == null || info.getResumeIds().isEmpty()) {
-            request = messageSearchBuilder.build();
-        } else {
-            request = messageSearchBuilder.addAllMessageId(info.getResumeIds().values()).build();
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("Request messages from DataProviderService. Request: {}", MessageUtils.toJson(request));
         }
         Iterator<StreamResponse> streamResponseIterator = dataProviderService.searchMessages(request);
-        LOGGER.debug("Got response from DataProviderService");
-        return collectMessages(streamResponseIterator, info.getTo());
+        LOGGER.debug("Got response from DataProviderService.");
+        return collectMessages(streamResponseIterator, params.getTo());
     }
 
-    public static SearchResult<EventData> collectEvents(Iterator<StreamResponse> iterator, Timestamp to) {
+    private static SearchResult<EventData> collectEvents(Iterator<StreamResponse> iterator, Timestamp to) {
         return collectData(iterator, to, response -> response.hasEvent() ? response.getEvent() : null,
                 eventData -> eventData.hasStartTimestamp() ? eventData.getStartTimestamp() : null);
     }
 
-    public static SearchResult<MessageData> collectMessages(Iterator<StreamResponse> iterator, Timestamp to) {
+    private static SearchResult<MessageData> collectMessages(Iterator<StreamResponse> iterator, Timestamp to) {
         return collectData(iterator, to, response -> response.hasMessage() ? response.getMessage() : null,
                 messageData -> messageData.hasTimestamp() ? messageData.getTimestamp() : null);
     }
 
-    public static <T extends MessageOrBuilder> SearchResult<T> collectData(Iterator<StreamResponse> iterator, Timestamp to,
+    private static <T extends MessageOrBuilder> SearchResult<T> collectData(Iterator<StreamResponse> iterator, Timestamp to,
                                                                            Function<StreamResponse, T> objectExtractor,
                                                                            Function<T, Timestamp> timeExtractor) {
         List<T> data = null;
@@ -140,5 +120,35 @@ public class DataRequester {
             LOGGER.debug("Collected {} objects", data.size());
         }
         return new SearchResult<>(data == null ? Collections.emptyList() : data, streamsInfo);
+    }
+
+    private MessageSearchRequest buildMessageSearchRequest(MessagesSearchParameters info) {
+        MessageSearchRequest.Builder requestBuilder = MessageSearchRequest.newBuilder()
+                .setStartTimestamp(info.getFrom())
+                .setResultCountLimit(Int32Value.of(info.getBatchSize()))
+                .setSearchDirection(requireNonNullElse(info.getTimeRelation(), TimeRelation.NEXT))
+                .setStream(StringList.newBuilder().addAllListString(info.getAliases()).build());
+
+        if (info.getTo() != null) {
+            requestBuilder.setEndTimestamp(info.getTo());
+        }
+
+        if (info.getResumeIds() != null && !info.getResumeIds().isEmpty()) {
+            requestBuilder.addAllMessageId(info.getResumeIds().values()).build();
+        }
+        return requestBuilder.build();
+    }
+
+    private EventSearchRequest buildEventSearchRequest(EventsSearchParameters params) {
+         EventSearchRequest.Builder eventSearchBuilder = EventSearchRequest.newBuilder()
+                .setMetadataOnly(BoolValue.newBuilder().setValue(false).build())
+                .setStartTimestamp(params.getFrom())
+                .setEndTimestamp(params.getTo())
+                .setResultCountLimit(Int32Value.of(params.getBatchSize()));
+
+        if (params.getResumeId() != null) {
+            eventSearchBuilder.setResumeFromId(params.getResumeId());
+        }
+        return eventSearchBuilder.build();
     }
 }

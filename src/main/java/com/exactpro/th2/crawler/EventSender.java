@@ -70,7 +70,6 @@ public class EventSender {
     }
 
     public SendingReport sendEvents(EventsInfo info) throws IOException {
-        LOGGER.debug("Sending events...");
         EventResponse response;
         Interval interval = info.getInterval();
         EventID resumeId = info.getStartId();
