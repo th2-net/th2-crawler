@@ -106,9 +106,11 @@ public class DataRequester {
                                                                            Function<T, Timestamp> timeExtractor) {
         List<T> data = null;
         StreamsInfo streamsInfo = null;
-        LOGGER.debug("Collection data...");
+        LOGGER.debug("Collecting data...");
 
+        int i = 0;
         while (iterator.hasNext()) {
+            LOGGER.debug("Iteration {}", ++i);
             StreamResponse r = iterator.next();
             if (r.hasStreamInfo()) {
                 streamsInfo = r.getStreamInfo();
