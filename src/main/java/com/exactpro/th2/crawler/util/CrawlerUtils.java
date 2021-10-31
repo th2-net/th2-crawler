@@ -81,7 +81,7 @@ public class CrawlerUtils {
 
     public static SearchResult<MessageData> searchMessages(DataProviderService dataProviderService,
                                                    MessagesSearchParameters info) {
-
+        LOGGER.debug("Requesting messages from DataProviderService...");
         MessageSearchRequest.Builder messageSearchBuilder = MessageSearchRequest.newBuilder()
                 .setStartTimestamp(info.getFrom());
         if (info.getTo() != null) {
