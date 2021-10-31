@@ -22,7 +22,6 @@ import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BinaryOperator;
@@ -35,13 +34,10 @@ import com.exactpro.th2.common.event.EventUtils;
 import com.exactpro.th2.common.grpc.ConnectionID;
 import com.exactpro.th2.common.grpc.EventID;
 import com.exactpro.th2.common.grpc.MessageID;
-import com.exactpro.th2.common.message.MessageUtils;
 import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId;
 import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerInfo;
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorInfo;
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService;
-import com.exactpro.th2.crawler.dataprocessor.grpc.EventDataRequest;
-import com.exactpro.th2.crawler.dataprocessor.grpc.EventResponse;
 import com.exactpro.th2.crawler.exception.ConfigurationException;
 import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException;
 import com.exactpro.th2.crawler.state.StateService;
@@ -51,12 +47,8 @@ import com.exactpro.th2.crawler.state.v1.RecoveryState;
 import com.exactpro.th2.crawler.state.v1.StreamKey;
 import com.exactpro.th2.crawler.util.CrawlerTime;
 import com.exactpro.th2.crawler.util.CrawlerUtils;
-import com.exactpro.th2.crawler.util.CrawlerUtils.EventsSearchParameters;
-import com.exactpro.th2.crawler.util.SearchResult;
 import com.exactpro.th2.crawler.util.impl.CrawlerTimeImpl;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
-import com.exactpro.th2.dataprovider.grpc.EventData;
-import com.google.protobuf.Timestamp;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -91,6 +83,7 @@ public class Crawler {
     private static final String EVENTS = "EVENTS";
     private static final String MESSAGES = "MESSAGES";
     private final MessageSender messageSender;
+    private final EventSender eventSender;
     private final Handshaker handshaker;
 
     public Crawler(
@@ -121,6 +114,7 @@ public class Crawler {
 
         handshaker = new Handshaker(dataProcessor);
         messageSender = new MessageSender(configuration, dataProcessor, dataProviderService, intervalsWorker, stateService, handshaker);
+        eventSender = new EventSender(configuration, dataProcessor, dataProviderService, intervalsWorker, stateService, handshaker);
 
         prepare();
     }
@@ -250,102 +244,11 @@ public class Crawler {
             }
         }
 
-        return sendEvents(new EventsInfo(interval, info, startId,
+        return eventSender.sendEvents(new EventsInfo(interval, info, startId,
                 interval.getStartTime(), interval.getEndTime()));
     }
 
-    private SendingReport sendEvents(EventsInfo info) throws IOException {
-        LOGGER.debug("Sending events...");
-        EventResponse response;
-        Interval interval = info.interval;
-        EventID resumeId = info.startId;
-        boolean search = true;
-        Timestamp fromTimestamp = MessageUtils.toTimestamp(info.from);
-        Timestamp toTimestamp = MessageUtils.toTimestamp(info.to);
-        long numberOfEvents = 0L;
 
-        long diff = 0L;
-
-        String dataProcessorName = info.dataProcessorInfo.getName();
-        String dataProcessorVersion = info.dataProcessorInfo.getVersion();
-
-        while (search) {
-
-            EventDataRequest.Builder eventRequestBuilder = EventDataRequest.newBuilder();
-
-            SearchResult<EventData> result = CrawlerUtils.searchEvents(dataProviderService,
-                    new EventsSearchParameters(fromTimestamp, toTimestamp, batchSize, resumeId));
-            List<EventData> events = result.getData();
-
-            if (events.isEmpty()) {
-                LOGGER.info("No more events in interval from: {}, to: {}", interval.getStartTime(), interval.getEndTime());
-                break;
-            }
-
-            EventData lastEvent = events.get(events.size() - 1);
-
-            resumeId = lastEvent.getEventId();
-
-            EventDataRequest eventRequest = eventRequestBuilder.setId(crawlerId).addAllEventData(events).build();
-
-            response = dataProcessor.sendEvent(eventRequest);
-
-            if (response.hasStatus()) {
-                if (response.getStatus().getHandshakeRequired()) {
-                    return handshaker.handshake(crawlerId, interval, info.dataProcessorInfo, numberOfEvents, 0);
-                }
-            }
-
-            if (response.hasId()) {
-                RecoveryState oldState = stateService.deserialize(interval.getRecoveryState());
-
-                InnerEventId event = null;
-
-                EventID responseId = response.getId();
-
-                long processedEventsCount = events.stream().takeWhile(eventData -> eventData.getEventId().equals(responseId)).count();
-
-                numberOfEvents += processedEventsCount + diff;
-
-                diff = batchSize - processedEventsCount;
-
-                for (EventData eventData: events) {
-                    if (eventData.getEventId().equals(responseId)) {
-                        Instant startTimeStamp = Instant.ofEpochSecond(eventData.getStartTimestamp().getSeconds(),
-                                eventData.getStartTimestamp().getNanos());
-                        String id = eventData.getEventId().getId();
-
-                        event = new InnerEventId(startTimeStamp, id);
-                        break;
-                    }
-                }
-
-                if (event != null) {
-                    RecoveryState newState;
-
-                    if (oldState == null) {
-                        newState = new RecoveryState(
-                                event,
-                                null,
-                                numberOfEvents,
-                                0);
-                    } else {
-                        newState = new RecoveryState(
-                                event,
-                                oldState.getLastProcessedMessages(),
-                                numberOfEvents,
-                                oldState.getLastNumberOfMessages());
-                    }
-
-                    interval = intervalsWorker.updateRecoveryState(interval, stateService.serialize(newState));
-                }
-            }
-
-            search = events.size() == batchSize;
-        }
-
-        return new SendingReport(CrawlerAction.NONE, interval, dataProcessorName, dataProcessorVersion, numberOfEvents, 0);
-    }
 
     private GetIntervalReport getInterval(Iterable<Interval> intervals) throws IOException {
         LOGGER.debug("Getting interval...");
@@ -523,23 +426,6 @@ public class Crawler {
             this.foundInterval = foundInterval;
             this.lastInterval = lastInterval;
             this.processFromStart = processFromStart;
-        }
-    }
-
-    private static class EventsInfo {
-        private final Interval interval;
-        private final DataProcessorInfo dataProcessorInfo;
-        private final EventID startId;
-        private final Instant from;
-        private final Instant to;
-
-        private EventsInfo(Interval interval, DataProcessorInfo dataProcessorInfo,
-                          EventID startId, Instant from, Instant to) {
-            this.interval = interval;
-            this.dataProcessorInfo = dataProcessorInfo;
-            this.startId = startId;
-            this.from = from;
-            this.to = to;
         }
     }
 

@@ -46,7 +46,6 @@ import com.exactpro.th2.crawler.state.StateService;
 import com.exactpro.th2.crawler.state.v1.InnerMessageId;
 import com.exactpro.th2.crawler.state.v1.RecoveryState;
 import com.exactpro.th2.crawler.state.v1.StreamKey;
-import com.exactpro.th2.crawler.util.CrawlerUtils;
 import com.exactpro.th2.crawler.util.MessagesSearchParameters;
 import com.exactpro.th2.crawler.util.SearchResult;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
@@ -68,6 +67,7 @@ public class MessageSender {
     private final IntervalsWorker intervalsWorker;
     private final StateService<RecoveryState> stateService;
     private final Handshaker handshaker;
+    private final DataRequester dataRequester;
 
     public MessageSender(@NotNull CrawlerConfiguration configuration,
                          @NotNull DataProcessorService dataProcessor,
@@ -84,6 +84,7 @@ public class MessageSender {
         this.handshaker = handshaker;
         batchSize = configuration.getBatchSize();
         crawlerId = CrawlerId.newBuilder().setName(configuration.getName()).build();
+        dataRequester = new DataRequester(dataProviderService);
     }
 
     public SendingReport sendMessages(MessagesInfo info) throws IOException {
@@ -111,7 +112,7 @@ public class MessageSender {
             MessagesSearchParameters searchParams = MessagesSearchParameters.builder()
                     .setFrom(fromTimestamp).setTo(toTimestamp).setBatchSize(configuration.getBatchSize())
                     .setResumeIds(resumeIds).setAliases(info.getAliases()).build();
-            SearchResult<MessageData> result = CrawlerUtils.searchMessages(dataProviderService, searchParams);
+            SearchResult<MessageData> result = dataRequester.searchMessages(searchParams);
             List<MessageData> messages = result.getData();
             LOGGER.debug("Requested {} messages", messages.size());
 
@@ -229,7 +230,7 @@ public class MessageSender {
                 .setBatchSize(batchSize)
                 .setAliases(aliases)
                 .build();
-        SearchResult<MessageData> searchResult = CrawlerUtils.searchMessages(dataProviderService, parameters);
+        SearchResult<MessageData> searchResult = dataRequester.searchMessages(parameters);
         SearchResult<MessageData> oppositeRequest = null;
 
         if (!searchResult.getData().isEmpty()) {
@@ -239,7 +240,7 @@ public class MessageSender {
                 // We have a message with timestamp equal the `fromTimestamp`
                 // Because of that we need to make a request in opposite direction
                 // and select the first message for each pair alias + direction that were in the response (should be a single message)
-                oppositeRequest = CrawlerUtils.searchMessages(dataProviderService, MessagesSearchParameters.builder()
+                oppositeRequest = dataRequester.searchMessages(MessagesSearchParameters.builder()
                         .setFrom(fromTimestamp)
                         .setBatchSize(batchSize)
                         .setResumeIds(associateWithStreamKey(searchResult.getData().stream().map(MessageData::getMessageId), EARLIEST_SEQUENCE))
