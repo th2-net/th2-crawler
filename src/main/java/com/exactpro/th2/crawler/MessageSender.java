@@ -16,8 +16,8 @@
 
 package com.exactpro.th2.crawler;
 
-import static com.exactpro.th2.crawler.Crawler.EARLIEST_SEQUENCE;
-import static com.exactpro.th2.crawler.Crawler.LATEST_SEQUENCE;
+import static com.exactpro.th2.crawler.util.CrawlerUtils.EARLIEST_SEQUENCE;
+import static com.exactpro.th2.crawler.util.CrawlerUtils.LATEST_SEQUENCE;
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toMap;
 import static java.util.stream.Collectors.toUnmodifiableMap;
@@ -59,6 +59,7 @@ import org.slf4j.LoggerFactory;
 
 public class MessageSender {
     private static final Logger LOGGER = LoggerFactory.getLogger(MessageSender.class);
+
     private final CrawlerConfiguration configuration;
     private final int batchSize;
     private final CrawlerId crawlerId;
@@ -269,7 +270,7 @@ public class MessageSender {
                         .map(Stream::getLastId),
                 oppositeRequest == null ? empty() : oppositeRequest.getData().stream().map(MessageData::getMessageId)
         ).collect(toUnmodifiableMap(
-                this::createStreamKeyFrom,
+                MessageSender::createStreamKeyFrom,
                 Function.identity(),
                 LATEST_SEQUENCE
         ));
@@ -288,7 +289,7 @@ public class MessageSender {
     }
 
     @NotNull
-    private Map<StreamKey, InnerMessageId> toInnerMessageIDs(Map<StreamKey, MessageID> checkpointByDirection) {
+    private static Map<StreamKey, InnerMessageId> toInnerMessageIDs(Map<StreamKey, MessageID> checkpointByDirection) {
         return checkpointByDirection.entrySet().stream()
                 .collect(toUnmodifiableMap(
                         Map.Entry::getKey,
@@ -304,16 +305,16 @@ public class MessageSender {
     }
 
     @NotNull
-    private Map<StreamKey, MessageID> associateWithStreamKey(java.util.stream.Stream<MessageID> stream, BinaryOperator<MessageID> mergeFunction) {
+    private static Map<StreamKey, MessageID> associateWithStreamKey(java.util.stream.Stream<MessageID> stream, BinaryOperator<MessageID> mergeFunction) {
         return stream.collect(toMap(
-                        this::createStreamKeyFrom,
+                        MessageSender::createStreamKeyFrom,
                         Function.identity(),
                         mergeFunction
                 ));
     }
 
     @NotNull
-    private StreamKey createStreamKeyFrom(MessageID messageID) {
+    private static StreamKey createStreamKeyFrom(MessageID messageID) {
         return new StreamKey(messageID.getConnectionId().getSessionAlias(), messageID.getDirection());
     }
 }

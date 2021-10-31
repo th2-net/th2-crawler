@@ -24,7 +24,6 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.BinaryOperator;
 import java.util.stream.Collectors;
 
 import com.exactpro.cradle.CradleStorage;
@@ -57,11 +56,6 @@ import org.slf4j.LoggerFactory;
 public class Crawler {
     private static final Logger LOGGER = LoggerFactory.getLogger(Crawler.class);
 
-    public static final BinaryOperator<MessageID> LATEST_SEQUENCE = (first, second) -> first.getSequence() < second.getSequence() ? second : first;
-    public static final BinaryOperator<MessageID> EARLIEST_SEQUENCE = (first, second) -> first.getSequence() > second.getSequence() ? second : first;
-
-    private final DataProcessorService dataProcessor;
-    private final DataProviderService dataProviderService;
     private final IntervalsWorker intervalsWorker;
     private final CrawlerConfiguration configuration;
     private final CrawlerTime crawlerTime;
@@ -71,7 +65,6 @@ public class Crawler {
     private final boolean floatingToTime;
     private final boolean workAlone;
     private final String crawlerType;
-    private final int batchSize;
     private final DataProcessorInfo info;
     private final CrawlerId crawlerId;
     private final StateService<RecoveryState> stateService;
@@ -96,8 +89,8 @@ public class Crawler {
     ) {
         this.stateService = requireNonNull(stateService, "'state service' cannot be null");
         this.intervalsWorker = requireNonNull(storage, "Cradle storage cannot be null").getIntervalsWorker();
-        this.dataProcessor = requireNonNull(dataProcessor, "Data service cannot be null");
-        this.dataProviderService = requireNonNull(dataProviderService, "Data provider service cannot be null");
+        requireNonNull(dataProcessor, "Data service cannot be null");
+        requireNonNull(dataProviderService, "Data provider service cannot be null");
         this.configuration = requireNonNull(configuration, "Crawler configuration cannot be null");
         this.from = Instant.parse(configuration.getFrom());
         this.floatingToTime = configuration.getTo() == null;
@@ -106,7 +99,6 @@ public class Crawler {
         this.defaultIntervalLength = Duration.parse(configuration.getDefaultLength());
         this.defaultSleepTime = configuration.getDelay() * 1000;
         this.crawlerType = configuration.getType();
-        this.batchSize = configuration.getBatchSize();
         this.crawlerId = CrawlerId.newBuilder().setName(configuration.getName()).build();
         this.info = dataProcessor.crawlerConnect(CrawlerInfo.newBuilder().setId(crawlerId).build());
         this.sessionAliases = configuration.getSessionAliases();

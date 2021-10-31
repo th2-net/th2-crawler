@@ -43,12 +43,14 @@ public class Handshaker {
         String dataProcessorName = info.getName();
         String dataProcessorVersion = info.getVersion();
 
-        if (dataProcessorName.equals(dataProcessorInfo.getName()) && dataProcessorVersion.equals(dataProcessorInfo.getVersion())) {
+        CrawlerAction action;
+        if (info.equals(dataProcessorInfo)) {
             LOGGER.info("Got the same name ({}) and version ({}) from repeated crawlerConnect", dataProcessorName, dataProcessorVersion);
-            return new SendingReport(CrawlerAction.CONTINUE, interval, dataProcessorName, dataProcessorVersion, numberOfEvents, numberOfMessages);
+            action = CrawlerAction.CONTINUE;
         } else {
             LOGGER.info("Got another name ({}) or version ({}) from repeated crawlerConnect, restarting component", dataProcessorName, dataProcessorVersion);
-            return new SendingReport(CrawlerAction.STOP, interval, dataProcessorName, dataProcessorVersion, numberOfEvents, numberOfMessages);
+            action = CrawlerAction.STOP;
         }
+        return new SendingReport(action, interval, dataProcessorName, dataProcessorVersion, numberOfEvents, numberOfMessages);
     }
 }
