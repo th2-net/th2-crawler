@@ -170,80 +170,95 @@ public class Crawler {
 
             SendingReport sendingReport;
 
-            if (EVENTS.equals(interval.getCrawlerType())) {
-                InnerEventId lastProcessedEvent;
-                RecoveryState state = stateService.deserialize(interval.getRecoveryState());
-
-                lastProcessedEvent = state == null ? null : state.getLastProcessedEvent();
-
-                EventID startId = null;
-
-                if (lastProcessedEvent != null) {
-                    if (!fetchIntervalReport.processFromStart) {
-                        startId = EventUtils.toEventID(lastProcessedEvent.getId());
-                    }
-                }
-
-                sendingReport = sendEvents(new EventsInfo(interval, info, startId,
-                        interval.getStartTime(), interval.getEndTime()));
-
-            } else if (MESSAGES.equals(interval.getCrawlerType())) {
-                RecoveryState state = stateService.deserialize(interval.getRecoveryState());
-
-                Map<StreamKey, InnerMessageId> lastProcessedMessages = state == null ? null : state.getLastProcessedMessages();
-
-                Map<StreamKey, MessageID> startIds = null;
-
-                if (lastProcessedMessages != null) {
-                    if (!fetchIntervalReport.processFromStart) {
-                        startIds = lastProcessedMessages.entrySet().stream()
-                                .collect(Collectors.toMap(
-                                        it -> new StreamKey(it.getKey().getSessionAlias(), it.getKey().getDirection()),
-                                        it -> {
-                                            StreamKey key = it.getKey();
-                                            InnerMessageId value = it.getValue();
-                                            return MessageID.newBuilder()
-                                                    .setSequence(value.getSequence())
-                                                    .setConnectionId(ConnectionID.newBuilder().setSessionAlias(key.getSessionAlias()).build())
-                                                    .setDirection(key.getDirection())
-                                                    .build();
-                                        }
-                                ));
-                    }
-                }
-
-                sendingReport = sendMessages(new MessagesInfo(interval, info, startIds,
-                        sessionAliases, interval.getStartTime(), interval.getEndTime()));
-            } else {
-                throw new ConfigurationException("Type must be either EVENTS or MESSAGES");
+            switch (interval.getCrawlerType()) {
+                case EVENTS:
+                    sendingReport = events(interval, fetchIntervalReport);
+                    break;
+                case MESSAGES:
+                    sendingReport = messages(interval, fetchIntervalReport);
+                    break;
+                default:
+                    throw new ConfigurationException("Type must be either EVENTS or MESSAGES");
             }
 
-            if (sendingReport.action == CrawlerAction.NONE) {
-                interval = sendingReport.interval;
-                interval = intervalsWorker.setIntervalProcessed(interval, true);
-
-                if (EVENTS.equals(interval.getCrawlerType())) {
-                    interval = CrawlerUtils.updateEventRecoveryState(intervalsWorker, interval,
-                            stateService, sendingReport.numberOfEvents);
-                } else if (MESSAGES.equals(interval.getCrawlerType())) {
-                    interval = CrawlerUtils.updateMessageRecoveryState(intervalsWorker, interval,
-                            stateService, sendingReport.numberOfMessages);
-                }
-
-                LOGGER.info("Interval from {}, to {} was processed successfully", interval.getStartTime(), interval.getEndTime());
-            }
-
-            if (sendingReport.action == CrawlerAction.STOP) {
-                throw new UnexpectedDataProcessorException("Need to restart Crawler because of changed name and/or version of data-service. " +
-                        "Old name: "+dataProcessorName+", old version: "+dataProcessorVersion+". " +
-                        "New name: "+sendingReport.newName+", new version: "+sendingReport.newVersion);
-            }
-
+            handleSendingReport(sendingReport);
         }
 
         long sleepTime = fetchIntervalReport.sleepTime;
 
         return Duration.of(sleepTime, ChronoUnit.MILLIS);
+    }
+
+    private void handleSendingReport(SendingReport sendingReport) throws IOException, UnexpectedDataProcessorException {
+        if (sendingReport.action == CrawlerAction.NONE) {
+            Interval interval = sendingReport.interval;
+            interval = intervalsWorker.setIntervalProcessed(interval, true);
+
+            if (EVENTS.equals(interval.getCrawlerType())) {
+                interval = CrawlerUtils.updateEventRecoveryState(intervalsWorker, interval,
+                        stateService, sendingReport.numberOfEvents);
+            } else if (MESSAGES.equals(interval.getCrawlerType())) {
+                interval = CrawlerUtils.updateMessageRecoveryState(intervalsWorker, interval,
+                        stateService, sendingReport.numberOfMessages);
+            }
+
+            LOGGER.info("Interval from {}, to {} was processed successfully", interval.getStartTime(), interval.getEndTime());
+        }
+
+        if (sendingReport.action == CrawlerAction.STOP) {
+            String dataProcessorName = info.getName();
+            String dataProcessorVersion = info.getVersion();
+            throw new UnexpectedDataProcessorException("Need to restart Crawler because of changed name and/or version of data-service. " +
+                    "Old name: "+dataProcessorName+", old version: "+dataProcessorVersion+". " +
+                    "New name: "+sendingReport.newName+", new version: "+sendingReport.newVersion);
+        }
+    }
+
+    private SendingReport messages(Interval interval, FetchIntervalReport fetchIntervalReport) throws IOException {
+        RecoveryState state = stateService.deserialize(interval.getRecoveryState());
+
+        Map<StreamKey, InnerMessageId> lastProcessedMessages = state == null ? null : state.getLastProcessedMessages();
+
+        Map<StreamKey, MessageID> startIds = null;
+
+        if (lastProcessedMessages != null) {
+            if (!fetchIntervalReport.processFromStart) {
+                startIds = lastProcessedMessages.entrySet().stream()
+                        .collect(Collectors.toMap(
+                                it -> new StreamKey(it.getKey().getSessionAlias(), it.getKey().getDirection()),
+                                it -> {
+                                    StreamKey key = it.getKey();
+                                    InnerMessageId value = it.getValue();
+                                    return MessageID.newBuilder()
+                                            .setSequence(value.getSequence())
+                                            .setConnectionId(ConnectionID.newBuilder().setSessionAlias(key.getSessionAlias()).build())
+                                            .setDirection(key.getDirection())
+                                            .build();
+                                }
+                        ));
+            }
+        }
+
+        return sendMessages(new MessagesInfo(interval, info, startIds,
+                sessionAliases, interval.getStartTime(), interval.getEndTime()));
+    }
+
+    private SendingReport events(Interval interval, FetchIntervalReport fetchIntervalReport) throws IOException {
+        InnerEventId lastProcessedEvent;
+        RecoveryState state = stateService.deserialize(interval.getRecoveryState());
+
+        lastProcessedEvent = state == null ? null : state.getLastProcessedEvent();
+
+        EventID startId = null;
+
+        if (lastProcessedEvent != null) {
+            if (!fetchIntervalReport.processFromStart) {
+                startId = EventUtils.toEventID(lastProcessedEvent.getId());
+            }
+        }
+
+        return sendEvents(new EventsInfo(interval, info, startId,
+                interval.getStartTime(), interval.getEndTime()));
     }
 
     private SendingReport sendEvents(EventsInfo info) throws IOException {
@@ -605,6 +620,7 @@ public class Crawler {
 
     private FetchIntervalReport getOrCreateInterval(String name, String version, String type) throws IOException {
 
+        LOGGER.debug("Getting interval...");
         Instant lagNow = crawlerTime.now().minus(configuration.getToLag(), configuration.getToLagOffsetUnit());
 
         if (floatingToTime) {
@@ -631,53 +647,54 @@ public class Crawler {
 
         LOGGER.info("Crawler did not find suitable interval. Creating new one if necessary.");
 
-        if (lastInterval != null) {
-            Instant lastIntervalEnd = lastInterval.getEndTime();
-
-            if (lastIntervalEnd.isBefore(to)) {
-
-                Instant newIntervalEnd;
-
-                if (lastIntervalEnd.plus(length).isBefore(to)) {
-
-                    newIntervalEnd = lastIntervalEnd.plus(length);
-
-                } else {
-                    newIntervalEnd = to;
-
-                    if (floatingToTime) {
-
-                        long sleepTime = getSleepTime(lastIntervalEnd, to);
-
-                        if (LOGGER.isInfoEnabled()) {
-                            LOGGER.info("Failed to create new interval from: {}, to: {} as it is too early now. Wait for {}",
-                                    lastIntervalEnd,
-                                    newIntervalEnd,
-                                    Duration.ofMillis(sleepTime));
-                        }
-
-                        return new FetchIntervalReport(null, sleepTime, true);
-                    }
-                }
-
-                return createAndStoreInterval(lastIntervalEnd, newIntervalEnd, name, version, type, lagNow);
-            } else {
-
-                if (!floatingToTime) {
-                    LOGGER.info("All intervals between {} and {} were fully processed less than {} {} ago",
-                            from, to, configuration.getLastUpdateOffset(), configuration.getLastUpdateOffsetUnit());
-                    return new FetchIntervalReport(null, defaultSleepTime, true);
-                }
-
-                LOGGER.info("Failed to create new interval from: {}, to: {} as the end of the last interval is after " +
-                                "end time of Crawler: {}",
-                        lastIntervalEnd, lastIntervalEnd.plus(length), to);
-
-                return new FetchIntervalReport(null, getSleepTime(lastIntervalEnd.plus(length), lagNow), true); // TODO: we need to start from the beginning I guess
-            }
-        } else {
+        if (lastInterval == null) {
             return createAndStoreInterval(from, from.plus(length), name, version, type, lagNow);
         }
+
+        Instant lastIntervalEnd = lastInterval.getEndTime();
+
+        if (lastIntervalEnd.isBefore(to)) {
+
+            Instant newIntervalEnd;
+
+            if (lastIntervalEnd.plus(length).isBefore(to)) {
+
+                newIntervalEnd = lastIntervalEnd.plus(length);
+
+            } else {
+                newIntervalEnd = to;
+
+                if (floatingToTime) {
+
+                    long sleepTime = getSleepTime(lastIntervalEnd, to);
+
+                    if (LOGGER.isInfoEnabled()) {
+                        LOGGER.info("Failed to create new interval from: {}, to: {} as it is too early now. Wait for {}",
+                                lastIntervalEnd,
+                                newIntervalEnd,
+                                Duration.ofMillis(sleepTime));
+                    }
+
+                    return new FetchIntervalReport(null, sleepTime, true);
+                }
+            }
+
+            return createAndStoreInterval(lastIntervalEnd, newIntervalEnd, name, version, type, lagNow);
+        } else {
+
+            if (!floatingToTime) {
+                LOGGER.info("All intervals between {} and {} were fully processed less than {} {} ago",
+                        from, to, configuration.getLastUpdateOffset(), configuration.getLastUpdateOffsetUnit());
+                return new FetchIntervalReport(null, defaultSleepTime, true);
+            }
+
+            LOGGER.info("Failed to create new interval from: {}, to: {} as the end of the last interval is after " +
+                            "end time of Crawler: {}",
+                    lastIntervalEnd, lastIntervalEnd.plus(length), to);
+
+            return new FetchIntervalReport(null, getSleepTime(lastIntervalEnd.plus(length), lagNow), true); // TODO: we need to start from the beginning I guess
+        }
+
     }
 
     private FetchIntervalReport createAndStoreInterval(Instant from, Instant to, String name, String version, String type, Instant lagTime) throws IOException {
