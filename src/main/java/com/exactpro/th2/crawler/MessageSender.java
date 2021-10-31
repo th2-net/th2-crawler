@@ -63,7 +63,6 @@ public class MessageSender {
     private final int batchSize;
     private final CrawlerId crawlerId;
     private final DataProcessorService dataProcessor;
-    private final DataProviderService dataProviderService;
     private final IntervalsWorker intervalsWorker;
     private final StateService<RecoveryState> stateService;
     private final Handshaker handshaker;
@@ -78,7 +77,6 @@ public class MessageSender {
     ) {
         this.configuration = configuration;
         this.dataProcessor = dataProcessor;
-        this.dataProviderService = dataProviderService;
         this.intervalsWorker = intervalsWorker;
         this.stateService = stateService;
         this.handshaker = handshaker;
@@ -107,14 +105,8 @@ public class MessageSender {
 
         while (search) {
 
-            MessageDataRequest.Builder messageDataBuilder = MessageDataRequest.newBuilder();
-
-            MessagesSearchParameters searchParams = MessagesSearchParameters.builder()
-                    .setFrom(fromTimestamp).setTo(toTimestamp).setBatchSize(configuration.getBatchSize())
-                    .setResumeIds(resumeIds).setAliases(info.getAliases()).build();
-            SearchResult<MessageData> result = dataRequester.searchMessages(searchParams);
+            SearchResult<MessageData> result = requestMessages(fromTimestamp, toTimestamp, info.getAliases(), resumeIds);
             List<MessageData> messages = result.getData();
-            LOGGER.debug("Requested {} messages", messages.size());
 
             if (messages.isEmpty()) {
                 LOGGER.info("No more messages in interval from: {}, to: {}", interval.getStartTime(), interval.getEndTime());
@@ -126,8 +118,7 @@ public class MessageSender {
                 LOGGER.debug("Sending to the processor message {} with messageType {}", id, m.getMessageType());
             });
 
-            MessageDataRequest messageRequest = messageDataBuilder.setId(crawlerId).addAllMessageData(messages).build();
-
+            MessageDataRequest messageRequest = buildMessageDataRequest(messages);
             MessageResponse response = dataProcessor.sendMessage(messageRequest);
 
             if (response.hasStatus()) {
@@ -193,6 +184,29 @@ public class MessageSender {
         }
 
         return new SendingReport(CrawlerAction.NONE, interval, dataProcessorName, dataProcessorVersion, 0, numberOfMessages);
+    }
+
+    private SearchResult<MessageData> requestMessages(Timestamp from,
+                                                      Timestamp to,
+                                                      Collection<String> aliases,
+                                                      Map<StreamKey, MessageID> resumeIds
+    ) {
+        MessagesSearchParameters searchParams = MessagesSearchParameters.builder()
+                .setFrom(from)
+                .setTo(to)
+                .setBatchSize(configuration.getBatchSize())
+                .setResumeIds(resumeIds)
+                .setAliases(aliases).build();
+        SearchResult<MessageData> result = dataRequester.searchMessages(searchParams);
+        List<MessageData> messages = result.getData();
+        LOGGER.debug("Requested {} messages", messages.size());
+
+        return result;
+    }
+
+    private MessageDataRequest buildMessageDataRequest(Iterable<MessageData> messages) {
+        MessageDataRequest.Builder messageDataBuilder = MessageDataRequest.newBuilder();
+        return messageDataBuilder.setId(crawlerId).addAllMessageData(messages).build();
     }
 
     private Map.Entry<@NotNull Integer, @NotNull Map<StreamKey, InnerMessageId>> processServiceResponse(
