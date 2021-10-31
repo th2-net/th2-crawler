@@ -97,8 +97,9 @@ public class CrawlerUtils {
         } else {
             request = messageSearchBuilder.addAllMessageId(info.getResumeIds().values()).build();
         }
-
-        return collectMessages(dataProviderService.searchMessages(request), info.getTo());
+        Iterator<StreamResponse> streamResponseIterator = dataProviderService.searchMessages(request);
+        LOGGER.debug("Got response from DataProviderService");
+        return collectMessages(streamResponseIterator, info.getTo());
     }
 
     public static Interval updateEventRecoveryState(
