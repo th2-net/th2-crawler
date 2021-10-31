@@ -183,6 +183,7 @@ public class CrawlerUtils {
                                                                    Function<T, Timestamp> timeExtractor) {
         List<T> data = null;
         StreamsInfo streamsInfo = null;
+        LOGGER.debug("Collection data...");
 
         while (iterator.hasNext()) {
             StreamResponse r = iterator.next();
@@ -201,13 +202,18 @@ public class CrawlerUtils {
 
             if (to != null && !to.equals(timeExtractor.apply(object))) {
                 data.add(object);
+                LOGGER.debug("Collected one more data object");
 
                 if (LOGGER.isTraceEnabled()) {
                     LOGGER.trace("Got object of type {}: {}", object.getClass().getSimpleName(), MessageUtils.toJson(object));
                 }
             }
         }
-
+        if (data == null) {
+            LOGGER.debug("Nothing collected");
+        } else {
+            LOGGER.debug("Collected {} objects", data.size());
+        }
         return new SearchResult<>(data == null ? Collections.emptyList() : data, streamsInfo);
     }
 
