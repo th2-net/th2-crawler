@@ -19,12 +19,14 @@ package com.exactpro.th2.crawler;
 import com.exactpro.cradle.CradleStorage;
 import com.exactpro.cradle.intervals.Interval;
 import com.exactpro.cradle.intervals.IntervalsWorker;
+import com.exactpro.th2.common.grpc.Message;
 import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerInfo;
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorInfo;
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService;
 import com.exactpro.th2.crawler.dataprocessor.grpc.EventDataRequest;
 import com.exactpro.th2.crawler.dataprocessor.grpc.EventResponse;
 import com.exactpro.th2.crawler.dataprocessor.grpc.MessageDataRequest;
+import com.exactpro.th2.crawler.dataprocessor.grpc.MessageResponse;
 import com.exactpro.th2.crawler.dataprocessor.grpc.Status;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics.Method;
@@ -45,19 +47,24 @@ import com.exactpro.th2.dataprovider.grpc.MessageSearchRequest;
 import com.exactpro.th2.dataprovider.grpc.Stream;
 import com.exactpro.th2.dataprovider.grpc.StreamResponse;
 import com.exactpro.th2.dataprovider.grpc.StreamsInfo;
+import org.apache.commons.collections4.SetUtils;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import com.exactpro.th2.crawler.util.CrawlerTimeTestImpl;
+import org.mockito.ArgumentMatcher;
 
 import java.io.IOException;
+import java.nio.file.Paths;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -66,6 +73,7 @@ import static com.exactpro.th2.common.message.MessageUtils.toTimestamp;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -237,6 +245,50 @@ public class CrawlerTest {
         verify(intervalsWorkerMock).storeInterval(any(Interval.class));
 
         verify(dataProviderMock).searchEvents(any(EventSearchRequest.class));
+    }
+
+    @Test
+    public void testCrawlerMessages() throws IOException, UnexpectedDataProcessorException {
+        CrawlerConfiguration configuration = new CrawlerConfiguration("2021-06-16T12:00:00.00Z",
+                null, name, DataType.MESSAGES, "PT1H", 1, ChronoUnit.NANOS,
+                1, 10, 5, ChronoUnit.MINUTES, true, SetUtils.hashSet(aliases));
+
+        Crawler crawler = createCrawler(configuration);
+        Collection<Message> messages = CsvMessageReader.Companion.parse(Paths.get("src/test/resources/messages.csv"));
+        Iterator<StreamResponse> iterator = new MessageSearchResponse(messages).iterator();
+        when(dataProviderMock.searchMessages(any(MessageSearchRequest.class))).thenReturn(iterator);
+        when(dataServiceMock.sendMessage(any(MessageDataRequest.class))).thenReturn(MessageResponse.newBuilder().build());
+
+        crawler.process();
+
+        verify(intervalsWorkerMock).getIntervals(any(Instant.class), any(Instant.class), anyString(), anyString(), anyString());
+        verify(intervalsWorkerMock).storeInterval(any(Interval.class));
+
+        verify(dataProviderMock).searchMessages(any(MessageSearchRequest.class));
+
+        MessageDataRequest expected = createExpectedMessageDataRequest(messages);
+        verify(dataServiceMock).sendMessage(argThat(new MessageDataMatcher(expected)));
+    }
+
+    private static MessageDataRequest createExpectedMessageDataRequest(Collection<Message> messages) {
+        return messages.stream()
+                .map(MessageData.newBuilder()::setMessage)
+                .collect(MessageDataRequest::newBuilder, MessageDataRequest.Builder::addMessageData, (b1, b2) -> b1.mergeFrom(b2.build()))
+                .build();
+    }
+
+    public static class MessageDataMatcher implements ArgumentMatcher<MessageDataRequest> {
+
+        private final MessageDataRequest expected;
+
+        public MessageDataMatcher(MessageDataRequest expected) {
+            this.expected = expected;
+        }
+
+        @Override
+        public boolean matches(MessageDataRequest argument) {
+            return expected.getMessageDataList().equals(argument.getMessageDataList());
+        }
     }
 
     @Test

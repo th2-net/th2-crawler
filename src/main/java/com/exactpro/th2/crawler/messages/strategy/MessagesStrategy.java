@@ -24,6 +24,7 @@ import static java.util.stream.Stream.concat;
 import static java.util.stream.Stream.empty;
 
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -152,7 +153,8 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
                 .stream()
                 .collect(toUnmodifiableMap(
                         stream -> new StreamKey(stream.getSession(), stream.getDirection()),
-                        Stream::getLastId
+                        Stream::getLastId,
+                        BinaryOperator.maxBy(Comparator.comparingLong(MessageID::getSequence))
                 ));
         if (LOGGER.isDebugEnabled()) {
             LOGGER.debug("New resume ids: {}", resumeIds.entrySet().stream()
