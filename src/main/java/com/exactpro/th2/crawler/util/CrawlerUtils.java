@@ -55,6 +55,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
 
+import static com.exactpro.th2.common.message.MessageUtils.toJson;
 import static java.util.Objects.requireNonNullElse;
 
 public class CrawlerUtils {
@@ -114,6 +115,7 @@ public class CrawlerUtils {
         }
 
         metrics.providerMethodInvoked(ProviderMethod.SEARCH_MESSAGES);
+        LOGGER.debug("Search messages request: {}", toJson(request));
         return collectMessages(dataProviderService.searchMessages(request), info.getTo());
     }
 
@@ -217,7 +219,7 @@ public class CrawlerUtils {
                 data.add(object);
 
                 if (LOGGER.isTraceEnabled()) {
-                    LOGGER.trace("Got object of type {}: {}", object.getClass().getSimpleName(), MessageUtils.toJson(object));
+                    LOGGER.trace("Got object of type {}: {}", object.getClass().getSimpleName(), toJson(object));
                 }
             }
         }
