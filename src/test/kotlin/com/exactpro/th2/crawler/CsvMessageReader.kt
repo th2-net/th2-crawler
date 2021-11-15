@@ -18,26 +18,10 @@ package com.exactpro.th2.crawler
 
 import com.exactpro.th2.common.grpc.Message
 import com.google.protobuf.util.JsonFormat
-import org.apache.commons.csv.CSVFormat
-import org.apache.commons.csv.CSVParser
-import java.nio.charset.Charset
 import java.nio.file.Path
 
-class CsvMessageReader {
-    companion object {
-        private const val MESSAGE = "MESSAGE"
-        private val csvFormat = CSVFormat.Builder.create().setHeader("ID", MESSAGE).setSkipHeaderRecord(true).build()
-
-        fun parse(path: Path): Collection<Message> {
-            val parser = CSVParser.parse(path, Charset.forName("UTF-8"), csvFormat)
-            val result = ArrayList<Message>()
-            for (rec in parser) {
-                val srtMsg = rec.get(MESSAGE)
-                val builder = Message.newBuilder()
-                JsonFormat.parser().merge(srtMsg, builder)
-                result.add(builder.build())
-            }
-            return result
-        }
-    }
-}
+fun readMessages(path: Path) = path.toFile().readLines().map {
+    val builder = Message.newBuilder()
+    JsonFormat.parser().merge(it, builder)
+    builder.build()
+}.toList()

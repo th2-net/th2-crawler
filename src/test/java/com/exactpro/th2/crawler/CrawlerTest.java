@@ -39,7 +39,7 @@ import com.exactpro.th2.dataprovider.grpc.MessageSearchRequest;
 import com.exactpro.th2.dataprovider.grpc.Stream;
 import com.exactpro.th2.dataprovider.grpc.StreamResponse;
 import com.exactpro.th2.dataprovider.grpc.StreamsInfo;
-import org.apache.commons.collections4.SetUtils;
+
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -52,6 +52,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -79,12 +80,12 @@ public class CrawlerTest {
     @Test
     public void testCrawlerMessages() throws IOException, UnexpectedDataProcessorException {
         CrawlerConfiguration configuration = CrawlerManager.createConfig(
-                "2021-06-16T12:00:00.00Z", DataType.MESSAGES, SetUtils.hashSet(CrawlerManager.SESSIONS));
+                "2021-06-16T12:00:00.00Z", DataType.MESSAGES, Set.of(CrawlerManager.SESSIONS));
 
         CrawlerManager manager = new CrawlerManager(configuration);
         Crawler crawler = manager.createCrawler();
 
-        Collection<Message> messages = CsvMessageReader.Companion.parse(Paths.get("src/test/resources/messages.csv"));
+        Collection<Message> messages = CsvMessageReaderKt.readMessages(Paths.get("src/test/resources/messages.txt"));
         Iterator<StreamResponse> iterator = new MessageSearchResponse(messages).iterator();
         when(manager.getDataProviderMock().searchMessages(any(MessageSearchRequest.class))).thenReturn(iterator);
         when(manager.getDataServiceMock().sendMessage(any(MessageDataRequest.class))).thenReturn(MessageResponse.newBuilder().build());
@@ -136,7 +137,7 @@ public class CrawlerTest {
     @DisplayName("Crawler's actions when a data service fails")
     public void dataServiceFail() throws IOException {
         CrawlerConfiguration configuration = CrawlerManager.createConfig(
-                "2021-06-16T12:00:00.00Z", DataType.MESSAGES, SetUtils.hashSet(CrawlerManager.SESSIONS));
+                "2021-06-16T12:00:00.00Z", DataType.MESSAGES, Set.of(CrawlerManager.SESSIONS));
 
         CrawlerManager manager = new CrawlerManager(configuration);
         Crawler crawler = manager.createCrawler();
