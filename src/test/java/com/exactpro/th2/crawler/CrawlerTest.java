@@ -85,7 +85,7 @@ public class CrawlerTest {
         CrawlerManager manager = new CrawlerManager(configuration);
         Crawler crawler = manager.createCrawler();
 
-        Collection<Message> messages = CsvMessageReaderKt.readMessages(Paths.get("src/test/resources/messages.txt"));
+        Collection<Message> messages = MessageReaderKt.readMessages(Paths.get("src/test/resources/messages.txt"));
         Iterator<StreamResponse> iterator = new MessageSearchResponse(messages).iterator();
         when(manager.getDataProviderMock().searchMessages(any(MessageSearchRequest.class))).thenReturn(iterator);
         when(manager.getDataServiceMock().sendMessage(any(MessageDataRequest.class))).thenReturn(MessageResponse.newBuilder().build());
