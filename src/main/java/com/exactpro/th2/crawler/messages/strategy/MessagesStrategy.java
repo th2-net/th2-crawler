@@ -24,6 +24,7 @@ import static java.util.stream.Stream.concat;
 import static java.util.stream.Stream.empty;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -116,13 +117,13 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
         requireNonNull(continuation, "'continuation' parameter");
         if (current == null) {
             Map<StreamKey, MessageID> startIntervalIDs = new HashMap<>(continuation.getStartIDs());
-            putAndCheck(continuation.getIds(), startIntervalIDs);
+            putAndCheck(continuation.getIds(), startIntervalIDs, "creating state from continuation");
 
             return new RecoveryState(null, toInnerMessageIDs(startIntervalIDs), 0, processedData);
         }
         Map<StreamKey, InnerMessageId> old = current.getLastProcessedMessages();
         Map<StreamKey, MessageID> lastProcessedMessages = new HashMap<>(old == null ? continuation.getIds() : toMessageIDs(old));
-        putAndCheck(continuation.getIds(), lastProcessedMessages);
+        putAndCheck(continuation.getIds(), lastProcessedMessages, "creating state from current state and continuation");
 
         return new RecoveryState(current.getLastProcessedEvent(), toInnerMessageIDs(lastProcessedMessages),
                 current.getLastNumberOfEvents(),
@@ -148,7 +149,9 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
                 .build();
         SearchResult<MessageData> result = CrawlerUtils.searchMessages(provider, searchParams, metrics);
         List<MessageData> messages = result.getData();
-        resumeIds = requireNonNull(result.getStreamsInfo(), "response from data provider does not have the StreamsInfo")
+
+        resumeIds = new HashMap<>(resumeIds == null ? Collections.emptyMap() : resumeIds);
+        Map<StreamKey, MessageID> nextResumeIds = requireNonNull(result.getStreamsInfo(), "response from data provider does not have the StreamsInfo")
                 .getStreamsList()
                 .stream()
                 .collect(toUnmodifiableMap(
@@ -156,6 +159,8 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
                         Stream::getLastId,
                         BinaryOperator.maxBy(Comparator.comparingLong(MessageID::getSequence))
                 ));
+
+        putAndCheck(nextResumeIds, resumeIds, "computing resume IDs");
         if (LOGGER.isDebugEnabled()) {
             LOGGER.debug("New resume ids: {}", resumeIds.entrySet().stream()
                     .map(entry -> entry.getKey() + "=" + MessageUtils.toJson(entry.getValue()))
@@ -163,7 +168,7 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
         }
         return new MessagesCrawlerData(
                 messages,
-                new ResumeMessageIDs(startIDs, resumeIds),
+                new ResumeMessageIDs(startIDs, nextResumeIds),
                 messages.size() == batchSize
         );
     }
@@ -216,7 +221,7 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
 
                 ResumeMessageIDs previous = data.getContinuation();
                 Map<StreamKey, MessageID> grouped = new HashMap<>(previous.getStartIDs());
-                putAndCheck(checkpoints, grouped);
+                putAndCheck(checkpoints, grouped, "creating continuation from processor response");
                 continuation = new ResumeMessageIDs(previous.getStartIDs(), grouped);
             }
         }
@@ -241,15 +246,26 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
         return response;
     }
 
-    private void putAndCheck(Map<StreamKey, MessageID> checkpoints, Map<StreamKey, MessageID> destination) {
-        for (Entry<StreamKey, MessageID> entry : checkpoints.entrySet()) {
+    private void putAndCheck(
+            Map<StreamKey, MessageID> transferFrom,
+            Map<StreamKey, MessageID> transferTo,
+            String action
+    ) {
+        for (Entry<StreamKey, MessageID> entry : transferFrom.entrySet()) {
             var streamKey = entry.getKey();
             var innerMessageId = entry.getValue();
-            MessageID prevInnerMessageId = destination.put(streamKey, innerMessageId);
-            if (prevInnerMessageId != null && prevInnerMessageId.getSequence() > innerMessageId.getSequence()) {
-                LOGGER.warn("The new checkpoint ID {} has less sequence than the previous one {} for stream key {}",
-                        innerMessageId.getSequence(), prevInnerMessageId.getSequence(), streamKey);
-            }
+            transferTo.compute(streamKey, (key, prevInnerMessageId) -> {
+                if (prevInnerMessageId == null) {
+                    return innerMessageId;
+                }
+                boolean prevSeqHigher = prevInnerMessageId.getSequence() > innerMessageId.getSequence();
+                if (prevSeqHigher) {
+                    LOGGER.warn("The new checkpoint ID {} has less sequence than the previous one {} for stream key {} when {}",
+                            innerMessageId.getSequence(), prevInnerMessageId.getSequence(), key, action);
+                    return prevInnerMessageId;
+                }
+                return innerMessageId;
+            });
         }
     }
 
