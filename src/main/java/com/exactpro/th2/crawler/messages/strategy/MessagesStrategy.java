@@ -262,8 +262,9 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
                 if (prevSeqHigher) {
                     LOGGER.warn("The new checkpoint ID {} has less sequence than the previous one {} for stream key {} when {}",
                             innerMessageId.getSequence(), prevInnerMessageId.getSequence(), key, action);
+                    return prevInnerMessageId;
                 }
-                return prevSeqHigher ? prevInnerMessageId : innerMessageId;
+                return innerMessageId;
             });
         }
     }
