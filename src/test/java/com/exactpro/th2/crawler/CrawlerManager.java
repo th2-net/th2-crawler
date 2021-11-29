@@ -30,24 +30,29 @@ import com.exactpro.cradle.intervals.Interval;
 import com.exactpro.cradle.intervals.IntervalsWorker;
 import com.exactpro.cradle.utils.UpdateNotAppliedException;
 import com.exactpro.th2.common.grpc.EventID;
+import com.exactpro.th2.crawler.dataprocessor.grpc.AsyncDataProcessorService;
 import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerInfo;
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorInfo;
-import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService;
 import com.exactpro.th2.crawler.dataprocessor.grpc.EventDataRequest;
 import com.exactpro.th2.crawler.dataprocessor.grpc.EventResponse;
+import com.exactpro.th2.crawler.dataprocessor.grpc.IntervalInfo;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
 import com.exactpro.th2.crawler.state.StateService;
 import com.exactpro.th2.crawler.state.v1.RecoveryState;
 import com.exactpro.th2.crawler.util.CrawlerTime;
 import com.exactpro.th2.crawler.util.CrawlerTimeTestImpl;
+import com.exactpro.th2.crawler.util.TestUtil;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import com.exactpro.th2.dataprovider.grpc.EventData;
 import com.exactpro.th2.dataprovider.grpc.EventSearchRequest;
 import com.exactpro.th2.dataprovider.grpc.StreamResponse;
+import com.google.protobuf.Empty;
+
 import org.jetbrains.annotations.NotNull;
 
 import static com.exactpro.th2.common.event.EventUtils.toEventID;
 import static com.exactpro.th2.common.message.MessageUtils.toTimestamp;
+import static com.exactpro.th2.crawler.util.TestUtil.doObserverAnswer;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -58,7 +63,7 @@ public class CrawlerManager {
     public static final String NAME = "test_crawler";
     public static final String VERSION = "1";
 
-    private final DataProcessorService dataServiceMock = mock(DataProcessorService.class);
+    private final AsyncDataProcessorService dataServiceMock = mock(AsyncDataProcessorService.class);
     private final DataProviderService dataProviderMock = mock(DataProviderService.class);
     private final CradleStorage storageMock = mock(CradleStorage.class);
     private final IntervalsWorker intervalsWorkerMock = mock(IntervalsWorker.class);
@@ -79,7 +84,7 @@ public class CrawlerManager {
         prepare();
     }
 
-    public DataProcessorService getDataServiceMock() {
+    public AsyncDataProcessorService getDataServiceMock() {
         return dataServiceMock;
     }
 
@@ -105,14 +110,24 @@ public class CrawlerManager {
     }
 
     @NotNull
+    public Crawler createCrawler(Instant start) throws IOException {
+        return createCrawler(new CrawlerTimeTestImpl(start));
+    }
+
+    @NotNull
     public Crawler createCrawler(CrawlerTime crawlerTime) throws IOException {
+        return createCrawler(crawlerTime, List.of(dataServiceMock));
+    }
+
+    @NotNull
+    public Crawler createCrawler(CrawlerTime crawlerTime, List<AsyncDataProcessorService> services) throws IOException {
         CrawlerMetrics metrics = mock(CrawlerMetrics.class);
         when(metrics.measureTime(any(DataType.class), any(CrawlerMetrics.Method.class), any())).then(invk ->
                 invk.<CrawlerMetrics.CrawlerDataOperation<?>>getArgument(2).call());
         CrawlerContext crawlerContext = new CrawlerContext()
                 .setCrawlerTime(crawlerTime)
                 .setMetrics(metrics);
-        return new Crawler(stateService, storageMock, dataServiceMock, dataProviderMock, configuration, crawlerContext);
+        return new Crawler(stateService, storageMock, services, dataProviderMock, configuration, crawlerContext);
     }
 
     public static CrawlerConfiguration createConfig(String from, DataType dataType, Set<String> sessions) {
@@ -168,18 +183,19 @@ public class CrawlerManager {
     }
 
     private void prepareDataService() {
-        when(dataServiceMock.crawlerConnect(any(CrawlerInfo.class)))
-                .thenReturn(DataProcessorInfo.newBuilder().setName(NAME).setVersion(VERSION).build());
+        doObserverAnswer(DataProcessorInfo.newBuilder().setName(NAME).setVersion(VERSION).build())
+                .when(dataServiceMock).crawlerConnect(any(CrawlerInfo.class), any());
+        doObserverAnswer(Empty.getDefaultInstance())
+                .when(dataServiceMock).intervalStart(any(IntervalInfo.class), any());
 
-        when(dataServiceMock.sendEvent(any(EventDataRequest.class))).then(invocation -> {
-            EventDataRequest request = invocation.getArgument(0);
-
+        TestUtil.<EventDataRequest, EventResponse>doObserverAnswer(request -> {
             List<EventData> events = request.getEventDataList();
 
             EventID eventID = events.get(events.size() - 1).getEventId();
 
             return EventResponse.newBuilder().setId(eventID).build();
-        });
+        }).when(dataServiceMock)
+                .sendEvent(any(EventDataRequest.class), any());
     }
 
     private void prepareIntervalWorkers() throws IOException {

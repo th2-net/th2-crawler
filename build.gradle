@@ -39,7 +39,7 @@ dependencies {
     implementation "com.exactpro.th2:cradle-cassandra:${cradleVersion}"
 
     // the library for interaction with infra API
-    implementation 'com.exactpro.th2:common:3.24.2'
+    implementation 'com.exactpro.th2:common:3.32.0'
 
     implementation "com.exactpro.th2:grpc-crawler-data-processor:${grpcCrawlerVersion}"
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310") {

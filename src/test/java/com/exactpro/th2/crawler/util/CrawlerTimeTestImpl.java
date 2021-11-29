@@ -18,10 +18,19 @@ package com.exactpro.th2.crawler.util;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Objects;
 
 public class CrawlerTimeTestImpl implements CrawlerTime {
-    private final Instant instant = Instant.parse("2021-07-11T18:00:00.00Z");
+    private final Instant instant;
     private long count = -1;
+
+    public CrawlerTimeTestImpl() {
+        this(Instant.parse("2021-07-11T18:00:00.00Z"));
+    }
+
+    public CrawlerTimeTestImpl(Instant start) {
+        instant = Objects.requireNonNull(start, "'Start' parameter");
+    }
 
     @Override
     public Instant now() {

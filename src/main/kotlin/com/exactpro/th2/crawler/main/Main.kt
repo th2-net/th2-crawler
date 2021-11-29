@@ -25,6 +25,7 @@ import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.exactpro.th2.crawler.Crawler
 import com.exactpro.th2.crawler.CrawlerConfiguration
 import com.exactpro.th2.crawler.CrawlerContext
+import com.exactpro.th2.crawler.dataprocessor.grpc.AsyncDataProcessorService
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService
 import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException
 import com.exactpro.th2.crawler.metrics.impl.PrometheusMetrics
@@ -69,7 +70,7 @@ fun main(args: Array<String>) {
         val cradleManager = factory.cradleManager
 
         val grpcRouter = factory.grpcRouter
-        val dataProcessor = grpcRouter.getService(DataProcessorService::class.java)
+        val dataProcessor: List<AsyncDataProcessorService> = grpcRouter.getServices(AsyncDataProcessorService::class.java)
         val dataProviderService = grpcRouter.getService(DataProviderService::class.java)
 
         val configuration = factory.getCustomConfiguration(CrawlerConfiguration::class.java)

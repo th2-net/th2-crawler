@@ -18,37 +18,56 @@ package com.exactpro.th2.crawler;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Iterator;
+import java.util.List;
 
 import com.exactpro.th2.common.grpc.Direction;
 import com.exactpro.th2.common.grpc.Message;
 import com.exactpro.th2.common.grpc.MessageID;
 import com.exactpro.th2.common.grpc.MessageMetadata;
 import com.exactpro.th2.dataprovider.grpc.MessageData;
+import com.exactpro.th2.dataprovider.grpc.MessageData.Builder;
 import com.exactpro.th2.dataprovider.grpc.Stream;
 import com.exactpro.th2.dataprovider.grpc.StreamResponse;
 import com.exactpro.th2.dataprovider.grpc.StreamsInfo;
+
 import org.jetbrains.annotations.NotNull;
 
 public class MessageSearchResponse implements Iterable<StreamResponse> {
-    private final Collection<StreamResponse> response = new ArrayList<>();
+    private final List<StreamResponse> response = new ArrayList<>();
 
     public MessageSearchResponse(Collection<Message> messages) {
         Collection<StreamResponse> messageResponse = new ArrayList<>();
 
         StreamsInfo.Builder streamInfo = StreamsInfo.newBuilder();
-        messages.stream()
-                .peek(msg -> streamInfo.addStreams(createStream(msg)))
-                .forEach(msg -> messageResponse.add(createStreamResponse(msg)));
+        for (Message msg : messages) {
+            streamInfo.addStreams(createStream(msg));
+            messageResponse.add(createStreamResponse(msg));
+        }
 
         response.add(createStreamResponse(streamInfo.build()));
         response.addAll(messageResponse);
+    }
+
+    public static @NotNull Builder createMessageData(Message msg) {
+        MessageID id = msg.getMetadata().getId();
+        return MessageData.newBuilder()
+                .setMessage(msg)
+                .setMessageId(id)
+                .setDirection(id.getDirection())
+                .setSessionId(id.getConnectionId())
+                .setTimestamp(msg.getMetadata().getTimestamp());
     }
 
     @NotNull
     @Override
     public Iterator<StreamResponse> iterator() {
         return response.iterator();
+    }
+
+    public Iterator<StreamResponse> streamInfoIterator() {
+        return Collections.singleton(response.get(0)).iterator();
     }
 
     private static Stream createStream(Message msg) {
@@ -63,6 +82,6 @@ public class MessageSearchResponse implements Iterable<StreamResponse> {
     }
 
     private static StreamResponse createStreamResponse(Message msg) {
-        return StreamResponse.newBuilder().setMessage(MessageData.newBuilder().setMessage(msg)).build();
+        return StreamResponse.newBuilder().setMessage(createMessageData(msg)).build();
     }
 }

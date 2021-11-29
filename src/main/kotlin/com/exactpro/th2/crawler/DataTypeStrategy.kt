@@ -17,9 +17,8 @@ package com.exactpro.th2.crawler
 
 import com.exactpro.cradle.intervals.Interval
 import com.exactpro.cradle.intervals.IntervalsWorker
+import com.exactpro.th2.crawler.dataprocessor.grpc.AsyncDataProcessorService
 import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId
-import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorInfo
-import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService
 import com.exactpro.th2.crawler.dataprocessor.grpc.IntervalInfo
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics
 import com.exactpro.th2.crawler.state.StateService
@@ -28,6 +27,8 @@ import com.exactpro.th2.dataprovider.grpc.DataProviderService
 import com.google.protobuf.Timestamp
 import mu.KotlinLogging
 import java.io.IOException
+import java.time.Instant
+import java.util.concurrent.CompletableFuture
 
 interface DataTypeStrategy<T : CrawlerData<C>, C : Continuation> {
     fun setupIntervalInfo(info: IntervalInfo.Builder, state: RecoveryState?)
@@ -36,7 +37,7 @@ interface DataTypeStrategy<T : CrawlerData<C>, C : Continuation> {
      * @param state The current state stored in cradle
      * @return the continuation of type [C] with information required for requesting data
      */
-    fun continuationFromState(state: RecoveryState): C?
+    fun stateToContinuation(state: RecoveryState): C?
 
     /**
      * @param current The current state stored in cradle or `null` if nothing is stored yet
@@ -44,7 +45,7 @@ interface DataTypeStrategy<T : CrawlerData<C>, C : Continuation> {
      * @param processedData the total amount of the processed data for current interval
      * @return a recovery state that aggregates information from [current] state and [continuation]
      */
-    fun continuationToState(current: RecoveryState?, continuation: C, processedData: Long): RecoveryState
+    fun continuationToState(current: RecoveryState?, continuation: C?, processedData: Long): RecoveryState
 
     /**
      * @param start the lower boundary for requested data
@@ -69,11 +70,23 @@ interface DataTypeStrategy<T : CrawlerData<C>, C : Continuation> {
      */
     @Throws(IOException::class)
     fun processData(
-        processor: DataProcessorService,
+        processor: AsyncDataProcessorService,
         interval: InternalInterval,
         parameters: DataParameters,
         data: T
-    ): Report<C>
+    ): CompletableFuture<Report<C>>
+
+    /**
+     * @param data the original data to filter
+     * @param interval current interval to process
+     * @param continuation the continuation to filter the data
+     * @return the data filtered according to the [interval] time and [continuation] data
+     */
+    fun filterData(
+        data: T,
+        interval: InternalInterval,
+        continuation: C?
+    ): T
 }
 
 interface CrawlerData<C : Continuation> {
@@ -97,7 +110,6 @@ interface DataTypeStrategyFactory<T : CrawlerData<C>, C : Continuation> {
 }
 
 class DataParameters(
-    val dataProcessorInfo: DataProcessorInfo,
     val crawlerId: CrawlerId,
     val sessionAliases: Collection<String> = emptyList(),
 )
@@ -133,6 +145,10 @@ class InternalInterval(
             null -> stateService.deserialize(original.recoveryState).also { _state = it }
             else -> _state
         }
+    val startTime: Instant
+        get() = original.startTime
+    val endTime: Instant
+        get() = original.endTime
 
     @Throws(IOException::class)
     fun updateState(newState: RecoveryState, worker: IntervalsWorker) {

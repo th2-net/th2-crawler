@@ -16,34 +16,14 @@
 
 package com.exactpro.th2.crawler;
 
-import com.exactpro.cradle.intervals.Interval;
-import com.exactpro.th2.common.grpc.Message;
-import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerInfo;
-import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorInfo;
-import com.exactpro.th2.crawler.dataprocessor.grpc.EventDataRequest;
-import com.exactpro.th2.crawler.dataprocessor.grpc.EventResponse;
-import com.exactpro.th2.crawler.dataprocessor.grpc.MessageDataRequest;
-import com.exactpro.th2.crawler.dataprocessor.grpc.MessageResponse;
-import com.exactpro.th2.crawler.dataprocessor.grpc.Status;
-import com.exactpro.th2.common.grpc.ConnectionID;
-import com.exactpro.th2.common.grpc.Direction;
-import com.exactpro.th2.common.grpc.EventID;
-import com.exactpro.th2.common.grpc.MessageID;
-import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException;
-
-import com.exactpro.th2.crawler.state.v1.RecoveryState;
-import com.exactpro.th2.dataprovider.grpc.EventData;
-import com.exactpro.th2.dataprovider.grpc.EventSearchRequest;
-import com.exactpro.th2.dataprovider.grpc.MessageData;
-import com.exactpro.th2.dataprovider.grpc.MessageData.Builder;
-import com.exactpro.th2.dataprovider.grpc.MessageSearchRequest;
-import com.exactpro.th2.dataprovider.grpc.Stream;
-import com.exactpro.th2.dataprovider.grpc.StreamResponse;
-import com.exactpro.th2.dataprovider.grpc.StreamsInfo;
-
-import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
+import static com.exactpro.th2.crawler.util.TestUtil.doObserverAnswer;
+import static com.exactpro.th2.crawler.util.TestUtil.doObserverError;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import java.io.IOException;
 import java.nio.file.Paths;
@@ -56,12 +36,36 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Function;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.argThat;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+import com.exactpro.cradle.intervals.Interval;
+import com.exactpro.th2.common.grpc.ConnectionID;
+import com.exactpro.th2.common.grpc.Direction;
+import com.exactpro.th2.common.grpc.EventID;
+import com.exactpro.th2.common.grpc.Message;
+import com.exactpro.th2.common.grpc.MessageID;
+import com.exactpro.th2.common.message.MessageUtils;
+import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerInfo;
+import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorInfo;
+import com.exactpro.th2.crawler.dataprocessor.grpc.EventDataRequest;
+import com.exactpro.th2.crawler.dataprocessor.grpc.EventResponse;
+import com.exactpro.th2.crawler.dataprocessor.grpc.MessageDataRequest;
+import com.exactpro.th2.crawler.dataprocessor.grpc.MessageResponse;
+import com.exactpro.th2.crawler.dataprocessor.grpc.Status;
+import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException;
+import com.exactpro.th2.crawler.util.TestUtil;
+import com.exactpro.th2.dataprovider.grpc.EventData;
+import com.exactpro.th2.dataprovider.grpc.EventSearchRequest;
+import com.exactpro.th2.dataprovider.grpc.MessageData;
+import com.exactpro.th2.dataprovider.grpc.MessageData.Builder;
+import com.exactpro.th2.dataprovider.grpc.MessageSearchRequest;
+import com.exactpro.th2.dataprovider.grpc.Stream;
+import com.exactpro.th2.dataprovider.grpc.StreamResponse;
+import com.exactpro.th2.dataprovider.grpc.StreamsInfo;
 
 public class CrawlerTest {
 
@@ -131,24 +135,34 @@ public class CrawlerTest {
         Crawler crawler = manager.createCrawler();
 
         Collection<Message> messages = MessageReaderKt.readMessages(Paths.get("src/test/resources/messages.txt"));
-        Iterator<StreamResponse> iterator = new MessageSearchResponse(messages).iterator();
-        when(manager.getDataProviderMock().searchMessages(any(MessageSearchRequest.class))).thenReturn(iterator);
-        when(manager.getDataServiceMock().sendMessage(any(MessageDataRequest.class))).thenReturn(MessageResponse.newBuilder().build());
+        MessageSearchResponse responses = new MessageSearchResponse(messages);
+        when(manager.getDataProviderMock().searchMessages(any(MessageSearchRequest.class)))
+                .then(invk -> {
+                    MessageSearchRequest request = invk.getArgument(0);
+                    return request.getEndTimestamp().equals(request.getStartTimestamp())
+                            ? responses.streamInfoIterator()
+                            : responses.iterator();
+                });
+        doObserverAnswer(MessageResponse.newBuilder().build())
+                .when(manager.getDataServiceMock()).sendMessage(
+                        any(MessageDataRequest.class),
+                        any()
+                );
 
         crawler.process();
 
         verify(manager.getIntervalsWorkerMock()).getIntervals(any(Instant.class), any(Instant.class), anyString(), anyString(), anyString());
         verify(manager.getIntervalsWorkerMock()).storeInterval(any(Interval.class));
 
-        verify(manager.getDataProviderMock()).searchMessages(any(MessageSearchRequest.class));
+        verify(manager.getDataProviderMock(), times(1/*init start IDs*/ + 1/*actual search*/)).searchMessages(any(MessageSearchRequest.class));
 
         MessageDataRequest expected = createExpectedMessageDataRequest(messages);
-        verify(manager.getDataServiceMock()).sendMessage(argThat(actual -> expected.getMessageDataList().equals(actual.getMessageDataList())));
+        verify(manager.getDataServiceMock()).sendMessage(argThat(actual -> expected.getMessageDataList().equals(actual.getMessageDataList())), any());
     }
 
     private static MessageDataRequest createExpectedMessageDataRequest(Collection<Message> messages) {
         return messages.stream()
-                .map(MessageData.newBuilder()::setMessage)
+                .map(MessageSearchResponse::createMessageData)
                 .collect(MessageDataRequest::newBuilder, MessageDataRequest.Builder::addMessageData, (b1, b2) -> b1.mergeFrom(b2.build()))
                 .build();
     }
@@ -162,18 +176,16 @@ public class CrawlerTest {
         CrawlerManager manager = new CrawlerManager(configuration);
         Crawler crawler = manager.createCrawler();
 
-        when(manager.getDataServiceMock().crawlerConnect(any(CrawlerInfo.class)))
-                .thenReturn(DataProcessorInfo.newBuilder().setName("another_crawler").setVersion(CrawlerManager.VERSION).build());
+        doObserverAnswer(DataProcessorInfo.newBuilder().setName("another_crawler").setVersion(CrawlerManager.VERSION).build())
+                .when(manager.getDataServiceMock()).crawlerConnect(any(CrawlerInfo.class), any());
 
-        when(manager.getDataServiceMock().sendEvent(any(EventDataRequest.class))).then(invocation -> {
-            EventDataRequest request = invocation.getArgument(0);
-
+        TestUtil.<EventDataRequest, EventResponse> doObserverAnswer(request -> {
             List<EventData> events = request.getEventDataList();
 
             EventID eventID = events.get(events.size() - 1).getEventId();
 
             return EventResponse.newBuilder().setId(eventID).setStatus(Status.newBuilder().setHandshakeRequired(true).build()).build();
-        });
+        }).when(manager.getDataServiceMock()).sendEvent(any(EventDataRequest.class), any());
 
         Assertions.assertThrows(UnexpectedDataProcessorException.class, crawler::process);
     }
@@ -181,15 +193,18 @@ public class CrawlerTest {
     @Test
     @DisplayName("Crawler's actions when a data service fails")
     public void dataServiceFail() throws IOException {
+        Instant now = Instant.now();
+        Instant from = now.minus(2, ChronoUnit.HOURS);
         CrawlerConfiguration configuration = CrawlerManager.createConfig(
-                "2021-06-16T12:00:00.00Z", DataType.MESSAGES, Set.of(CrawlerManager.SESSIONS));
+                from.toString(), DataType.MESSAGES, Set.of(CrawlerManager.SESSIONS));
 
         CrawlerManager manager = new CrawlerManager(configuration);
-        Crawler crawler = manager.createCrawler();
+        Crawler crawler = manager.createCrawler(now);
 
         String exceptionMessage = "Test exception";
 
         Builder responseMessage = MessageData.newBuilder()
+                .setTimestamp(MessageUtils.toTimestamp(from))
                 .setDirectionValue(1).setMessageId(MessageID.newBuilder()
                         .setDirection(Direction.FIRST).setConnectionId(ConnectionID.newBuilder()
                                 .setSessionAlias("alias1").build()).setSequence(2).build());
@@ -225,11 +240,13 @@ public class CrawlerTest {
             return responses.iterator();
         });
 
-        when(manager.getDataServiceMock().crawlerConnect(any(CrawlerInfo.class)))
-                .thenReturn(DataProcessorInfo.newBuilder().setName("another_crawler").setVersion(CrawlerManager.VERSION).build());
+        doObserverAnswer(DataProcessorInfo.newBuilder().setName("another_crawler").setVersion(CrawlerManager.VERSION).build())
+                .when(manager.getDataServiceMock()).crawlerConnect(any(CrawlerInfo.class), any());
 
-        when(manager.getDataServiceMock().sendMessage(any(MessageDataRequest.class))).thenThrow(new RuntimeException(exceptionMessage));
+        doObserverError(() -> new RuntimeException(exceptionMessage))
+                .when(manager.getDataServiceMock()).sendMessage(any(MessageDataRequest.class), any());
 
-        Assertions.assertThrows(RuntimeException.class, crawler::process, exceptionMessage);
+        RuntimeException ex = Assertions.assertThrows(RuntimeException.class, crawler::process, exceptionMessage);
+        Assertions.assertTrue(ex.getMessage().contains(exceptionMessage), () -> "Unexpected exception: " + ex);
     }
 }

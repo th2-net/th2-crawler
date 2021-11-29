@@ -16,12 +16,15 @@
 
 package com.exactpro.th2.crawler.events.strategy;
 
+import static com.exactpro.th2.crawler.util.CrawlerUtils.toCompletableFuture;
 import static java.util.Objects.requireNonNull;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -37,8 +40,8 @@ import com.exactpro.th2.crawler.CrawlerConfiguration;
 import com.exactpro.th2.crawler.DataParameters;
 import com.exactpro.th2.crawler.InternalInterval;
 import com.exactpro.th2.crawler.Report;
+import com.exactpro.th2.crawler.dataprocessor.grpc.AsyncDataProcessorService;
 import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId;
-import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService;
 import com.exactpro.th2.crawler.dataprocessor.grpc.EventDataRequest;
 import com.exactpro.th2.crawler.dataprocessor.grpc.EventResponse;
 import com.exactpro.th2.crawler.dataprocessor.grpc.IntervalInfo.Builder;
@@ -104,8 +107,8 @@ public class EventsStrategy extends AbstractStrategy<EventsCrawlerData, ResumeEv
 
     @NotNull
     @Override
-    public Report<ResumeEventId> processData(
-            @NotNull DataProcessorService processor,
+    public CompletableFuture<Report<ResumeEventId>> processData(
+            @NotNull AsyncDataProcessorService processor,
             @NotNull InternalInterval interval,
             @NotNull DataParameters parameters,
             @NotNull EventsCrawlerData data
@@ -121,42 +124,43 @@ public class EventsStrategy extends AbstractStrategy<EventsCrawlerData, ResumeEv
         List<EventData> events = data.getData();
 
         if (events.isEmpty()) {
-            LOGGER.info("No more events in interval from: {}, to: {}", original.getStartTime(), original.getEndTime());
-            return Report.empty();
+            LOGGER.info("Do not have data to process");
+            return CompletableFuture.completedFuture(Report.empty());
         }
 
         EventDataRequest.Builder eventRequestBuilder = EventDataRequest.newBuilder();
         EventDataRequest eventRequest = eventRequestBuilder.setId(crawlerId).addAllEventData(events).build();
 
-        EventResponse response = sendEventsToProcessor(processor, eventRequest);
+        return sendEventsToProcessor(processor, eventRequest)
+                .thenApplyAsync(response -> {
+                    if (response.hasStatus()) {
+                        if (response.getStatus().getHandshakeRequired()) {
+                            return Report.handshake();
+                        }
+                    }
 
-        if (response.hasStatus()) {
-            if (response.getStatus().getHandshakeRequired()) {
-                return Report.handshake();
-            }
-        }
+                    boolean hasCheckpoint = response.hasId();
+                    var countAndCheckpoint = processServiceResponse(hasCheckpoint ? response.getId() : null, events);
 
-        boolean hasCheckpoint = response.hasId();
-        var countAndCheckpoint = processServiceResponse(hasCheckpoint ? response.getId() : null, events);
+                    long processedEventsCount = countAndCheckpoint.getFirst();
+                    long remaining = events.size() - processedEventsCount;
 
-        long processedEventsCount = countAndCheckpoint.getFirst();
-        long remaining = events.size() - processedEventsCount;
+                    ResumeEventId continuation = null;
+                    if (hasCheckpoint) {
+                        EventData checkpointEvent = countAndCheckpoint.getSecond();
+                        if (checkpointEvent != null) {
+                            Instant startTimeStamp = CrawlerUtils.fromTimestamp(checkpointEvent.getStartTimestamp());
+                            continuation = new ResumeEventId(checkpointEvent.getEventId(), startTimeStamp);
+                        }
+                    }
 
-        ResumeEventId continuation = null;
-        if (hasCheckpoint) {
-            EventData checkpointEvent = countAndCheckpoint.getSecond();
-            if (checkpointEvent != null) {
-                Instant startTimeStamp = CrawlerUtils.fromTimestamp(checkpointEvent.getStartTimestamp());
-                continuation = new ResumeEventId(checkpointEvent.getEventId(), startTimeStamp);
-            }
-        }
-
-        return new Report<>(Action.CONTINUE, processedEventsCount, remaining, continuation);
+                    return new Report<>(Action.CONTINUE, processedEventsCount, remaining, continuation);
+                });
     }
 
     @Nullable
     @Override
-    public EventsCrawlerData.ResumeEventId continuationFromState(@NotNull RecoveryState state) {
+    public EventsCrawlerData.ResumeEventId stateToContinuation(@NotNull RecoveryState state) {
         requireNonNull(state, "'state' parameter");
         InnerEventId innerId = state.getLastProcessedEvent();
         return innerId == null ? null : new ResumeEventId(
@@ -167,10 +171,9 @@ public class EventsStrategy extends AbstractStrategy<EventsCrawlerData, ResumeEv
 
     @NotNull
     @Override
-    public RecoveryState continuationToState(@Nullable RecoveryState current, @NotNull EventsCrawlerData.ResumeEventId continuation, long processedData) {
-        requireNonNull(continuation, "'continuation' parameter");
+    public RecoveryState continuationToState(@Nullable RecoveryState current, @Nullable ResumeEventId continuation, long processedData) {
         Function<ResumeEventId, InnerEventId> toInnerId = cont ->
-                new InnerEventId(cont.getTimestamp(), cont.getResumeId().getId());
+                cont == null ? null : new InnerEventId(cont.getTimestamp(), cont.getResumeId().getId());
         if (current == null) {
             return new RecoveryState(
                     toInnerId.apply(continuation),
@@ -187,10 +190,25 @@ public class EventsStrategy extends AbstractStrategy<EventsCrawlerData, ResumeEv
         );
     }
 
-    private EventResponse sendEventsToProcessor(DataProcessorService dataProcessor, EventDataRequest eventRequest) {
-        EventResponse response = dataProcessor.sendEvent(eventRequest);
-        metrics.processorMethodInvoked(ProcessorMethod.SEND_EVENT);
-        return response;
+    @NotNull
+    @Override
+    public EventsCrawlerData filterData(@NotNull EventsCrawlerData data, @NotNull InternalInterval interval,
+                                        @Nullable ResumeEventId continuation) {
+        if (data.size() <= 0) {
+            return data;
+        }
+
+        // TODO: can we relay on response order from provider? if can we can check only events in start and end
+        // Also, we will be able to use sublist in this case
+        List<EventData> filteredData = data.getData().stream()
+                .filter(event -> CrawlerUtils.isBetween(event.getStartTimestamp(), interval.getStartTime(), interval.getEndTime()))
+                .collect(Collectors.toUnmodifiableList());
+        return new EventsCrawlerData(filteredData, data.getContinuation(), data.isNeedsNextRequest());
+    }
+
+    private CompletableFuture<EventResponse> sendEventsToProcessor(AsyncDataProcessorService dataProcessor, EventDataRequest eventRequest) {
+        CompletableFuture<EventResponse> response = toCompletableFuture(dataProcessor, eventRequest, AsyncDataProcessorService::sendEvent);
+        return response.whenComplete((res, ex) -> { if (ex == null) { metrics.processorMethodInvoked(ProcessorMethod.SEND_EVENT); } });
     }
 
     private Pair<@NotNull Integer, @Nullable EventData> processServiceResponse(@Nullable EventID checkpoint, List<EventData> events) {

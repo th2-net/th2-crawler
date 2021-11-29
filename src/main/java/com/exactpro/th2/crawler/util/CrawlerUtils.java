@@ -16,6 +16,23 @@
 
 package com.exactpro.th2.crawler.util;
 
+import static java.util.Objects.requireNonNullElse;
+
+import java.io.IOException;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.exactpro.cradle.intervals.Interval;
 import com.exactpro.cradle.intervals.IntervalsWorker;
 import com.exactpro.th2.common.grpc.EventID;
@@ -28,6 +45,7 @@ import com.exactpro.th2.crawler.state.v1.InnerEventId;
 import com.exactpro.th2.crawler.state.v1.InnerMessageId;
 import com.exactpro.th2.crawler.state.v1.RecoveryState;
 import com.exactpro.th2.crawler.state.v1.StreamKey;
+import com.exactpro.th2.crawler.util.impl.StreamObserverAdapter;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import com.exactpro.th2.dataprovider.grpc.EventData;
 import com.exactpro.th2.dataprovider.grpc.EventSearchRequest;
@@ -41,31 +59,34 @@ import com.google.protobuf.BoolValue;
 import com.google.protobuf.Int32Value;
 import com.google.protobuf.MessageOrBuilder;
 import com.google.protobuf.Timestamp;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.function.Function;
-
-import static java.util.Objects.requireNonNullElse;
+import io.grpc.stub.StreamObserver;
 
 public class CrawlerUtils {
     private static final Logger LOGGER = LoggerFactory.getLogger(CrawlerUtils.class);
     private static final BoolValue METADATA_ONLY = BoolValue.newBuilder().setValue(false).build();
-    public static final Interval EMPTY = Interval.builder()
+    public static final Interval EMPTY_INTERVAL = Interval.builder()
             .crawlerName("Empty")
             .crawlerType("Empty")
             .startTime(Instant.EPOCH)
             .endTime(Instant.EPOCH)
             .build();
+
+    /**
+     *
+     * @return {@code true} if {@code timestamp} is greater than or equal to {@code min} and less than {@code max}
+     */
+    public static boolean isBetween(Timestamp timestamp, Instant min, Instant max) {
+        return compare(timestamp, min) >= 0 && compare(timestamp, max) < 0;
+    }
+
+    public static int compare(Timestamp timestamp, Instant instant) {
+        int secondsRes = Long.compare(timestamp.getSeconds(), instant.getEpochSecond());
+        if (secondsRes != 0) {
+            return secondsRes;
+        }
+        return Long.compare(timestamp.getNanos(), instant.getNano());
+    }
 
     public static Instant fromTimestamp(Timestamp timestamp) {
         return Instant.ofEpochSecond(timestamp.getSeconds(), timestamp.getNanos());
@@ -199,7 +220,13 @@ public class CrawlerUtils {
                 messageData -> messageData.hasTimestamp() ? messageData.getTimestamp() : null);
     }
 
-    public static <T extends MessageOrBuilder> SearchResult<T> collectData(Iterator<StreamResponse> iterator, Timestamp to,
+    public static <S, REQ, RESP> CompletableFuture<RESP> toCompletableFuture(S service, REQ request, GrpcMethodCall<S, REQ, RESP> method) {
+        var adapter = StreamObserverAdapter.<RESP>singleValueAdapter();
+        method.invoke(service,request, adapter);
+        return adapter.getFuture();
+    }
+
+    private static <T extends MessageOrBuilder> SearchResult<T> collectData(Iterator<StreamResponse> iterator, Timestamp to,
                                                                    Function<StreamResponse, T> objectExtractor,
                                                                    Function<T, Timestamp> timeExtractor) {
         List<T> data = null;
@@ -230,6 +257,15 @@ public class CrawlerUtils {
         }
 
         return new SearchResult<>(data == null ? Collections.emptyList() : data, streamsInfo);
+    }
+
+    public static void resetCurrentInterval(CrawlerMetrics metrics) {
+        metrics.currentInterval(EMPTY_INTERVAL.getStartTime(), EMPTY_INTERVAL.getEndTime());
+    }
+
+    @FunctionalInterface
+    public interface GrpcMethodCall<S, REQ, RESP> {
+        void invoke(S service, REQ request, StreamObserver<RESP> response);
     }
 
     public static class EventsSearchParameters {

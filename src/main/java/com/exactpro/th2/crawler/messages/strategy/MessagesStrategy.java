@@ -16,6 +16,8 @@
 
 package com.exactpro.th2.crawler.messages.strategy;
 
+import static com.exactpro.th2.crawler.util.CrawlerUtils.isBetween;
+import static com.exactpro.th2.crawler.util.CrawlerUtils.toCompletableFuture;
 import static java.util.Objects.requireNonNull;
 import static java.util.Objects.requireNonNullElse;
 import static java.util.stream.Collectors.toMap;
@@ -31,8 +33,10 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.BinaryOperator;
 import java.util.function.Function;
+import java.util.function.ToLongFunction;
 import java.util.stream.Collectors;
 
 import org.jetbrains.annotations.NotNull;
@@ -50,8 +54,8 @@ import com.exactpro.th2.crawler.CrawlerConfiguration;
 import com.exactpro.th2.crawler.DataParameters;
 import com.exactpro.th2.crawler.InternalInterval;
 import com.exactpro.th2.crawler.Report;
+import com.exactpro.th2.crawler.dataprocessor.grpc.AsyncDataProcessorService;
 import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId;
-import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService;
 import com.exactpro.th2.crawler.dataprocessor.grpc.IntervalInfo;
 import com.exactpro.th2.crawler.dataprocessor.grpc.MessageDataRequest;
 import com.exactpro.th2.crawler.dataprocessor.grpc.MessageIDs;
@@ -105,7 +109,7 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
 
     @NotNull
     @Override
-    public ResumeMessageIDs continuationFromState(@NotNull RecoveryState state) {
+    public ResumeMessageIDs stateToContinuation(@NotNull RecoveryState state) {
         requireNonNull(state, "'state' parameter");
         Map<StreamKey, InnerMessageId> ids = requireNonNullElse(state.getLastProcessedMessages(), Map.of());
         return new ResumeMessageIDs(Map.of(), toMessageIDs(ids));
@@ -113,17 +117,19 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
 
     @NotNull
     @Override
-    public RecoveryState continuationToState(@Nullable RecoveryState current, @NotNull ResumeMessageIDs continuation, long processedData) {
-        requireNonNull(continuation, "'continuation' parameter");
+    public RecoveryState continuationToState(@Nullable RecoveryState current, @Nullable ResumeMessageIDs continuation, long processedData) {
         if (current == null) {
-            Map<StreamKey, MessageID> startIntervalIDs = new HashMap<>(continuation.getStartIDs());
-            putAndCheck(continuation.getIds(), startIntervalIDs, "creating state from continuation");
+            Map<StreamKey, MessageID> startIntervalIDs = new HashMap<>(continuation == null ? Map.of() : continuation.getStartIDs());
+            if (continuation != null) {
+                putAndCheck(continuation.getIds(), startIntervalIDs, "creating state from continuation");
+            }
 
             return new RecoveryState(null, toInnerMessageIDs(startIntervalIDs), 0, processedData);
         }
         Map<StreamKey, InnerMessageId> old = current.getLastProcessedMessages();
-        Map<StreamKey, MessageID> lastProcessedMessages = new HashMap<>(old == null ? continuation.getIds() : toMessageIDs(old));
-        putAndCheck(continuation.getIds(), lastProcessedMessages, "creating state from current state and continuation");
+        Map<StreamKey, MessageID> cont = continuation == null ? Map.of() : continuation.getIds();
+        Map<StreamKey, MessageID> lastProcessedMessages = new HashMap<>(old == null ? cont : toMessageIDs(old));
+        putAndCheck(cont, lastProcessedMessages, "creating state from current state and continuation");
 
         return new RecoveryState(current.getLastProcessedEvent(), toInnerMessageIDs(lastProcessedMessages),
                 current.getLastNumberOfEvents(),
@@ -175,8 +181,8 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
 
     @NotNull
     @Override
-    public Report<ResumeMessageIDs> processData(
-            @NotNull DataProcessorService processor,
+    public CompletableFuture<Report<ResumeMessageIDs>> processData(
+            @NotNull AsyncDataProcessorService processor,
             @NotNull InternalInterval interval,
             @NotNull DataParameters parameters,
             @NotNull MessagesCrawlerData data
@@ -192,41 +198,68 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
         List<MessageData> messages = data.getData();
 
         if (messages.isEmpty()) {
-            LOGGER.info("No more messages in interval from: {}, to: {}", original.getStartTime(), original.getEndTime());
-            return Report.empty();
+            LOGGER.info("Do not have data to process");
+            return CompletableFuture.completedFuture(Report.empty());
         }
 
         MessageDataRequest messageRequest = MessageDataRequest.newBuilder().setId(crawlerId).addAllMessageData(messages).build();
 
-        MessageResponse response = sendMessagesToProcessor(processor, messageRequest);
+        return sendMessagesToProcessor(processor, messageRequest)
+                .thenApply(response -> {
+                    if (response.hasStatus()) {
+                        if (response.getStatus().getHandshakeRequired()) {
+                            return Report.handshake();
+                        }
+                    }
 
-        if (response.hasStatus()) {
-            if (response.getStatus().getHandshakeRequired()) {
-                return Report.handshake();
-            }
+                    List<MessageID> responseIds = response.getIdsList();
+                    Entry<Integer, Map<StreamKey, MessageID>> processedResult = processServiceResponse(responseIds, messages);
+
+                    int processedMessagesCount = processedResult == null ? messages.size() : processedResult.getKey();
+                    long remaining = messages.size() - processedMessagesCount;
+
+                    ResumeMessageIDs continuation = null;
+                    if (response.getIdsCount() > 0) {
+                        requireNonNull(processedResult, () -> "processServiceResponse cannot be null for not empty IDs in response: " + responseIds);
+                        Map<StreamKey, MessageID> checkpoints = processedResult.getValue();
+
+                        if (!checkpoints.isEmpty()) {
+
+                            ResumeMessageIDs previous = data.getContinuation();
+                            Map<StreamKey, MessageID> grouped = new HashMap<>(previous.getStartIDs());
+                            putAndCheck(checkpoints, grouped, "creating continuation from processor response");
+                            continuation = new ResumeMessageIDs(previous.getStartIDs(), grouped);
+                        }
+                    }
+
+                    return new Report<>(Action.CONTINUE, processedMessagesCount, remaining, continuation);
+                });
+    }
+
+    @NotNull
+    @Override
+    public MessagesCrawlerData filterData(@NotNull MessagesCrawlerData data, @NotNull InternalInterval interval,
+                                          @Nullable ResumeMessageIDs continuation) {
+        ToLongFunction<StreamKey> sequenceProvider = key -> continuation == null ? 0L : getSequence(continuation, key);
+        if (data.size() <= 0) {
+            return data;
         }
 
-        List<MessageID> responseIds = response.getIdsList();
-        Entry<Integer, Map<StreamKey, MessageID>> processedResult = processServiceResponse(responseIds, messages);
+        // TODO: can we relay on response order from provider? if can we can check only message in start and end
+        // Also, we will be able to use sublist in this case
+        List<MessageData> filteredData = data.getData().stream()
+                .filter(msg -> isBetween(msg.getTimestamp(), interval.getStartTime(), interval.getEndTime())
+                        && msg.getMessageId().getSequence() > sequenceProvider.applyAsLong(StreamKey.fromMessageId(msg.getMessageId())))
+                .collect(Collectors.toList());
+        return new MessagesCrawlerData(filteredData, data.getContinuation(), data.isNeedsNextRequest());
+    }
 
-        int processedMessagesCount = processedResult == null ? messages.size() : processedResult.getKey();
-        long remaining = messages.size() - processedMessagesCount;
-
-        ResumeMessageIDs continuation = null;
-        if (response.getIdsCount() > 0) {
-            requireNonNull(processedResult, () -> "processServiceResponse cannot be null for not empty IDs in response: " + responseIds);
-            Map<StreamKey, MessageID> checkpoints = processedResult.getValue();
-
-            if (!checkpoints.isEmpty()) {
-
-                ResumeMessageIDs previous = data.getContinuation();
-                Map<StreamKey, MessageID> grouped = new HashMap<>(previous.getStartIDs());
-                putAndCheck(checkpoints, grouped, "creating continuation from processor response");
-                continuation = new ResumeMessageIDs(previous.getStartIDs(), grouped);
-            }
+    private long getSequence(ResumeMessageIDs messageIDs, StreamKey key) {
+        MessageID messageID = messageIDs.getIds().get(key);
+        if (messageID == null) {
+            return 0L;
         }
-
-        return new Report<>(Action.CONTINUE, processedMessagesCount, remaining, continuation);
+        return messageID.getSequence();
     }
 
     @NotNull
@@ -240,10 +273,9 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
                 .build();
     }
 
-    private MessageResponse sendMessagesToProcessor(DataProcessorService dataProcessor, MessageDataRequest messageRequest) {
-        MessageResponse response = dataProcessor.sendMessage(messageRequest);
-        metrics.processorMethodInvoked(ProcessorMethod.SEND_MESSAGE);
-        return response;
+    private CompletableFuture<MessageResponse> sendMessagesToProcessor(AsyncDataProcessorService dataProcessor, MessageDataRequest messageRequest) {
+        CompletableFuture<MessageResponse> response = toCompletableFuture(dataProcessor, messageRequest, AsyncDataProcessorService::sendMessage);
+        return response.whenComplete((res, ex) -> { if (ex == null) { metrics.processorMethodInvoked(ProcessorMethod.SEND_MESSAGE); } });
     }
 
     private void putAndCheck(
