@@ -18,16 +18,16 @@ package com.exactpro.th2.crawler
 import com.exactpro.cradle.intervals.Interval
 import com.exactpro.cradle.intervals.IntervalsWorker
 import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId
-import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorInfo
+import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService
 import com.exactpro.th2.crawler.dataprocessor.grpc.IntervalInfo
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics
 import com.exactpro.th2.crawler.state.StateService
 import com.exactpro.th2.crawler.state.v1.RecoveryState
 import com.exactpro.th2.dataprovider.grpc.DataProviderService
 import com.google.protobuf.Timestamp
+import mu.KotlinLogging
 import java.io.IOException
-import kotlin.jvm.Throws
 
 interface DataTypeStrategy<T : CrawlerData<C>, C : Continuation> {
     fun setupIntervalInfo(info: IntervalInfo.Builder, state: RecoveryState?)
@@ -136,13 +136,21 @@ class InternalInterval(
 
     @Throws(IOException::class)
     fun updateState(newState: RecoveryState, worker: IntervalsWorker) {
-        original = worker.updateRecoveryState(original, stateService.serialize(newState))
+        val serializedState = stateService.serialize(newState)
+        LOGGER.trace { "Updating state for interval ${original.toLogString()}: $serializedState" }
+        original = worker.updateRecoveryState(original, serializedState)
         _state = newState
     }
 
     @Throws(IOException::class)
     fun processed(processed: Boolean, worker: IntervalsWorker) {
+        LOGGER.trace { "Updating processed status for interval ${original.toLogString()}: value=$processed" }
         original = worker.setIntervalProcessed(original, processed)
+    }
+
+    companion object {
+        private val LOGGER = KotlinLogging.logger { }
+        private fun Interval.toLogString(): String = "(from: $startTime; to: $endTime)"
     }
 }
 

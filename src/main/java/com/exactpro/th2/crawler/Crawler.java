@@ -16,30 +16,11 @@
 
 package com.exactpro.th2.crawler;
 
-import com.exactpro.cradle.CradleStorage;
-import com.exactpro.cradle.intervals.Interval;
-import com.exactpro.cradle.intervals.IntervalsWorker;
-import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId;
-import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerInfo;
-import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorInfo;
-import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService;
-import com.exactpro.th2.crawler.dataprocessor.grpc.IntervalInfo;
-import com.exactpro.th2.crawler.exception.UnsupportedRecoveryStateException;
-import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
-import com.exactpro.th2.crawler.metrics.CrawlerMetrics.Method;
-import com.exactpro.th2.crawler.metrics.CrawlerMetrics.ProcessorMethod;
-import com.exactpro.th2.crawler.state.StateService;
-import com.exactpro.th2.crawler.state.v1.RecoveryState;
-import com.exactpro.th2.common.grpc.MessageID;
-import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException;
-import com.exactpro.th2.crawler.util.CrawlerTime;
-import com.exactpro.th2.crawler.util.CrawlerUtils;
-import com.exactpro.th2.dataprovider.grpc.DataProviderService;
-import com.google.protobuf.Timestamp;
-
-import org.jetbrains.annotations.NotNull;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import static com.exactpro.th2.common.message.MessageUtils.toTimestamp;
+import static java.lang.String.format;
+import static java.util.Objects.requireNonNull;
+import static java.util.Objects.requireNonNullElse;
+import static java.util.stream.Collectors.toUnmodifiableMap;
 
 import java.io.IOException;
 import java.time.Duration;
@@ -50,12 +31,30 @@ import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.function.BinaryOperator;
 
-import static com.exactpro.th2.common.message.MessageUtils.toTimestamp;
-import static java.lang.String.format;
-import static java.util.Objects.requireNonNull;
-import static java.util.Objects.requireNonNullElse;
-import static java.util.stream.Collectors.toMap;
-import static java.util.stream.Collectors.toUnmodifiableMap;
+import org.jetbrains.annotations.NotNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.exactpro.cradle.CradleStorage;
+import com.exactpro.cradle.intervals.Interval;
+import com.exactpro.cradle.intervals.IntervalsWorker;
+import com.exactpro.th2.common.grpc.MessageID;
+import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId;
+import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerInfo;
+import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorInfo;
+import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService;
+import com.exactpro.th2.crawler.dataprocessor.grpc.IntervalInfo;
+import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException;
+import com.exactpro.th2.crawler.exception.UnsupportedRecoveryStateException;
+import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
+import com.exactpro.th2.crawler.metrics.CrawlerMetrics.Method;
+import com.exactpro.th2.crawler.metrics.CrawlerMetrics.ProcessorMethod;
+import com.exactpro.th2.crawler.state.StateService;
+import com.exactpro.th2.crawler.state.v1.RecoveryState;
+import com.exactpro.th2.crawler.util.CrawlerTime;
+import com.exactpro.th2.crawler.util.CrawlerUtils;
+import com.exactpro.th2.dataprovider.grpc.DataProviderService;
+import com.google.protobuf.Timestamp;
 
 public class Crawler {
     private static final Logger LOGGER = LoggerFactory.getLogger(Crawler.class);
@@ -164,6 +163,7 @@ public class Crawler {
             InternalInterval currentInt = new InternalInterval(stateService, interval);
             RecoveryState state = currentInt.getState();
             intervalStartForProcessor(dataProcessor, interval, state);
+
             Continuation continuation = state == null ? null : typeStrategy.continuationFromState(state);
             DataParameters parameters = new DataParameters(info, crawlerId, sessionAliases);
             CrawlerData<Continuation> data;
@@ -172,6 +172,7 @@ public class Crawler {
             Timestamp startTime = toTimestamp(interval.getStartTime());
             Timestamp endTime = toTimestamp(interval.getEndTime());
             do {
+                LOGGER.trace("Requesting data for interval");
                 data = requestData(startTime, endTime, continuation, parameters);
                 continuation = data.getContinuation();
                 var currentData = data;
@@ -232,6 +233,7 @@ public class Crawler {
     }
 
     private void intervalStartForProcessor(DataProcessorService dataProcessor, Interval interval, RecoveryState state) {
+        LOGGER.trace("Notifying about interval start (from {} to {})", interval.getStartTime(), interval.getEndTime());
         var intervalInfoBuilder = IntervalInfo.newBuilder()
                 .setStartTime(toTimestamp(interval.getStartTime()))
                 .setEndTime(toTimestamp(interval.getEndTime()));
@@ -316,72 +318,72 @@ public class Crawler {
         }
 
         if (lagNow.isBefore(from)) {
-            LOGGER.info("Current time with lag: {} is before \"from\" time of Crawler: {}", lagNow, from);
+            LOGGER.info("Waiting for start of work. Current time with lag: {} is before \"from\" time of Crawler: {}", lagNow, from);
             return new FetchIntervalReport(null, getSleepTime(lagNow, from), true);
         }
 
+        LOGGER.trace("Requesting intervals from {} to {} for name {} and version {}", from, to, name, version);
         Iterable<Interval> intervals = intervalsWorker.getIntervals(from, to, name, version, type.getTypeName());
 
         Duration length = defaultIntervalLength;
-        Interval lastInterval;
 
+        LOGGER.trace("Looking for suitable interval...");
         GetIntervalReport getReport = getInterval(intervals);
 
         if (getReport.foundInterval != null) {
             return new FetchIntervalReport(getReport.foundInterval, defaultSleepTime, getReport.processFromStart);
         }
 
-        lastInterval = getReport.lastInterval;
+        Interval lastInterval = getReport.lastInterval;
 
         LOGGER.info("Crawler did not find suitable interval. Creating new one if necessary.");
 
-        if (lastInterval != null) {
-            Instant lastIntervalEnd = lastInterval.getEndTime();
-
-            if (lastIntervalEnd.isBefore(to)) {
-
-                Instant newIntervalEnd;
-
-                if (lastIntervalEnd.plus(length).isBefore(to)) {
-
-                    newIntervalEnd = lastIntervalEnd.plus(length);
-
-                } else {
-                    newIntervalEnd = to;
-
-                    if (floatingToTime) {
-
-                        long sleepTime = getSleepTime(lastIntervalEnd, to);
-
-                        if (LOGGER.isInfoEnabled()) {
-                            LOGGER.info("Failed to create new interval from: {}, to: {} as it is too early now. Wait for {}",
-                                    lastIntervalEnd,
-                                    newIntervalEnd,
-                                    Duration.ofMillis(sleepTime));
-                        }
-
-                        return new FetchIntervalReport(null, sleepTime, true);
-                    }
-                }
-
-                return createAndStoreInterval(lastIntervalEnd, newIntervalEnd, name, version, type, lagNow);
-            } else {
-
-                if (!floatingToTime) {
-                    LOGGER.info("All intervals between {} and {} were fully processed less than {} {} ago",
-                            from, to, configuration.getLastUpdateOffset(), configuration.getLastUpdateOffsetUnit());
-                    return new FetchIntervalReport(null, defaultSleepTime, true);
-                }
-
-                LOGGER.info("Failed to create new interval from: {}, to: {} as the end of the last interval is after " +
-                                "end time of Crawler: {}",
-                        lastIntervalEnd, lastIntervalEnd.plus(length), to);
-
-                return new FetchIntervalReport(null, getSleepTime(lastIntervalEnd.plus(length), lagNow), true); // TODO: we need to start from the beginning I guess
-            }
-        } else {
+        if (lastInterval == null) {
             return createAndStoreInterval(from, from.plus(length), name, version, type, lagNow);
         }
+        Instant lastIntervalEnd = lastInterval.getEndTime();
+
+        if (lastIntervalEnd.isBefore(to)) {
+
+            Instant newIntervalEnd;
+
+            if (lastIntervalEnd.plus(length).isBefore(to)) {
+
+                newIntervalEnd = lastIntervalEnd.plus(length);
+
+            } else {
+                newIntervalEnd = to;
+
+                if (floatingToTime) {
+
+                    long sleepTime = getSleepTime(lastIntervalEnd, to);
+
+                    if (LOGGER.isInfoEnabled()) {
+                        LOGGER.info("Failed to create new interval from: {}, to: {} as it is too early now. Wait for {}",
+                                lastIntervalEnd,
+                                newIntervalEnd,
+                                Duration.ofMillis(sleepTime));
+                    }
+
+                    return new FetchIntervalReport(null, sleepTime, true);
+                }
+            }
+
+            return createAndStoreInterval(lastIntervalEnd, newIntervalEnd, name, version, type, lagNow);
+        }
+
+        if (!floatingToTime) {
+            LOGGER.info("All intervals between {} and {} were fully processed less than {} {} ago",
+                    from, to, configuration.getLastUpdateOffset(), configuration.getLastUpdateOffsetUnit());
+            return new FetchIntervalReport(null, defaultSleepTime, true);
+        }
+
+        LOGGER.info("Failed to create new interval from: {}, to: {} as the end of the last interval is after " +
+                        "end time of Crawler: {}",
+                lastIntervalEnd, lastIntervalEnd.plus(length), to);
+
+        return new FetchIntervalReport(null, getSleepTime(lastIntervalEnd.plus(length), lagNow),
+                true); // TODO: we need to start from the beginning I guess
     }
 
     private FetchIntervalReport createAndStoreInterval(Instant from, Instant to, String name, String version, DataType type, Instant lagTime) throws IOException {

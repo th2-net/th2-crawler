@@ -87,6 +87,10 @@ public class CrawlerUtils {
             request = eventSearchBuilder.setResumeFromId(info.resumeId).build();
         }
 
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("Requesting events from data provider with parameters: {}", MessageUtils.toJson(request));
+        }
+
         metrics.providerMethodInvoked(ProviderMethod.SEARCH_EVENTS);
         return collectEvents(dataProviderService.searchEvents(request), info.to);
     }
@@ -113,6 +117,9 @@ public class CrawlerUtils {
             request = messageSearchBuilder.addAllMessageId(info.getResumeIds().values()).build();
         }
 
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("Requesting messages from data provider with parameters: {}", MessageUtils.toJson(request));
+        }
         metrics.providerMethodInvoked(ProviderMethod.SEARCH_MESSAGES);
         return collectMessages(dataProviderService.searchMessages(request), info.getTo());
     }
