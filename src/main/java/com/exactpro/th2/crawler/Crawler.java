@@ -20,15 +20,19 @@ import static com.exactpro.th2.common.message.MessageUtils.toTimestamp;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 import static java.util.Objects.requireNonNullElse;
+import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toUnmodifiableMap;
 
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.ServiceLoader;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.BinaryOperator;
 
 import org.jetbrains.annotations.NotNull;
@@ -56,13 +60,14 @@ import com.exactpro.th2.crawler.util.CrawlerUtils;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import com.google.protobuf.Timestamp;
 
+import kotlin.Pair;
+
 public class Crawler {
     private static final Logger LOGGER = LoggerFactory.getLogger(Crawler.class);
 
     public static final BinaryOperator<MessageID> LATEST_SEQUENCE = (first, second) -> first.getSequence() < second.getSequence() ? second : first;
 
-    private final DataProcessorService dataProcessor;
-    private final DataProviderService dataProviderService;
+    private final Map<ProcessorId, DataProcessorService> dataProcessorsMap;
     private final IntervalsWorker intervalsWorker;
     private final CrawlerConfiguration configuration;
     private final CrawlerTime crawlerTime;
@@ -72,8 +77,6 @@ public class Crawler {
     private final boolean floatingToTime;
     private final boolean workAlone;
     private final DataType crawlerType;
-    private final int batchSize;
-    private final DataProcessorInfo info;
     private final CrawlerId crawlerId;
     private final StateService<RecoveryState> stateService;
     private final CrawlerMetrics metrics;
@@ -87,15 +90,17 @@ public class Crawler {
     public Crawler(
             @NotNull StateService<RecoveryState> stateService,
             @NotNull CradleStorage storage,
-            @NotNull DataProcessorService dataProcessor,
+            @NotNull List<DataProcessorService> dataProcessors,
             @NotNull DataProviderService dataProviderService,
             @NotNull CrawlerConfiguration configuration,
             @NotNull CrawlerContext crawlerContext
     ) {
+        requireNonNull(dataProcessors, "Data service cannot be null");
+        if (dataProcessors.isEmpty()) {
+            throw new IllegalArgumentException("at least one data processor must be specified");
+        }
         this.stateService = requireNonNull(stateService, "'state service' cannot be null");
         this.intervalsWorker = requireNonNull(storage, "Cradle storage cannot be null").getIntervalsWorker();
-        this.dataProcessor = requireNonNull(dataProcessor, "Data service cannot be null");
-        this.dataProviderService = requireNonNull(dataProviderService, "Data provider service cannot be null");
         this.configuration = requireNonNull(configuration, "Crawler configuration cannot be null");
         this.from = Instant.parse(configuration.getFrom());
         this.floatingToTime = configuration.getTo() == null;
@@ -105,16 +110,16 @@ public class Crawler {
         this.defaultIntervalLength = Duration.parse(configuration.getDefaultLength());
         this.defaultSleepTime = configuration.getDelay() * 1000;
         this.crawlerType = configuration.getType();
-        this.batchSize = configuration.getBatchSize();
+        int batchSize = configuration.getBatchSize();
         this.crawlerId = CrawlerId.newBuilder().setName(configuration.getName()).build();
         this.sessionAliases = configuration.getSessionAliases();
         metrics = requireNonNull(crawlerContext.getMetrics(), "'metrics' must not be null");
-        info = crawlerConnect(dataProcessor, CrawlerInfo.newBuilder().setId(crawlerId).build());
+        this.dataProcessorsMap = crawlerConnect(dataProcessors, CrawlerInfo.newBuilder().setId(crawlerId).build());
         Map<DataType, DataTypeStrategyFactory<CrawlerData<Continuation>, Continuation>> knownStrategies = loadStrategies();
         DataTypeStrategyFactory<CrawlerData<Continuation>, Continuation> factory = requireNonNull(knownStrategies.get(crawlerType),
                 () -> "Cannot find factory for type: " + crawlerType + ". Known types: " + knownStrategies.keySet());
         typeStrategy = factory.create(intervalsWorker, dataProviderService, stateService, metrics, configuration);
-        prepare();
+        validateParameters();
     }
 
     @SuppressWarnings("unchecked")
@@ -127,13 +132,26 @@ public class Crawler {
                 ));
     }
 
-    private DataProcessorInfo crawlerConnect(@NotNull DataProcessorService dataProcessor, CrawlerInfo crawlerInfo) {
-        DataProcessorInfo info = dataProcessor.crawlerConnect(crawlerInfo);
-        metrics.processorMethodInvoked(ProcessorMethod.CRAWLER_CONNECT);
-        return info;
+    private Map<ProcessorId, DataProcessorService> crawlerConnect(@NotNull List<DataProcessorService> dataProcessors, CrawlerInfo crawlerInfo) {
+        List<CompletableFuture<Pair<DataProcessorInfo, DataProcessorService>>> futures = dataProcessors.stream()
+                .map(processor -> CompletableFuture.supplyAsync(() -> new Pair<>(crawlerConnect(processor, crawlerInfo), processor)))
+                .collect(toList());
+        CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new)).join();
+        return futures.stream()
+                .map(CompletableFuture::join)
+                .collect(toUnmodifiableMap(
+                        pair -> new ProcessorId(pair.getFirst().getName(), pair.getFirst().getVersion()),
+                        Pair::getSecond
+                ));
     }
 
-    private void prepare() {
+    private DataProcessorInfo crawlerConnect(DataProcessorService processor, CrawlerInfo crawlerInfo) {
+        DataProcessorInfo dataProcessorInfo = processor.crawlerConnect(crawlerInfo);
+        metrics.processorMethodInvoked(ProcessorMethod.CRAWLER_CONNECT);
+        return dataProcessorInfo;
+    }
+
+    private void validateParameters() {
         if (!floatingToTime && Duration.between(from, to).abs().compareTo(defaultIntervalLength) < 0) {
             throw new IllegalArgumentException("Distance between \"from\" and \"to\" parameters cannot be less" +
                     "than default length of intervals");
@@ -162,7 +180,7 @@ public class Crawler {
 
             InternalInterval currentInt = new InternalInterval(stateService, interval);
             RecoveryState state = currentInt.getState();
-            intervalStartForProcessor(dataProcessor, interval, state);
+            intervalStartForProcessor(dataProcessorsMap, interval, state);
 
             Continuation continuation = state == null ? null : typeStrategy.continuationFromState(state);
             DataParameters parameters = new DataParameters(info, crawlerId, sessionAliases);
@@ -196,7 +214,7 @@ public class Crawler {
             Action action = sendingReport.getAction();
             switch (action) {
             case HANDSHAKE:
-                DataProcessorInfo info = crawlerConnect(dataProcessor, CrawlerInfo.newBuilder().setId(crawlerId).build());
+                DataProcessorInfo info = crawlerConnect(dataProcessorsMap, CrawlerInfo.newBuilder().setId(crawlerId).build());
                 if (!dataProcessorName.equals(info.getName()) || !dataProcessorVersion.equals(info.getVersion())) {
                     throw new UnexpectedDataProcessorException("Need to restart Crawler because of changed name and/or version of data-service. " +
                             "Old name: " + dataProcessorName + ", old version: " + dataProcessorVersion + ". " +
@@ -225,7 +243,7 @@ public class Crawler {
     }
 
     private Report<Continuation> processData(InternalInterval current, DataParameters parameters, CrawlerData<Continuation> currentData) throws IOException {
-        return metrics.measureTime(crawlerType, Method.PROCESS_DATA, () -> typeStrategy.processData(dataProcessor, current, parameters, currentData));
+        return metrics.measureTime(crawlerType, Method.PROCESS_DATA, () -> typeStrategy.processData(dataProcessorsMap, current, parameters, currentData));
     }
 
     private CrawlerData<Continuation> requestData(Timestamp startTime, Timestamp endTime, Continuation continuation, DataParameters parameters) throws IOException {
@@ -451,6 +469,39 @@ public class Crawler {
             this.interval = interval;
             this.sleepTime = sleepTime;
             this.processFromStart = processFromStart;
+        }
+    }
+
+    private static class ProcessorId {
+        private final String name;
+        private final String version;
+
+        private ProcessorId(String name, String version) {
+            this.name = requireNonNull(name, "'Name' parameter");
+            this.version = requireNonNull(version, "'Version' parameter");
+            if (name.isBlank()) {
+                throw new IllegalArgumentException("name cannot be blank");
+            }
+            if (version.isBlank()) {
+                throw new IllegalArgumentException("version cannot be blank");
+            }
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) {
+                return true;
+            }
+            if (obj == null || getClass() != obj.getClass()) {
+                return false;
+            }
+            ProcessorId that = (ProcessorId)obj;
+            return name.equals(that.name) && version.equals(that.version);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(name, version);
         }
     }
 }

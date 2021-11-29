@@ -69,7 +69,7 @@ fun main(args: Array<String>) {
         val cradleManager = factory.cradleManager
 
         val grpcRouter = factory.grpcRouter
-        val dataProcessor = grpcRouter.getService(DataProcessorService::class.java)
+        val dataProcessor: List<DataProcessorService> = grpcRouter.getServices(DataProcessorService::class.java)
         val dataProviderService = grpcRouter.getService(DataProviderService::class.java)
 
         val configuration = factory.getCustomConfiguration(CrawlerConfiguration::class.java)
