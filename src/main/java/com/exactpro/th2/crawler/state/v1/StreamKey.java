@@ -19,6 +19,7 @@ package com.exactpro.th2.crawler.state.v1;
 import java.util.Objects;
 
 import com.exactpro.th2.common.grpc.Direction;
+import com.exactpro.th2.common.grpc.MessageID;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class StreamKey {
@@ -57,5 +58,9 @@ public class StreamKey {
     @Override
     public String toString() {
         return sessionAlias + " (" + direction + ")";
+    }
+
+    public static StreamKey fromMessageId(MessageID id) {
+        return new StreamKey(id.getConnectionId().getSessionAlias(), id.getDirection());
     }
 }

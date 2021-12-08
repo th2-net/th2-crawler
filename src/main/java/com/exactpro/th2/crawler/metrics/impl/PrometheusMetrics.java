@@ -16,21 +16,22 @@
 
 package com.exactpro.th2.crawler.metrics.impl;
 
-import java.io.IOException;
+import static com.exactpro.th2.common.metrics.CommonMetrics.DIRECTION_LABEL;
+import static com.exactpro.th2.common.metrics.CommonMetrics.SESSION_ALIAS_LABEL;
 
-import com.exactpro.cradle.intervals.Interval;
+import java.io.IOException;
+import java.time.Instant;
+
 import com.exactpro.th2.common.grpc.Direction;
 import com.exactpro.th2.crawler.DataType;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
 import com.exactpro.th2.crawler.util.CrawlerUtils;
 import com.exactpro.th2.dataprovider.grpc.EventData;
 import com.exactpro.th2.dataprovider.grpc.MessageData;
+
 import io.prometheus.client.Counter;
 import io.prometheus.client.Gauge;
 import io.prometheus.client.Histogram;
-
-import static com.exactpro.th2.common.metrics.CommonMetrics.DEFAULT_DIRECTION_LABEL_NAME;
-import static com.exactpro.th2.common.metrics.CommonMetrics.DEFAULT_SESSION_ALIAS_LABEL_NAME;
 
 public class PrometheusMetrics implements CrawlerMetrics {
     private final Histogram processingTime = Histogram.build()
@@ -47,12 +48,12 @@ public class PrometheusMetrics implements CrawlerMetrics {
     private final Gauge lastMessageSequence = Gauge.build()
             .name("th2_crawler_processing_message_sequence_number")
             .help("contains the sequence number of the last processed message for corresponding alias and direction")
-            .labelNames(DEFAULT_SESSION_ALIAS_LABEL_NAME, DEFAULT_DIRECTION_LABEL_NAME)
+            .labelNames(SESSION_ALIAS_LABEL, DIRECTION_LABEL)
             .register();
     private final Gauge lastMessageTimestamp = Gauge.build()
             .name("th2_crawler_processing_message_timestamp_milliseconds")
             .help("contains the timestamp of the last processed message in milliseconds for corresponding alias and direction")
-            .labelNames(DEFAULT_SESSION_ALIAS_LABEL_NAME, DEFAULT_DIRECTION_LABEL_NAME)
+            .labelNames(SESSION_ALIAS_LABEL, DIRECTION_LABEL)
             .register();
     //endregion
     private final Gauge lastEventTimestamp = Gauge.build()
@@ -91,8 +92,8 @@ public class PrometheusMetrics implements CrawlerMetrics {
     }
 
     @Override
-    public void currentInterval(Interval interval) {
-        lastIntervalTimestamp.set(interval.getEndTime().toEpochMilli());
+    public void currentInterval(Instant start, Instant end) {
+        lastIntervalTimestamp.set(end.toEpochMilli());
     }
 
     @Override
@@ -112,7 +113,7 @@ public class PrometheusMetrics implements CrawlerMetrics {
 
     @Override
     public <T> T measureTime(DataType dataType, Method method, CrawlerDataOperation<T> function) throws IOException {
-        Histogram.Timer timer = processingTime.labels(dataType.getTypeName(), method.name()).startTimer();
+        Histogram.Timer timer = startProcessingTimer(dataType, method);
         try {
             return function.call();
         } finally {
@@ -121,7 +122,17 @@ public class PrometheusMetrics implements CrawlerMetrics {
     }
 
     @Override
+    public Timer startTimer(DataType dataType, Method method) {
+        Histogram.Timer timer = startProcessingTimer(dataType, method);
+        return timer::observeDuration;
+    }
+
+    @Override
     public void updateProcessedData(DataType dataType, long count) {
         processedDataCount.labels(dataType.getTypeName()).inc(count);
+    }
+
+    private Histogram.Timer startProcessingTimer(DataType dataType, Method method) {
+        return processingTime.labels(dataType.getTypeName(), method.name()).startTimer();
     }
 }

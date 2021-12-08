@@ -17,8 +17,8 @@
 package com.exactpro.th2.crawler.metrics;
 
 import java.io.IOException;
+import java.time.Instant;
 
-import com.exactpro.cradle.intervals.Interval;
 import com.exactpro.th2.common.grpc.Direction;
 import com.exactpro.th2.crawler.DataType;
 import com.exactpro.th2.dataprovider.grpc.EventData;
@@ -28,7 +28,7 @@ public interface CrawlerMetrics {
 
     void lastMessage(String alias, Direction direction, MessageData messageData);
 
-    void currentInterval(Interval interval);
+    void currentInterval(Instant start, Instant end);
 
     void lastEvent(EventData event);
 
@@ -37,6 +37,8 @@ public interface CrawlerMetrics {
     void providerMethodInvoked(ProviderMethod method);
 
     <T> T measureTime(DataType dataType, Method method, CrawlerDataOperation<T> function) throws IOException;
+
+    Timer startTimer(DataType dataType, Method method);
 
     void updateProcessedData(DataType dataType, long count);
 
@@ -54,5 +56,18 @@ public interface CrawlerMetrics {
     @FunctionalInterface
     interface CrawlerDataOperation<T> {
         T call() throws IOException;
+    }
+
+    /**
+     * Interface for stopping the time measurement
+     */
+    @FunctionalInterface
+    interface Timer extends AutoCloseable {
+        void stop();
+
+        @Override
+        default void close() {
+            stop();
+        }
     }
 }
