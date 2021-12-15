@@ -50,6 +50,9 @@ the interval that another Crawler is processing at the moment. The default value
 
 **sessionAliases: [alias1, alias2]** - aliases that Crawler will search messages by.
 
+**sessionAliasesType: PLAIN_TEXT** - alias type can be either PLAIN_TEXT or REGEXP. 
+In case of REGEXP **sessionAliases** parameter will look like this: [alias\d+, otherAlias].
+
 **shutdownTimeout: 10** - the timeout to wait until crawler finished the current processing task if it has one.
 The value will be interpreted as _shutdownTimeoutUnit_ unit. The default value is 10
 

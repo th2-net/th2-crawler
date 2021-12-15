@@ -17,6 +17,7 @@
 package com.exactpro.th2.crawler;
 
 import static com.exactpro.th2.common.message.MessageUtils.toTimestamp;
+import static com.exactpro.th2.crawler.SessionAliasType.PLAIN_TEXT;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 import static java.util.Objects.requireNonNullElse;
@@ -26,11 +27,13 @@ import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.Map;
-import java.util.ServiceLoader;
-import java.util.Set;
+import java.util.*;
 import java.util.function.BinaryOperator;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
+import com.google.protobuf.Empty;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -69,6 +72,7 @@ public class Crawler {
     private final Duration defaultIntervalLength;
     private final long defaultSleepTime;
     private final Set<String> sessionAliases;
+    private final Set<Pattern> sessionAliasPatterns;
     private final boolean floatingToTime;
     private final boolean workAlone;
     private final DataType crawlerType;
@@ -78,6 +82,7 @@ public class Crawler {
     private final StateService<RecoveryState> stateService;
     private final CrawlerMetrics metrics;
     private final DataTypeStrategy<CrawlerData<Continuation>, Continuation> typeStrategy;
+
 
     private final Instant from;
     private Instant to;
@@ -107,7 +112,13 @@ public class Crawler {
         this.crawlerType = configuration.getType();
         this.batchSize = configuration.getBatchSize();
         this.crawlerId = CrawlerId.newBuilder().setName(configuration.getName()).build();
-        this.sessionAliases = configuration.getSessionAliases();
+
+        this.sessionAliases = configuration.getSessionAliasesType().equals(PLAIN_TEXT)
+                ? configuration.getSessionAliases() : new HashSet<>();
+
+        this.sessionAliasPatterns = configuration.getSessionAliasesType().equals(PLAIN_TEXT)
+                ? null : configuration.getSessionAliases().stream().map(Pattern::compile).collect(Collectors.toSet());
+
         metrics = requireNonNull(crawlerContext.getMetrics(), "'metrics' must not be null");
         info = crawlerConnect(dataProcessor, CrawlerInfo.newBuilder().setId(crawlerId).build());
         Map<DataType, DataTypeStrategyFactory<CrawlerData<Continuation>, Continuation>> knownStrategies = loadStrategies();
@@ -145,6 +156,10 @@ public class Crawler {
     public Duration process() throws IOException, UnexpectedDataProcessorException {
         String dataProcessorName = info.getName();
         String dataProcessorVersion = info.getVersion();
+
+        if (sessionAliasPatterns != null) {
+            sessionAliases.addAll(matchSessionAliases());
+        }
 
         FetchIntervalReport fetchIntervalReport = getOrCreateInterval(dataProcessorName, dataProcessorVersion, crawlerType);
 
@@ -222,6 +237,27 @@ public class Crawler {
         long sleepTime = fetchIntervalReport.sleepTime;
 
         return Duration.of(sleepTime, ChronoUnit.MILLIS);
+    }
+
+    private List<String> requestSessionAliases() {
+        return dataProviderService.getMessageStreams(Empty.getDefaultInstance()).getListStringList();
+    }
+
+    private Collection<String> matchSessionAliases() {
+        List<String> aliases = new ArrayList<>();
+        for (Pattern pattern : sessionAliasPatterns) {
+            for (String alias : requestSessionAliases()) {
+                Matcher matcher = pattern.matcher(alias);
+
+                if (matcher.matches()) {
+                    aliases.add(alias);
+                }
+            }
+        }
+
+        LOGGER.debug("Current aliases: {}", String.join(", ", aliases));
+
+        return aliases;
     }
 
     private Report<Continuation> processData(InternalInterval current, DataParameters parameters, CrawlerData<Continuation> currentData) throws IOException {
