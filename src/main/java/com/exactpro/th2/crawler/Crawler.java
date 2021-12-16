@@ -240,24 +240,26 @@ public class Crawler {
     }
 
     private List<String> requestSessionAliases() {
-        return dataProviderService.getMessageStreams(Empty.getDefaultInstance()).getListStringList();
+        List<String> messageStreams = dataProviderService.getMessageStreams(Empty.getDefaultInstance()).getListStringList();
+        LOGGER.debug("Got the following message streams from data provider: {}", String.join(", ", messageStreams));
+        return messageStreams;
     }
 
     private Collection<String> matchSessionAliases() {
-        List<String> aliases = new ArrayList<>();
-        for (Pattern pattern : sessionAliasPatterns) {
-            for (String alias : requestSessionAliases()) {
-                Matcher matcher = pattern.matcher(alias);
+        List<String> res = new ArrayList<>();
+        List<String> sessionAliases = requestSessionAliases();
 
-                if (matcher.matches()) {
-                    aliases.add(alias);
+        for (Pattern pattern : sessionAliasPatterns) {
+            for (String alias : sessionAliases) {
+                if (pattern.matcher(alias).matches()) {
+                    res.add(alias);
                 }
             }
         }
 
-        LOGGER.debug("Current aliases: {}", String.join(", ", aliases));
+        LOGGER.debug("Current aliases: {}", String.join(", ", res));
 
-        return aliases;
+        return res;
     }
 
     private Report<Continuation> processData(InternalInterval current, DataParameters parameters, CrawlerData<Continuation> currentData) throws IOException {
