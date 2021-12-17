@@ -29,7 +29,6 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.function.BinaryOperator;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -114,7 +113,7 @@ public class Crawler {
         this.crawlerId = CrawlerId.newBuilder().setName(configuration.getName()).build();
 
         this.sessionAliases = configuration.getSessionAliasesType().equals(PLAIN_TEXT)
-                ? configuration.getSessionAliases() : new HashSet<>();
+                ? configuration.getSessionAliases() : new HashSet<>(matchRequestedSessionAliases());
 
         this.sessionAliasPatterns = configuration.getSessionAliasesType().equals(PLAIN_TEXT)
                 ? null : configuration.getSessionAliases().stream().map(Pattern::compile).collect(Collectors.toSet());
@@ -157,10 +156,6 @@ public class Crawler {
         String dataProcessorName = info.getName();
         String dataProcessorVersion = info.getVersion();
 
-        if (sessionAliasPatterns != null) {
-            sessionAliases.addAll(matchSessionAliases());
-        }
-
         FetchIntervalReport fetchIntervalReport = getOrCreateInterval(dataProcessorName, dataProcessorVersion, crawlerType);
 
         Interval interval = fetchIntervalReport.interval;
@@ -180,57 +175,80 @@ public class Crawler {
             intervalStartForProcessor(dataProcessor, interval, state);
 
             Continuation continuation = state == null ? null : typeStrategy.continuationFromState(state);
-            DataParameters parameters = new DataParameters(info, crawlerId, sessionAliases);
-            CrawlerData<Continuation> data;
-            Report<Continuation> sendingReport = null;
-            long processedEvents = 0L;
-            Timestamp startTime = toTimestamp(interval.getStartTime());
-            Timestamp endTime = toTimestamp(interval.getEndTime());
+
+            Collection<String> newAliases = sessionAliasPatterns == null ? sessionAliases : getNewAliases();
+
+            int counter = 0;
+
             do {
-                LOGGER.trace("Requesting data for interval");
-                data = requestData(startTime, endTime, continuation, parameters);
-                continuation = data.getContinuation();
-                var currentData = data;
-                long remaining = sendingReport == null ? 0 : sendingReport.getRemainingData();
-                sendingReport = currentData.getHasData()
-                        ? processData(currentInt, parameters, currentData)
-                        : requireNonNullElse(sendingReport, Report.empty());
+                counter++;
 
-                if (currentData.getHasData()) {
-                    metrics.updateProcessedData(crawlerType, currentData.size());
+                DataParameters parameters;
+
+                // At first, we need to process messages for all session aliases we have.
+                // If we have a regexp, we need to process new aliases while we keep getting them.
+                if (counter == 1) {
+                    parameters = new DataParameters(info, crawlerId, sessionAliases);
+                } else {
+                    parameters = new DataParameters(info, crawlerId, newAliases);
+                    sessionAliases.addAll(newAliases);
                 }
 
-                Continuation checkpoint = sendingReport.getCheckpoint();
-                processedEvents += sendingReport.getProcessedData() + remaining;
-                if (checkpoint != null) {
-                    state = typeStrategy.continuationToState(state, checkpoint, processedEvents);
-                    currentInt.updateState(state, intervalsWorker);
-                }
-            } while (data.isNeedsNextRequest());
+                CrawlerData<Continuation> data;
+                Report<Continuation> sendingReport = null;
+                long processedEvents = 0L;
+                Timestamp startTime = toTimestamp(interval.getStartTime());
+                Timestamp endTime = toTimestamp(interval.getEndTime());
+                do {
+                    LOGGER.trace("Requesting data for interval");
+                    data = requestData(startTime, endTime, continuation, parameters);
+                    continuation = data.getContinuation();
+                    var currentData = data;
+                    long remaining = sendingReport == null ? 0 : sendingReport.getRemainingData();
+                    sendingReport = currentData.getHasData()
+                            ? processData(currentInt, parameters, currentData)
+                            : requireNonNullElse(sendingReport, Report.empty());
 
-            Action action = sendingReport.getAction();
-            switch (action) {
-            case HANDSHAKE:
-                DataProcessorInfo info = crawlerConnect(dataProcessor, CrawlerInfo.newBuilder().setId(crawlerId).build());
-                if (!dataProcessorName.equals(info.getName()) || !dataProcessorVersion.equals(info.getVersion())) {
-                    throw new UnexpectedDataProcessorException("Need to restart Crawler because of changed name and/or version of data-service. " +
-                            "Old name: " + dataProcessorName + ", old version: " + dataProcessorVersion + ". " +
-                            "New name: " + info.getName() + ", new version: " + info.getVersion());
+                    if (currentData.getHasData()) {
+                        metrics.updateProcessedData(crawlerType, currentData.size());
+                    }
+
+                    Continuation checkpoint = sendingReport.getCheckpoint();
+                    processedEvents += sendingReport.getProcessedData() + remaining;
+                    if (checkpoint != null) {
+                        state = typeStrategy.continuationToState(state, checkpoint, processedEvents);
+                        currentInt.updateState(state, intervalsWorker);
+                    }
+                } while (data.isNeedsNextRequest());
+
+                Action action = sendingReport.getAction();
+                switch (action) {
+                    case HANDSHAKE:
+                        DataProcessorInfo info = crawlerConnect(dataProcessor, CrawlerInfo.newBuilder().setId(crawlerId).build());
+                        if (!dataProcessorName.equals(info.getName()) || !dataProcessorVersion.equals(info.getVersion())) {
+                            throw new UnexpectedDataProcessorException("Need to restart Crawler because of changed name and/or version of data-service. " +
+                                    "Old name: " + dataProcessorName + ", old version: " + dataProcessorVersion + ". " +
+                                    "New name: " + info.getName() + ", new version: " + info.getVersion());
+                        }
+                        LOGGER.info("Got the same name ({}) and version ({}) from repeated crawlerConnect", dataProcessorName, dataProcessorVersion);
+                        break;
+                    case CONTINUE:
+                        currentInt.processed(true, intervalsWorker);
+                        currentInt.updateState(state == null
+                                        ? new RecoveryState(null, null, processedEvents, 0)
+                                        : new RecoveryState(state.getLastProcessedEvent(), state.getLastProcessedMessages(), processedEvents, 0),
+                                intervalsWorker
+                        );
+                        LOGGER.info("Interval from {}, to {} was processed successfully", interval.getStartTime(), interval.getEndTime());
+                        break;
+                    default:
+                        throw new IllegalStateException("Unsupported report action: " + action);
                 }
-                LOGGER.info("Got the same name ({}) and version ({}) from repeated crawlerConnect", dataProcessorName, dataProcessorVersion);
-                break;
-            case CONTINUE:
-                currentInt.processed(true, intervalsWorker);
-                currentInt.updateState(state == null
-                                ? new RecoveryState(null, null, processedEvents, 0)
-                                : new RecoveryState(state.getLastProcessedEvent(), state.getLastProcessedMessages(), processedEvents, 0),
-                        intervalsWorker
-                );
-                LOGGER.info("Interval from {}, to {} was processed successfully", interval.getStartTime(), interval.getEndTime());
-                break;
-            default:
-                throw new IllegalStateException("Unsupported report action: " + action);
-            }
+
+                newAliases = getNewAliases();
+
+            } while (newAliases.size() > 0);
+
             metrics.currentInterval(CrawlerUtils.EMPTY);
         }
 
@@ -241,25 +259,38 @@ public class Crawler {
 
     private List<String> requestSessionAliases() {
         List<String> messageStreams = dataProviderService.getMessageStreams(Empty.getDefaultInstance()).getListStringList();
+
         LOGGER.debug("Got the following message streams from data provider: {}", String.join(", ", messageStreams));
+
         return messageStreams;
     }
 
-    private Collection<String> matchSessionAliases() {
+    private Collection<String> matchRequestedSessionAliases() {
         List<String> res = new ArrayList<>();
         List<String> sessionAliases = requestSessionAliases();
 
-        for (Pattern pattern : sessionAliasPatterns) {
-            for (String alias : sessionAliases) {
-                if (pattern.matcher(alias).matches()) {
-                    res.add(alias);
+        if (sessionAliasPatterns != null) {
+            for (Pattern pattern : sessionAliasPatterns) {
+                for (String alias : sessionAliases) {
+                    if (pattern.matcher(alias).matches()) {
+                        res.add(alias);
+                    }
                 }
             }
+
+            LOGGER.debug("Current aliases: {}", String.join(", ", res));
         }
 
-        LOGGER.debug("Current aliases: {}", String.join(", ", res));
-
         return res;
+    }
+
+    private Collection<String> getNewAliases() {
+
+        Collection<String> requestedAliases = matchRequestedSessionAliases();
+
+        requestedAliases.removeAll(sessionAliases);
+
+        return requestedAliases;
     }
 
     private Report<Continuation> processData(InternalInterval current, DataParameters parameters, CrawlerData<Continuation> currentData) throws IOException {
