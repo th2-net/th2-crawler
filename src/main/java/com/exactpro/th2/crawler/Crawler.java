@@ -183,7 +183,7 @@ public class Crawler {
 
             Continuation continuation = state == null ? null : typeStrategy.continuationFromState(state);
 
-            Collection<String> newAliases = sessionAliasPatterns == null ? sessionAliases : getNewAliases();
+            Collection<String> newAliases = null;
 
             int counter = 0;
 
@@ -196,9 +196,11 @@ public class Crawler {
                 // If we have a regexp, we need to process new aliases while we keep getting them.
                 if (counter == 1) {
                     parameters = new DataParameters(info, crawlerId, sessionAliases);
+                    LOGGER.debug("Crawler is going to process messages with aliases {}", String.join(", ", sessionAliases));
                 } else {
                     parameters = new DataParameters(info, crawlerId, newAliases);
                     sessionAliases.addAll(newAliases);
+                    LOGGER.debug("Crawler is going to process messages with extra aliases {}", String.join(", ", newAliases));
                 }
 
                 CrawlerData<Continuation> data;
@@ -284,8 +286,6 @@ public class Crawler {
                     }
                 }
             }
-
-            LOGGER.debug("Current aliases: {}", String.join(", ", res));
         }
 
         return res;
