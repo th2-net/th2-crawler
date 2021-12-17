@@ -197,11 +197,13 @@ public class Crawler {
                 // If we have a regexp, we need to process new aliases while we keep getting them.
                 if (counter == 1) {
                     parameters = new DataParameters(info, crawlerId, sessionAliases);
-                    LOGGER.debug("Crawler is going to process messages with aliases {}", String.join(", ", sessionAliases));
+                    LOGGER.debug("Crawler is going to process messages with {} aliases: {}. Interval from {} to {}",
+                            sessionAliases.size(), String.join(", ", sessionAliases), interval.getStartTime(), interval.getEndTime());
                 } else {
                     parameters = new DataParameters(info, crawlerId, newAliases);
                     sessionAliases.addAll(newAliases);
-                    LOGGER.debug("Crawler is going to process messages with extra aliases {}", String.join(", ", newAliases));
+                    LOGGER.debug("Crawler got {} extra aliases: {}. They will be processed on interval from {} to {}",
+                            newAliases.size(), String.join(", ", newAliases), interval.getStartTime(), interval.getEndTime());
                 }
 
                 CrawlerData<Continuation> data;
