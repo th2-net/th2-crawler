@@ -27,7 +27,14 @@ import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.ServiceLoader;
+import java.util.Set;
 import java.util.function.BinaryOperator;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -286,11 +293,15 @@ public class Crawler {
 
     private Collection<String> getNewAliases() {
 
-        Collection<String> requestedAliases = matchRequestedSessionAliases();
+        if (sessionAliasPatterns != null) {
+            Collection<String> requestedAliases = matchRequestedSessionAliases();
 
-        requestedAliases.removeAll(sessionAliases);
+            requestedAliases.removeAll(sessionAliases);
 
-        return requestedAliases;
+            return requestedAliases;
+        }
+
+        return Collections.emptyList();
     }
 
     private Report<Continuation> processData(InternalInterval current, DataParameters parameters, CrawlerData<Continuation> currentData) throws IOException {
