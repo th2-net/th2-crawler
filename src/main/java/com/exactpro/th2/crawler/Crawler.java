@@ -119,11 +119,12 @@ public class Crawler {
         this.batchSize = configuration.getBatchSize();
         this.crawlerId = CrawlerId.newBuilder().setName(configuration.getName()).build();
 
-        this.sessionAliases = configuration.getSessionAliasesType().equals(PLAIN_TEXT)
-                ? configuration.getSessionAliases() : new HashSet<>(matchRequestedSessionAliases());
+        boolean isPlainText = configuration.getSessionAliasesType().equals(PLAIN_TEXT);
 
-        this.sessionAliasPatterns = configuration.getSessionAliasesType().equals(PLAIN_TEXT)
-                ? null : configuration.getSessionAliases().stream().map(Pattern::compile).collect(Collectors.toSet());
+        this.sessionAliasPatterns = isPlainText ? null
+                : configuration.getSessionAliases().stream().map(Pattern::compile).collect(Collectors.toSet());
+
+        this.sessionAliases = isPlainText ? configuration.getSessionAliases() : new HashSet<>(matchRequestedSessionAliases());
 
         metrics = requireNonNull(crawlerContext.getMetrics(), "'metrics' must not be null");
         info = crawlerConnect(dataProcessor, CrawlerInfo.newBuilder().setId(crawlerId).build());
