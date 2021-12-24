@@ -184,28 +184,14 @@ public class Crawler {
 
             Continuation continuation = state == null ? null : typeStrategy.continuationFromState(state);
 
-            Collection<String> newAliases = null;
+            // At first, we need to process messages for all session aliases we have.
+            DataParameters parameters = new DataParameters(info, crawlerId, sessionAliases);
+            LOGGER.debug("Crawler is going to process messages with {} aliases: {}. Interval from {} to {}",
+                    sessionAliases.size(), String.join(", ", sessionAliases), interval.getStartTime(), interval.getEndTime());
 
-            int counter = 0;
+            Collection<String> newAliases;
 
             do {
-                counter++;
-
-                DataParameters parameters;
-
-                // At first, we need to process messages for all session aliases we have.
-                // If we have a regexp, we need to process new aliases while we keep getting them.
-                if (counter == 1) {
-                    parameters = new DataParameters(info, crawlerId, sessionAliases);
-                    LOGGER.debug("Crawler is going to process messages with {} aliases: {}. Interval from {} to {}",
-                            sessionAliases.size(), String.join(", ", sessionAliases), interval.getStartTime(), interval.getEndTime());
-                } else {
-                    parameters = new DataParameters(info, crawlerId, newAliases);
-                    sessionAliases.addAll(newAliases);
-                    LOGGER.debug("Crawler got {} extra aliases: {}. They will be processed on interval from {} to {}",
-                            newAliases.size(), String.join(", ", newAliases), interval.getStartTime(), interval.getEndTime());
-                }
-
                 CrawlerData<Continuation> data;
                 Report<Continuation> sendingReport = null;
                 long processedEvents = 0L;
@@ -259,7 +245,15 @@ public class Crawler {
 
                 newAliases = getNewAliases();
 
-            } while (newAliases.size() > 0);
+                if (!newAliases.isEmpty()) {
+                    // If we have a regexp, we need to process new aliases while we keep getting them.
+                    parameters = new DataParameters(info, crawlerId, newAliases);
+                    sessionAliases.addAll(newAliases);
+                    LOGGER.debug("Crawler got {} extra aliases: {}. They will be processed on interval from {} to {}",
+                            newAliases.size(), String.join(", ", newAliases), interval.getStartTime(), interval.getEndTime());
+                }
+
+            } while (!newAliases.isEmpty());
 
             metrics.currentInterval(CrawlerUtils.EMPTY);
         }
@@ -278,10 +272,10 @@ public class Crawler {
     }
 
     private Collection<String> matchRequestedSessionAliases() {
-        List<String> res = new ArrayList<>();
-        List<String> sessionAliases = requestSessionAliases();
-
         if (sessionAliasPatterns != null) {
+            List<String> res = new ArrayList<>();
+            List<String> sessionAliases = requestSessionAliases();
+
             for (Pattern pattern : sessionAliasPatterns) {
                 for (String alias : sessionAliases) {
                     if (pattern.matcher(alias).matches()) {
@@ -289,9 +283,11 @@ public class Crawler {
                     }
                 }
             }
+
+            return res;
         }
 
-        return res;
+        return Collections.emptyList();
     }
 
     private Collection<String> getNewAliases() {

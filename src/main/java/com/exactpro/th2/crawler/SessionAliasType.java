@@ -23,9 +23,6 @@ public enum SessionAliasType {
     private final String stringValue;
 
     SessionAliasType(String stringValue) {
-        if (!stringValue.equals("PLAIN_TEXT") && !stringValue.equals("REGEXP")) {
-            throw new IllegalArgumentException("SessionAliasType parameter must be either \"PLAIN_TEXT\" or \"REGEXP\"");
-        }
         this.stringValue = stringValue;
     }
 
