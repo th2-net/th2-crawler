@@ -39,8 +39,10 @@ import java.util.function.BinaryOperator;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import com.exactpro.th2.crawler.messages.strategy.MessagesCrawlerData;
 import com.google.protobuf.Empty;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -198,25 +200,34 @@ public class Crawler {
                 Timestamp startTime = toTimestamp(interval.getStartTime());
                 Timestamp endTime = toTimestamp(interval.getEndTime());
                 do {
-                    LOGGER.trace("Requesting data for interval");
-                    data = requestData(startTime, endTime, continuation, parameters);
-                    continuation = data.getContinuation();
-                    var currentData = data;
-                    long remaining = sendingReport == null ? 0 : sendingReport.getRemainingData();
-                    sendingReport = currentData.getHasData()
-                            ? processData(currentInt, parameters, currentData)
-                            : requireNonNullElse(sendingReport, Report.empty());
+                    if (parameters.getSessionAliases().isEmpty()) {
+                        LOGGER.debug("Interval from {}, to {} does not contain messages with appropriate aliases",
+                                interval.getStartTime(), interval.getEndTime());
+                        data = new CrawlerDataStub();
+                        sendingReport = Report.empty();
+                    } else {
+                        LOGGER.trace("Requesting data for interval");
+                        data = requestData(startTime, endTime, continuation, parameters);
+                        continuation = data.getContinuation();
+                        var currentData = data;
+                        long remaining = sendingReport == null ? 0 : sendingReport.getRemainingData();
+                        sendingReport = currentData.getHasData()
+                                ? processData(currentInt, parameters, currentData)
+                                : requireNonNullElse(sendingReport, Report.empty());
 
-                    if (currentData.getHasData()) {
-                        metrics.updateProcessedData(crawlerType, currentData.size());
+                        if (currentData.getHasData()) {
+                            metrics.updateProcessedData(crawlerType, currentData.size());
+                        }
+
+                        Continuation checkpoint = sendingReport.getCheckpoint();
+                        processedEvents += sendingReport.getProcessedData() + remaining;
+                        if (checkpoint != null) {
+                            state = typeStrategy.continuationToState(state, checkpoint, processedEvents);
+                            currentInt.updateState(state, intervalsWorker);
+                        }
                     }
 
-                    Continuation checkpoint = sendingReport.getCheckpoint();
-                    processedEvents += sendingReport.getProcessedData() + remaining;
-                    if (checkpoint != null) {
-                        state = typeStrategy.continuationToState(state, checkpoint, processedEvents);
-                        currentInt.updateState(state, intervalsWorker);
-                    }
+
                 } while (data.isNeedsNextRequest());
 
                 Action action = sendingReport.getAction();
