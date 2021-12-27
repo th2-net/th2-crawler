@@ -40,6 +40,8 @@ import com.exactpro.th2.dataprovider.grpc.Stream;
 import com.exactpro.th2.dataprovider.grpc.StreamResponse;
 import com.exactpro.th2.dataprovider.grpc.StreamsInfo;
 
+import com.exactpro.th2.dataprovider.grpc.StringList;
+import com.google.protobuf.Empty;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -57,6 +59,7 @@ import java.util.Set;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -66,7 +69,7 @@ public class CrawlerTest {
     @DisplayName("Calling method process()")
     public void processMethodCall() throws IOException, UnexpectedDataProcessorException {
         CrawlerConfiguration configuration = CrawlerManager.createConfig(
-                "2021-06-16T12:00:00.00Z", DataType.EVENTS, Collections.emptySet());
+                "2021-06-16T12:00:00.00Z", DataType.EVENTS, Collections.emptySet(), SessionAliasType.PLAIN_TEXT);
         CrawlerManager manager = new CrawlerManager(configuration);
 
         Crawler crawler = manager.createCrawler();
@@ -80,7 +83,7 @@ public class CrawlerTest {
     @Test
     public void testCrawlerMessages() throws IOException, UnexpectedDataProcessorException {
         CrawlerConfiguration configuration = CrawlerManager.createConfig(
-                "2021-06-16T12:00:00.00Z", DataType.MESSAGES, Set.of(CrawlerManager.SESSIONS));
+                "2021-06-16T12:00:00.00Z", DataType.MESSAGES, Set.of(CrawlerManager.SESSIONS), SessionAliasType.PLAIN_TEXT);
 
         CrawlerManager manager = new CrawlerManager(configuration);
         Crawler crawler = manager.createCrawler();
@@ -112,7 +115,7 @@ public class CrawlerTest {
     @DisplayName("Requiring handshake, getting other name and version")
     public void handshakeNeededAnother() throws IOException {
         CrawlerConfiguration configuration = CrawlerManager.createConfig(
-                "2021-06-16T12:00:00.00Z", DataType.EVENTS, Collections.emptySet());
+                "2021-06-16T12:00:00.00Z", DataType.EVENTS, Collections.emptySet(), SessionAliasType.PLAIN_TEXT);
 
         CrawlerManager manager = new CrawlerManager(configuration);
         Crawler crawler = manager.createCrawler();
@@ -137,7 +140,7 @@ public class CrawlerTest {
     @DisplayName("Crawler's actions when a data service fails")
     public void dataServiceFail() throws IOException {
         CrawlerConfiguration configuration = CrawlerManager.createConfig(
-                "2021-06-16T12:00:00.00Z", DataType.MESSAGES, Set.of(CrawlerManager.SESSIONS));
+                "2021-06-16T12:00:00.00Z", DataType.MESSAGES, Set.of(CrawlerManager.SESSIONS), SessionAliasType.PLAIN_TEXT);
 
         CrawlerManager manager = new CrawlerManager(configuration);
         Crawler crawler = manager.createCrawler();
@@ -186,5 +189,49 @@ public class CrawlerTest {
         when(manager.getDataServiceMock().sendMessage(any(MessageDataRequest.class))).thenThrow(new RuntimeException(exceptionMessage));
 
         Assertions.assertThrows(RuntimeException.class, crawler::process, exceptionMessage);
+    }
+
+    @Test
+    @DisplayName("Crawler gets extra aliases while processing intervals")
+    public void dynamicAliasesProcessing() throws IOException, UnexpectedDataProcessorException {
+        CrawlerConfiguration configuration = CrawlerManager.createConfig(
+                "2021-06-16T12:00:00.00Z", DataType.MESSAGES, Set.of("alias\\d+"), SessionAliasType.REGEXP
+        );
+
+        CrawlerManager manager = new CrawlerManager(configuration);
+
+        List<Message> messages1 = MessageReaderKt.readMessages(Paths.get("src/test/resources/dynamic_aliases_messages-1.txt"));
+        List<Message> messages2 = MessageReaderKt.readMessages(Paths.get("src/test/resources/dynamic_aliases_messages-2.txt"));
+
+        List<String> aliases1 = new ArrayList<>(List.of("alias1", "alias2"));
+        StringList list1 = StringList.newBuilder().addAllListString(aliases1).build();
+
+        List<String> aliases2 = new ArrayList<>(List.of("alias1", "alias2", "alias3"));
+        StringList list2 = StringList.newBuilder().addAllListString(aliases2).build();
+
+        when(manager.getDataProviderMock().getMessageStreams(any(Empty.class))).thenReturn(list1, list2);
+
+        Crawler crawler = manager.createCrawler();
+
+        Iterator<StreamResponse> iterator1 = new MessageSearchResponse(messages1).iterator();
+        Iterator<StreamResponse> iterator2 = new MessageSearchResponse(messages2).iterator();
+
+        when(manager.getDataProviderMock().searchMessages(any(MessageSearchRequest.class))).thenReturn(iterator1, iterator2);
+        when(manager.getDataServiceMock().sendMessage(any(MessageDataRequest.class))).thenReturn(MessageResponse.newBuilder().build());
+
+        crawler.process();
+
+        verify(manager.getIntervalsWorkerMock()).getIntervals(any(Instant.class), any(Instant.class), anyString(), anyString(), anyString());
+        verify(manager.getIntervalsWorkerMock()).storeInterval(any(Interval.class));
+
+        verify(manager.getDataProviderMock(), times(2)).searchMessages(any(MessageSearchRequest.class));
+
+        verify(manager.getDataProviderMock(), times(3)).getMessageStreams(any(Empty.class));
+
+        MessageDataRequest expected1 = createExpectedMessageDataRequest(messages1);
+        verify(manager.getDataServiceMock()).sendMessage(argThat(actual -> expected1.getMessageDataList().equals(actual.getMessageDataList())));
+
+        MessageDataRequest expected2 = createExpectedMessageDataRequest(messages2);
+        verify(manager.getDataServiceMock()).sendMessage(argThat(actual -> expected2.getMessageDataList().equals(actual.getMessageDataList())));
     }
 }

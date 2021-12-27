@@ -108,10 +108,10 @@ public class CrawlerManager {
         return new Crawler(stateService, storageMock, dataServiceMock, dataProviderMock, configuration, crawlerContext);
     }
 
-    public static CrawlerConfiguration createConfig(String from, DataType dataType, Set<String> sessions) {
+    public static CrawlerConfiguration createConfig(String from, DataType dataType, Set<String> sessions, SessionAliasType type) {
         return new CrawlerConfiguration(from, null, NAME,
                 dataType, "PT1H", 1, ChronoUnit.NANOS, 1, 10, 5,
-                ChronoUnit.MINUTES, true, sessions);
+                ChronoUnit.MINUTES, true, sessions, type);
     }
 
     private void prepare() throws IOException {

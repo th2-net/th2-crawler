@@ -1,0 +1,1 @@
+{"metadata":{"id":{"connectionId":{"sessionAlias":"alias3"},"sequence":"1635664585511224008"},"timestamp":"2021-10-31T07:18:19.008573Z","messageType":"rspType","protocol":"prtcl"},"fields":{"hisField":{"simpleValue":"345"}}}
