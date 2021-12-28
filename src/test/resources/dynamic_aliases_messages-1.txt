@@ -1,0 +1,2 @@
+{"metadata":{"id":{"connectionId":{"sessionAlias":"alias1"},"direction":"SECOND","sequence":"1635664585511283004"},"timestamp":"2021-10-31T07:18:18.085342Z","messageType":"reqType","protocol":"prtcl"},"fields":{"myField":{"simpleValue":"123"}}}
+{"metadata":{"id":{"connectionId":{"sessionAlias":"alias2"},"sequence":"1635664585511224007"},"timestamp":"2021-10-31T07:18:18.841303Z","messageType":"rspType","protocol":"prtcl"},"fields":{"herField":{"simpleValue":"234"}}}

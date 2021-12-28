@@ -47,6 +47,8 @@ class CrawlerConfiguration @JvmOverloads constructor(
     val workAlone: Boolean = false,
     @JsonProperty
     val sessionAliases: Set<String> = emptySet(),
+    @JsonProperty
+    val sessionAliasesType: SessionAliasType = SessionAliasType.PLAIN_TEXT,
 
     val shutdownTimeout: Long = 10,
     val shutdownTimeoutUnit: TimeUnit = TimeUnit.SECONDS
