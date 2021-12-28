@@ -83,14 +83,6 @@ interface CrawlerData<C : Continuation> {
     fun size(): Int
 }
 
-class CrawlerDataStub(
-) : CrawlerData<Continuation> {
-    override fun size() = 0
-    override val isNeedsNextRequest = false
-    override val hasData = false
-    override val continuation: Continuation? = null
-}
-
 interface Continuation
 
 interface DataTypeStrategyFactory<T : CrawlerData<C>, C : Continuation> {

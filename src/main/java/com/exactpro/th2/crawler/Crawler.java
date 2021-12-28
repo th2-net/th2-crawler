@@ -39,10 +39,8 @@ import java.util.function.BinaryOperator;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-import com.exactpro.th2.crawler.messages.strategy.MessagesCrawlerData;
 import com.google.protobuf.Empty;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -200,11 +198,9 @@ public class Crawler {
                 Timestamp startTime = toTimestamp(interval.getStartTime());
                 Timestamp endTime = toTimestamp(interval.getEndTime());
                 do {
-                    if (parameters.getSessionAliases().isEmpty()) {
-                        LOGGER.debug("Interval from {}, to {} does not contain messages with appropriate aliases",
-                                interval.getStartTime(), interval.getEndTime());
-                        data = new CrawlerDataStub();
+                    if (crawlerType == DataType.MESSAGES && parameters.getSessionAliases().isEmpty()) {
                         sendingReport = Report.empty();
+                        break;
                     } else {
                         LOGGER.trace("Requesting data for interval");
                         data = requestData(startTime, endTime, continuation, parameters);
@@ -226,8 +222,6 @@ public class Crawler {
                             currentInt.updateState(state, intervalsWorker);
                         }
                     }
-
-
                 } while (data.isNeedsNextRequest());
 
                 Action action = sendingReport.getAction();
