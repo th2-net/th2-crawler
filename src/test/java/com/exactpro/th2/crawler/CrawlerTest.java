@@ -55,10 +55,12 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -216,7 +218,18 @@ public class CrawlerTest {
         Iterator<StreamResponse> iterator1 = new MessageSearchResponse(messages1).iterator();
         Iterator<StreamResponse> iterator2 = new MessageSearchResponse(messages2).iterator();
 
-        when(manager.getDataProviderMock().searchMessages(any(MessageSearchRequest.class))).thenReturn(iterator1, iterator2);
+        when(manager.getDataProviderMock().searchMessages(argThat(argument -> {
+            List<String> aliases = argument.getStream().getListStringList();
+
+            return aliases.containsAll(List.of("alias1", "alias2"));
+        }))).thenReturn(iterator1);
+
+        doReturn(iterator2).when(manager.getDataProviderMock()).searchMessages(argThat(argument -> {
+            List<String> aliases = argument.getStream().getListStringList();
+
+            return aliases.contains("alias3");
+        }));
+
         when(manager.getDataServiceMock().sendMessage(any(MessageDataRequest.class))).thenReturn(MessageResponse.newBuilder().build());
 
         crawler.process();
