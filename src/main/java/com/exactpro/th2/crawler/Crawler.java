@@ -343,25 +343,26 @@ public class Crawler {
         }
         Instant lastIntervalEnd = lastInterval.getEndTime();
 
+        Instant expectedEnd = lastIntervalEnd.plus(length);
         if (lastIntervalEnd.isBefore(to)) {
 
             Instant newIntervalEnd;
 
-            if (lastIntervalEnd.plus(length).isBefore(to)) {
+            if (expectedEnd.isBefore(to)) {
 
-                newIntervalEnd = lastIntervalEnd.plus(length);
+                newIntervalEnd = expectedEnd;
 
             } else {
                 newIntervalEnd = to;
 
                 if (floatingToTime) {
 
-                    long sleepTime = getSleepTime(lastIntervalEnd, to);
+                    long sleepTime = getSleepTime(expectedEnd, to);
 
                     if (LOGGER.isInfoEnabled()) {
                         LOGGER.info("Failed to create new interval from: {}, to: {} as it is too early now. Wait for {}",
                                 lastIntervalEnd,
-                                newIntervalEnd,
+                                expectedEnd,
                                 Duration.ofMillis(sleepTime));
                     }
 
@@ -380,9 +381,9 @@ public class Crawler {
 
         LOGGER.info("Failed to create new interval from: {}, to: {} as the end of the last interval is after " +
                         "end time of Crawler: {}",
-                lastIntervalEnd, lastIntervalEnd.plus(length), to);
+                lastIntervalEnd, expectedEnd, to);
 
-        return new FetchIntervalReport(null, getSleepTime(lastIntervalEnd.plus(length), lagNow),
+        return new FetchIntervalReport(null, getSleepTime(expectedEnd, lagNow),
                 true); // TODO: we need to start from the beginning I guess
     }
 

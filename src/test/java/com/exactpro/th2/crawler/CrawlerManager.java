@@ -16,15 +16,8 @@
 
 package com.exactpro.th2.crawler;
 
-import static com.exactpro.th2.common.event.EventUtils.toEventID;
-import static com.exactpro.th2.common.message.MessageUtils.toTimestamp;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-
 import java.io.IOException;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -45,12 +38,21 @@ import com.exactpro.th2.crawler.dataprocessor.grpc.EventResponse;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
 import com.exactpro.th2.crawler.state.StateService;
 import com.exactpro.th2.crawler.state.v1.RecoveryState;
+import com.exactpro.th2.crawler.util.CrawlerTime;
 import com.exactpro.th2.crawler.util.CrawlerTimeTestImpl;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import com.exactpro.th2.dataprovider.grpc.EventData;
 import com.exactpro.th2.dataprovider.grpc.EventSearchRequest;
 import com.exactpro.th2.dataprovider.grpc.StreamResponse;
 import org.jetbrains.annotations.NotNull;
+
+import static com.exactpro.th2.common.event.EventUtils.toEventID;
+import static com.exactpro.th2.common.message.MessageUtils.toTimestamp;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 public class CrawlerManager {
     public static final String NAME = "test_crawler";
@@ -99,19 +101,28 @@ public class CrawlerManager {
 
     @NotNull
     public Crawler createCrawler() throws IOException {
+        return createCrawler(new CrawlerTimeTestImpl());
+    }
+
+    @NotNull
+    public Crawler createCrawler(CrawlerTime crawlerTime) throws IOException {
         CrawlerMetrics metrics = mock(CrawlerMetrics.class);
         when(metrics.measureTime(any(DataType.class), any(CrawlerMetrics.Method.class), any())).then(invk ->
                 invk.<CrawlerMetrics.CrawlerDataOperation<?>>getArgument(2).call());
         CrawlerContext crawlerContext = new CrawlerContext()
-                .setCrawlerTime(new CrawlerTimeTestImpl())
+                .setCrawlerTime(crawlerTime)
                 .setMetrics(metrics);
         return new Crawler(stateService, storageMock, dataServiceMock, dataProviderMock, configuration, crawlerContext);
     }
 
     public static CrawlerConfiguration createConfig(String from, DataType dataType, Set<String> sessions) {
+        return createConfig(from, dataType, Duration.ofHours(1), sessions, 5, ChronoUnit.MINUTES);
+    }
+
+    public static CrawlerConfiguration createConfig(String from, DataType dataType, Duration length, Set<String> sessions, int lagOffset, ChronoUnit lagOffsetUnit) {
         return new CrawlerConfiguration(from, null, NAME,
-                dataType, "PT1H", 1, ChronoUnit.NANOS, 1, 10, 5,
-                ChronoUnit.MINUTES, true, sessions);
+                dataType, length.toString(), 1, ChronoUnit.NANOS, 1, 10, lagOffset,
+                lagOffsetUnit, true, sessions);
     }
 
     private void prepare() throws IOException {

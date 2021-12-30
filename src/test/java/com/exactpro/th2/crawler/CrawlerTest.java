@@ -31,6 +31,7 @@ import com.exactpro.th2.common.grpc.EventID;
 import com.exactpro.th2.common.grpc.MessageID;
 import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException;
 
+import com.exactpro.th2.crawler.state.v1.RecoveryState;
 import com.exactpro.th2.dataprovider.grpc.EventData;
 import com.exactpro.th2.dataprovider.grpc.EventSearchRequest;
 import com.exactpro.th2.dataprovider.grpc.MessageData;
@@ -46,7 +47,9 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -61,6 +64,48 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 public class CrawlerTest {
+
+    @Test
+    @DisplayName("Returns correct value as a sleep timeout when no intervals created")
+    public void returnsCorrectSleepTime() throws IOException, UnexpectedDataProcessorException {
+        Instant time = Instant.now();
+        CrawlerConfiguration configuration = CrawlerManager.createConfig(
+                time.toString(), DataType.EVENTS, Duration.ofHours(1), Collections.emptySet(), 0, ChronoUnit.MINUTES);
+        CrawlerManager manager = new CrawlerManager(configuration);
+
+        Crawler crawler = manager.createCrawler(() -> time.plus(35, ChronoUnit.MINUTES)); // 25 minutes to the interval
+        Duration sleep = crawler.process();
+
+        Assertions.assertEquals(Duration.ofMinutes(25), sleep);
+
+        verify(manager.getIntervalsWorkerMock()).getIntervals(any(Instant.class), any(Instant.class), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("Returns correct value as a sleep timeout when has intervals")
+    public void returnsCorrectSleepTimeWhenHasIntervals() throws IOException, UnexpectedDataProcessorException {
+        Instant time = Instant.now();
+        CrawlerConfiguration configuration = CrawlerManager.createConfig(
+                time.toString(), DataType.EVENTS, Duration.ofHours(1), Collections.emptySet(), 0, ChronoUnit.MINUTES);
+        CrawlerManager manager = new CrawlerManager(configuration);
+        Instant end = time.plus(1, ChronoUnit.HOURS);
+        manager.getIntervalsWorkerMock().storeInterval(Interval.builder()
+                .startTime(time)
+                .endTime(end)
+                .lastUpdateTime(end)
+                .crawlerName(CrawlerManager.NAME)
+                .crawlerVersion(CrawlerManager.VERSION)
+                .crawlerType(DataType.EVENTS.getTypeName())
+                .processed(true)
+                .build());
+
+        Crawler crawler = manager.createCrawler(() -> time.plus(60 + 35, ChronoUnit.MINUTES)); // 25 minutes to the next interval
+        Duration sleep = crawler.process();
+
+        Assertions.assertEquals(Duration.ofMinutes(25), sleep);
+
+        verify(manager.getIntervalsWorkerMock()).getIntervals(any(Instant.class), any(Instant.class), anyString(), anyString(), anyString());
+    }
 
     @Test
     @DisplayName("Calling method process()")
