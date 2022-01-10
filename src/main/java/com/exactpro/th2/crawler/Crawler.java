@@ -201,27 +201,28 @@ public class Crawler {
                     if (crawlerType == DataType.MESSAGES && parameters.getSessionAliases().isEmpty()) {
                         sendingReport = Report.empty();
                         break;
-                    } else {
-                        LOGGER.trace("Requesting data for interval");
-                        data = requestData(startTime, endTime, continuation, parameters);
-                        continuation = data.getContinuation();
-                        var currentData = data;
-                        long remaining = sendingReport == null ? 0 : sendingReport.getRemainingData();
-                        sendingReport = currentData.getHasData()
-                                ? processData(currentInt, parameters, currentData)
-                                : requireNonNullElse(sendingReport, Report.empty());
-
-                        if (currentData.getHasData()) {
-                            metrics.updateProcessedData(crawlerType, currentData.size());
-                        }
-
-                        Continuation checkpoint = sendingReport.getCheckpoint();
-                        processedEvents += sendingReport.getProcessedData() + remaining;
-                        if (checkpoint != null) {
-                            state = typeStrategy.continuationToState(state, checkpoint, processedEvents);
-                            currentInt.updateState(state, intervalsWorker);
-                        }
                     }
+
+                    LOGGER.trace("Requesting data for interval");
+                    data = requestData(startTime, endTime, continuation, parameters);
+                    continuation = data.getContinuation();
+                    var currentData = data;
+                    long remaining = sendingReport == null ? 0 : sendingReport.getRemainingData();
+                    sendingReport = currentData.getHasData()
+                            ? processData(currentInt, parameters, currentData)
+                            : requireNonNullElse(sendingReport, Report.empty());
+
+                    if (currentData.getHasData()) {
+                        metrics.updateProcessedData(crawlerType, currentData.size());
+                    }
+
+                    Continuation checkpoint = sendingReport.getCheckpoint();
+                    processedEvents += sendingReport.getProcessedData() + remaining;
+                    if (checkpoint != null) {
+                        state = typeStrategy.continuationToState(state, checkpoint, processedEvents);
+                        currentInt.updateState(state, intervalsWorker);
+                    }
+
                 } while (data.isNeedsNextRequest());
 
                 Action action = sendingReport.getAction();

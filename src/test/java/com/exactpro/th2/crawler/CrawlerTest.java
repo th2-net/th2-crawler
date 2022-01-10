@@ -205,7 +205,7 @@ public class CrawlerTest {
         List<Message> messages1 = MessageReaderKt.readMessages(Paths.get("src/test/resources/dynamic_aliases_messages-1.txt"));
         List<Message> messages2 = MessageReaderKt.readMessages(Paths.get("src/test/resources/dynamic_aliases_messages-2.txt"));
 
-        List<String> aliases1 = new ArrayList<>(List.of("alias1", "alias2"));
+        List<String> aliases1 = List.of("alias1", "alias2");
         StringList list1 = StringList.newBuilder().addAllListString(aliases1).build();
 
         List<String> aliases2 = new ArrayList<>(List.of("alias1", "alias2", "alias3"));
@@ -237,7 +237,11 @@ public class CrawlerTest {
         verify(manager.getIntervalsWorkerMock()).getIntervals(any(Instant.class), any(Instant.class), anyString(), anyString(), anyString());
         verify(manager.getIntervalsWorkerMock()).storeInterval(any(Interval.class));
 
-        verify(manager.getDataProviderMock(), times(2)).searchMessages(any(MessageSearchRequest.class));
+        MessageSearchRequest expectedRequest1 = MessageSearchRequest.newBuilder().setStream(StringList.newBuilder().addAllListString(List.of("alias1", "alias2")).build()).build();
+        verify(manager.getDataProviderMock(), times(1)).searchMessages(argThat(actual -> expectedRequest1.getStream().equals(actual.getStream())));
+
+        MessageSearchRequest expectedRequest2 = MessageSearchRequest.newBuilder().setStream(StringList.newBuilder().addListString("alias3").build()).build();
+        verify(manager.getDataProviderMock(), times(1)).searchMessages(argThat(actual -> expectedRequest2.getStream().equals(actual.getStream())));
 
         verify(manager.getDataProviderMock(), times(3)).getMessageStreams(any(Empty.class));
 
