@@ -184,7 +184,7 @@ public class Crawler {
 
             Continuation continuation = state == null ? null : typeStrategy.continuationFromState(state);
 
-            if (sessionAliases.isEmpty()) {
+            if (crawlerType == DataType.MESSAGES && sessionAliases.isEmpty()) {
                 LOGGER.debug("No messages with matching aliases on interval from {} to {}",
                         interval.getStartTime(), interval.getEndTime());
             } else {
