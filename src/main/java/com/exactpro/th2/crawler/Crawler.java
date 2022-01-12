@@ -184,82 +184,87 @@ public class Crawler {
 
             Continuation continuation = state == null ? null : typeStrategy.continuationFromState(state);
 
-            // At first, we need to process messages for all session aliases we have.
-            DataParameters parameters = new DataParameters(info, crawlerId, sessionAliases);
-            LOGGER.debug("Crawler is going to process messages with {} aliases: {}. Interval from {} to {}",
-                    sessionAliases.size(), String.join(", ", sessionAliases), interval.getStartTime(), interval.getEndTime());
+            if (sessionAliases.isEmpty()) {
+                LOGGER.debug("No messages with matching aliases on interval from {} to {}",
+                        interval.getStartTime(), interval.getEndTime());
+            } else {
+                // At first, we need to process messages for all session aliases we have.
+                DataParameters parameters = new DataParameters(info, crawlerId, sessionAliases);
+                LOGGER.debug("Crawler is going to process messages with {} aliases: {}. Interval from {} to {}",
+                        sessionAliases.size(), String.join(", ", sessionAliases), interval.getStartTime(), interval.getEndTime());
 
-            Collection<String> newAliases;
+                Collection<String> newAliases;
 
-            do {
-                CrawlerData<Continuation> data;
-                Report<Continuation> sendingReport = null;
-                long processedEvents = 0L;
-                Timestamp startTime = toTimestamp(interval.getStartTime());
-                Timestamp endTime = toTimestamp(interval.getEndTime());
                 do {
-                    if (crawlerType == DataType.MESSAGES && parameters.getSessionAliases().isEmpty()) {
-                        sendingReport = Report.empty();
-                        break;
-                    }
-
-                    LOGGER.trace("Requesting data for interval");
-                    data = requestData(startTime, endTime, continuation, parameters);
-                    continuation = data.getContinuation();
-                    var currentData = data;
-                    long remaining = sendingReport == null ? 0 : sendingReport.getRemainingData();
-                    sendingReport = currentData.getHasData()
-                            ? processData(currentInt, parameters, currentData)
-                            : requireNonNullElse(sendingReport, Report.empty());
-
-                    if (currentData.getHasData()) {
-                        metrics.updateProcessedData(crawlerType, currentData.size());
-                    }
-
-                    Continuation checkpoint = sendingReport.getCheckpoint();
-                    processedEvents += sendingReport.getProcessedData() + remaining;
-                    if (checkpoint != null) {
-                        state = typeStrategy.continuationToState(state, checkpoint, processedEvents);
-                        currentInt.updateState(state, intervalsWorker);
-                    }
-
-                } while (data.isNeedsNextRequest());
-
-                Action action = sendingReport.getAction();
-                switch (action) {
-                    case HANDSHAKE:
-                        DataProcessorInfo info = crawlerConnect(dataProcessor, CrawlerInfo.newBuilder().setId(crawlerId).build());
-                        if (!dataProcessorName.equals(info.getName()) || !dataProcessorVersion.equals(info.getVersion())) {
-                            throw new UnexpectedDataProcessorException("Need to restart Crawler because of changed name and/or version of data-service. " +
-                                    "Old name: " + dataProcessorName + ", old version: " + dataProcessorVersion + ". " +
-                                    "New name: " + info.getName() + ", new version: " + info.getVersion());
+                    CrawlerData<Continuation> data;
+                    Report<Continuation> sendingReport = null;
+                    long processedEvents = 0L;
+                    Timestamp startTime = toTimestamp(interval.getStartTime());
+                    Timestamp endTime = toTimestamp(interval.getEndTime());
+                    do {
+                        if (crawlerType == DataType.MESSAGES && parameters.getSessionAliases().isEmpty()) {
+                            sendingReport = Report.empty();
+                            break;
                         }
-                        LOGGER.info("Got the same name ({}) and version ({}) from repeated crawlerConnect", dataProcessorName, dataProcessorVersion);
-                        break;
-                    case CONTINUE:
-                        currentInt.processed(true, intervalsWorker);
-                        currentInt.updateState(state == null
-                                        ? new RecoveryState(null, null, processedEvents, 0)
-                                        : new RecoveryState(state.getLastProcessedEvent(), state.getLastProcessedMessages(), processedEvents, 0),
-                                intervalsWorker
-                        );
-                        LOGGER.info("Interval from {}, to {} was processed successfully", interval.getStartTime(), interval.getEndTime());
-                        break;
-                    default:
-                        throw new IllegalStateException("Unsupported report action: " + action);
-                }
 
-                newAliases = getNewAliases();
+                        LOGGER.trace("Requesting data for interval");
+                        data = requestData(startTime, endTime, continuation, parameters);
+                        continuation = data.getContinuation();
+                        var currentData = data;
+                        long remaining = sendingReport == null ? 0 : sendingReport.getRemainingData();
+                        sendingReport = currentData.getHasData()
+                                ? processData(currentInt, parameters, currentData)
+                                : requireNonNullElse(sendingReport, Report.empty());
 
-                if (!newAliases.isEmpty()) {
-                    // If we have a regexp, we need to process new aliases while we keep getting them.
-                    parameters = new DataParameters(info, crawlerId, newAliases);
-                    sessionAliases.addAll(newAliases);
-                    LOGGER.debug("Crawler got {} extra aliases: {}. They will be processed on interval from {} to {}",
-                            newAliases.size(), String.join(", ", newAliases), interval.getStartTime(), interval.getEndTime());
-                }
+                        if (currentData.getHasData()) {
+                            metrics.updateProcessedData(crawlerType, currentData.size());
+                        }
 
-            } while (!newAliases.isEmpty());
+                        Continuation checkpoint = sendingReport.getCheckpoint();
+                        processedEvents += sendingReport.getProcessedData() + remaining;
+                        if (checkpoint != null) {
+                            state = typeStrategy.continuationToState(state, checkpoint, processedEvents);
+                            currentInt.updateState(state, intervalsWorker);
+                        }
+
+                    } while (data.isNeedsNextRequest());
+
+                    Action action = sendingReport.getAction();
+                    switch (action) {
+                        case HANDSHAKE:
+                            DataProcessorInfo info = crawlerConnect(dataProcessor, CrawlerInfo.newBuilder().setId(crawlerId).build());
+                            if (!dataProcessorName.equals(info.getName()) || !dataProcessorVersion.equals(info.getVersion())) {
+                                throw new UnexpectedDataProcessorException("Need to restart Crawler because of changed name and/or version of data-service. " +
+                                        "Old name: " + dataProcessorName + ", old version: " + dataProcessorVersion + ". " +
+                                        "New name: " + info.getName() + ", new version: " + info.getVersion());
+                            }
+                            LOGGER.info("Got the same name ({}) and version ({}) from repeated crawlerConnect", dataProcessorName, dataProcessorVersion);
+                            break;
+                        case CONTINUE:
+                            currentInt.processed(true, intervalsWorker);
+                            currentInt.updateState(state == null
+                                            ? new RecoveryState(null, null, processedEvents, 0)
+                                            : new RecoveryState(state.getLastProcessedEvent(), state.getLastProcessedMessages(), processedEvents, 0),
+                                    intervalsWorker
+                            );
+                            LOGGER.info("Interval from {}, to {} was processed successfully", interval.getStartTime(), interval.getEndTime());
+                            break;
+                        default:
+                            throw new IllegalStateException("Unsupported report action: " + action);
+                    }
+
+                    newAliases = getNewAliases();
+
+                    if (!newAliases.isEmpty()) {
+                        // If we have a regexp, we need to process new aliases while we keep getting them.
+                        parameters = new DataParameters(info, crawlerId, newAliases);
+                        sessionAliases.addAll(newAliases);
+                        LOGGER.debug("Crawler got {} extra aliases: {}. They will be processed on interval from {} to {}",
+                                newAliases.size(), String.join(", ", newAliases), interval.getStartTime(), interval.getEndTime());
+                    }
+
+                } while (!newAliases.isEmpty());
+            }
 
             metrics.currentInterval(CrawlerUtils.EMPTY);
         }
