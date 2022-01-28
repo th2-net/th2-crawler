@@ -205,6 +205,7 @@ public class CrawlerUtils {
         List<T> data = null;
         StreamsInfo streamsInfo = null;
 
+        LOGGER.trace("Iterator traversal is started");
         while (iterator.hasNext()) {
             StreamResponse r = iterator.next();
             if (r.hasStreamInfo()) {
@@ -228,6 +229,7 @@ public class CrawlerUtils {
                 }
             }
         }
+        LOGGER.trace("Iterator traversal is ended");
 
         return new SearchResult<>(data == null ? Collections.emptyList() : data, streamsInfo);
     }
