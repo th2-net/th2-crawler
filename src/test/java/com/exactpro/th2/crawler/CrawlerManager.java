@@ -35,7 +35,11 @@ import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorInfo;
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService;
 import com.exactpro.th2.crawler.dataprocessor.grpc.EventDataRequest;
 import com.exactpro.th2.crawler.dataprocessor.grpc.EventResponse;
+import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
+import com.exactpro.th2.crawler.metrics.CrawlerMetrics.CrawlerDataOperation;
+import com.exactpro.th2.crawler.metrics.CrawlerMetrics.CrawlerDataOperationWithException;
+import com.exactpro.th2.crawler.metrics.CrawlerMetrics.Method;
 import com.exactpro.th2.crawler.state.StateService;
 import com.exactpro.th2.crawler.state.v1.RecoveryState;
 import com.exactpro.th2.crawler.util.CrawlerTime;
@@ -100,15 +104,17 @@ public class CrawlerManager {
     }
 
     @NotNull
-    public Crawler createCrawler() throws IOException {
+    public Crawler createCrawler() throws IOException, UnexpectedDataProcessorException {
         return createCrawler(new CrawlerTimeTestImpl());
     }
 
     @NotNull
-    public Crawler createCrawler(CrawlerTime crawlerTime) throws IOException {
+    public Crawler createCrawler(CrawlerTime crawlerTime) throws IOException, UnexpectedDataProcessorException {
         CrawlerMetrics metrics = mock(CrawlerMetrics.class);
-        when(metrics.measureTime(any(DataType.class), any(CrawlerMetrics.Method.class), any())).then(invk ->
-                invk.<CrawlerMetrics.CrawlerDataOperation<?>>getArgument(2).call());
+        when(metrics.measureTime(any(DataType.class), any(Method.class), any())).then(invk ->
+                invk.<CrawlerDataOperation<?>>getArgument(2).call());
+        when(metrics.measureTimeWithException(any(DataType.class), any(Method.class), any())).then(invk ->
+                invk.<CrawlerDataOperationWithException<?>>getArgument(2).call());
         CrawlerContext crawlerContext = new CrawlerContext()
                 .setCrawlerTime(crawlerTime)
                 .setMetrics(metrics);

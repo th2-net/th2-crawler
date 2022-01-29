@@ -155,7 +155,7 @@ public class CrawlerTest {
 
     @Test
     @DisplayName("Requiring handshake, getting other name and version")
-    public void handshakeNeededAnother() throws IOException {
+    public void handshakeNeededAnother() throws IOException, UnexpectedDataProcessorException {
         CrawlerConfiguration configuration = CrawlerManager.createConfig(
                 "2021-06-16T12:00:00.00Z", DataType.EVENTS, Collections.emptySet());
 
@@ -180,7 +180,7 @@ public class CrawlerTest {
 
     @Test
     @DisplayName("Crawler's actions when a data service fails")
-    public void dataServiceFail() throws IOException {
+    public void dataServiceFail() throws IOException, UnexpectedDataProcessorException {
         CrawlerConfiguration configuration = CrawlerManager.createConfig(
                 "2021-06-16T12:00:00.00Z", DataType.MESSAGES, Set.of(CrawlerManager.SESSIONS));
 
