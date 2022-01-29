@@ -195,8 +195,12 @@ public class CrawlerUtils {
     }
 
     public static SearchResult<MessageData> collectMessages(Iterator<StreamResponse> iterator, Timestamp to) {
-        return collectData(iterator, to, response -> response.hasMessage() ? response.getMessage() : null,
+        SearchResult<MessageData> result = collectData(iterator, to, response -> response.hasMessage() ? response.getMessage() : null,
                 messageData -> messageData.hasTimestamp() ? messageData.getTimestamp() : null);
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("Data from provider " + CrawlerUtilKt.toCompactString(result));
+        }
+        return result;
     }
 
     public static <T extends MessageOrBuilder> SearchResult<T> collectData(Iterator<StreamResponse> iterator, Timestamp to,
