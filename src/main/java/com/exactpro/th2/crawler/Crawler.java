@@ -143,6 +143,10 @@ public class Crawler {
     }
 
     public Duration process() throws IOException, UnexpectedDataProcessorException {
+        return metrics.measureTimeWithException(crawlerType, Method.HANDLE_INTERVAL, this::internalProcess);
+    }
+
+    private Duration internalProcess() throws IOException, UnexpectedDataProcessorException {
         String dataProcessorName = info.getName();
         String dataProcessorVersion = info.getVersion();
 
@@ -224,12 +228,12 @@ public class Crawler {
         return Duration.of(sleepTime, ChronoUnit.MILLIS);
     }
 
-    private Report<Continuation> processData(InternalInterval current, DataParameters parameters, CrawlerData<Continuation> currentData) throws IOException {
-        return metrics.measureTime(crawlerType, Method.PROCESS_DATA, () -> typeStrategy.processData(dataProcessor, current, parameters, currentData));
+    private Report<Continuation> processData(InternalInterval current, DataParameters parameters, CrawlerData<Continuation> currentData) throws IOException, UnexpectedDataProcessorException {
+        return typeStrategy.processData(dataProcessor, current, parameters, currentData);
     }
 
-    private CrawlerData<Continuation> requestData(Timestamp startTime, Timestamp endTime, Continuation continuation, DataParameters parameters) throws IOException {
-        return metrics.measureTime(crawlerType, Method.REQUEST_DATA, () -> typeStrategy.requestData(startTime, endTime, parameters, continuation));
+    private CrawlerData<Continuation> requestData(Timestamp startTime, Timestamp endTime, Continuation continuation, DataParameters parameters) {
+        return typeStrategy.requestData(startTime, endTime, parameters, continuation);
     }
 
     private void intervalStartForProcessor(DataProcessorService dataProcessor, Interval interval, RecoveryState state) {

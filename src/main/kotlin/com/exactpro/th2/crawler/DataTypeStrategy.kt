@@ -67,7 +67,6 @@ interface DataTypeStrategy<T : CrawlerData<C>, C : Continuation> {
      * @param data the data to process
      * @return the report with information about next action and the checkpoint to store in [RecoveryState]
      */
-    @Throws(IOException::class)
     fun processData(
         processor: DataProcessorService,
         interval: InternalInterval,

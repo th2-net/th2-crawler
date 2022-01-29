@@ -48,6 +48,7 @@ import com.exactpro.th2.crawler.AbstractStrategy;
 import com.exactpro.th2.crawler.Action;
 import com.exactpro.th2.crawler.CrawlerConfiguration;
 import com.exactpro.th2.crawler.DataParameters;
+import com.exactpro.th2.crawler.DataType;
 import com.exactpro.th2.crawler.InternalInterval;
 import com.exactpro.th2.crawler.Report;
 import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId;
@@ -58,6 +59,7 @@ import com.exactpro.th2.crawler.dataprocessor.grpc.MessageIDs;
 import com.exactpro.th2.crawler.dataprocessor.grpc.MessageResponse;
 import com.exactpro.th2.crawler.messages.strategy.MessagesCrawlerData.ResumeMessageIDs;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
+import com.exactpro.th2.crawler.metrics.CrawlerMetrics.Method;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics.ProcessorMethod;
 import com.exactpro.th2.crawler.state.v1.InnerMessageId;
 import com.exactpro.th2.crawler.state.v1.RecoveryState;
@@ -241,7 +243,7 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
     }
 
     private MessageResponse sendMessagesToProcessor(DataProcessorService dataProcessor, MessageDataRequest messageRequest) {
-        MessageResponse response = dataProcessor.sendMessage(messageRequest);
+        MessageResponse response = metrics.measureTime(DataType.MESSAGES, Method.PROCESS_DATA, () -> dataProcessor.sendMessage(messageRequest));
         metrics.processorMethodInvoked(ProcessorMethod.SEND_MESSAGE);
         if (LOGGER.isDebugEnabled()) {
             LOGGER.debug("Response from processor: " + MessageUtils.toJson(response));

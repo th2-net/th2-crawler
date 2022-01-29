@@ -35,6 +35,7 @@ import com.exactpro.th2.crawler.AbstractStrategy;
 import com.exactpro.th2.crawler.Action;
 import com.exactpro.th2.crawler.CrawlerConfiguration;
 import com.exactpro.th2.crawler.DataParameters;
+import com.exactpro.th2.crawler.DataType;
 import com.exactpro.th2.crawler.InternalInterval;
 import com.exactpro.th2.crawler.Report;
 import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId;
@@ -44,6 +45,7 @@ import com.exactpro.th2.crawler.dataprocessor.grpc.EventResponse;
 import com.exactpro.th2.crawler.dataprocessor.grpc.IntervalInfo.Builder;
 import com.exactpro.th2.crawler.events.strategy.EventsCrawlerData.ResumeEventId;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
+import com.exactpro.th2.crawler.metrics.CrawlerMetrics.Method;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics.ProcessorMethod;
 import com.exactpro.th2.crawler.state.v1.InnerEventId;
 import com.exactpro.th2.crawler.state.v1.RecoveryState;
@@ -188,7 +190,7 @@ public class EventsStrategy extends AbstractStrategy<EventsCrawlerData, ResumeEv
     }
 
     private EventResponse sendEventsToProcessor(DataProcessorService dataProcessor, EventDataRequest eventRequest) {
-        EventResponse response = dataProcessor.sendEvent(eventRequest);
+        EventResponse response = metrics.measureTime(DataType.EVENTS, Method.PROCESS_DATA, () -> dataProcessor.sendEvent(eventRequest));
         metrics.processorMethodInvoked(ProcessorMethod.SEND_EVENT);
         return response;
     }

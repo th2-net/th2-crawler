@@ -21,6 +21,7 @@ import java.io.IOException;
 import com.exactpro.cradle.intervals.Interval;
 import com.exactpro.th2.common.grpc.Direction;
 import com.exactpro.th2.crawler.DataType;
+import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
 import com.exactpro.th2.crawler.util.CrawlerUtils;
 import com.exactpro.th2.dataprovider.grpc.EventData;
@@ -28,6 +29,7 @@ import com.exactpro.th2.dataprovider.grpc.MessageData;
 import io.prometheus.client.Counter;
 import io.prometheus.client.Gauge;
 import io.prometheus.client.Histogram;
+import io.prometheus.client.Histogram.Timer;
 
 import static com.exactpro.th2.common.metrics.CommonMetrics.DEFAULT_DIRECTION_LABEL_NAME;
 import static com.exactpro.th2.common.metrics.CommonMetrics.DEFAULT_SESSION_ALIAS_LABEL_NAME;
@@ -111,8 +113,18 @@ public class PrometheusMetrics implements CrawlerMetrics {
     }
 
     @Override
-    public <T> T measureTime(DataType dataType, Method method, CrawlerDataOperation<T> function) throws IOException {
-        Histogram.Timer timer = processingTime.labels(dataType.getTypeName(), method.name()).startTimer();
+    public <T> T measureTime(DataType dataType, Method method, CrawlerDataOperation<T> function) {
+        Timer timer = processingTime.labels(dataType.getTypeName(), method.name()).startTimer();
+        try {
+            return function.call();
+        } finally {
+            timer.observeDuration();
+        }
+    }
+
+    @Override
+    public <T> T measureTimeWithException(DataType dataType, Method method, CrawlerDataOperationWithException<T> function) throws IOException, UnexpectedDataProcessorException {
+        Timer timer = processingTime.labels(dataType.getTypeName(), method.name()).startTimer();
         try {
             return function.call();
         } finally {
