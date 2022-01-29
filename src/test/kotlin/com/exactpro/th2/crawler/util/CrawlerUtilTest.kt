@@ -49,24 +49,28 @@ class CrawlerUtilTest {
         ), StreamsInfo.getDefaultInstance()).toCompactString()
 
         Assertions.assertEquals("""
-            unordered messages:
-              D:SECOND:50(1970-01-01T00:00:10Z) - A:SECOND:10(1970-01-01T00:00:01Z)
-              C:FIRST:41(1970-01-01T00:00:06Z) - C:FIRST:42(1970-01-01T00:00:05Z)
-            A:FIRST
-              min=1 max=2 
-              early=1970-01-01T00:00:00Z late=1970-01-01T00:00:03Z
-            D:SECOND
-              min=50 max=50 
-              early=1970-01-01T00:00:10Z late=1970-01-01T00:00:10Z
-            A:SECOND
-              min=10 max=10 
-              early=1970-01-01T00:00:01Z late=1970-01-01T00:00:01Z
-            B:FIRST
-              min=30 max=32 gaps=[[30, 32]]
-              early=1970-01-01T00:00:01Z late=1970-01-01T00:00:04Z
-            C:FIRST
-              min=41 max=42 
-              early=1970-01-01T00:00:05Z late=1970-01-01T00:00:06Z
+            Search result: 
+              messages: count=8
+              timestamps: 1970-01-01T00:00:00Z..1970-01-01T00:00:10Z 
+              unordered messages:
+                D:SECOND:50(1970-01-01T00:00:10Z) - A:SECOND:10(1970-01-01T00:00:01Z)
+                C:FIRST:41(1970-01-01T00:00:06Z) - C:FIRST:42(1970-01-01T00:00:05Z)
+              streams:
+                A:FIRST
+                  sequences: 1..2 count=2 
+                  timestamps: 1970-01-01T00:00:00Z..1970-01-01T00:00:03Z
+                D:SECOND
+                  sequences: 50..50 count=1 
+                  timestamps: 1970-01-01T00:00:10Z..1970-01-01T00:00:10Z
+                A:SECOND
+                  sequences: 10..10 count=1 
+                  timestamps: 1970-01-01T00:00:01Z..1970-01-01T00:00:01Z
+                B:FIRST
+                  sequences: 30..32 count=2 gaps=[[30, 32]]
+                  timestamps: 1970-01-01T00:00:01Z..1970-01-01T00:00:04Z
+                C:FIRST
+                  sequences: 41..42 count=2 
+                  timestamps: 1970-01-01T00:00:05Z..1970-01-01T00:00:06Z
         """.trimIndent(), compactString)
     }
 

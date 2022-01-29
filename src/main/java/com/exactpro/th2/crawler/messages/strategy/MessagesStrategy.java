@@ -243,6 +243,9 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
     private MessageResponse sendMessagesToProcessor(DataProcessorService dataProcessor, MessageDataRequest messageRequest) {
         MessageResponse response = dataProcessor.sendMessage(messageRequest);
         metrics.processorMethodInvoked(ProcessorMethod.SEND_MESSAGE);
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("Response from processor: " + MessageUtils.toJson(response));
+        }
         return response;
     }
 
@@ -323,6 +326,7 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
             MessageID messageId = data.getMessageId();
             String sessionAlias = messageId.getConnectionId().getSessionAlias();
             // Update the last message for alias + direction
+            // FIXME: the update metric implementation one by one is heavy to much
             metrics.lastMessage(sessionAlias, messageId.getDirection(), data);
             if (skipAliases.contains(sessionAlias)) {
                 continue;

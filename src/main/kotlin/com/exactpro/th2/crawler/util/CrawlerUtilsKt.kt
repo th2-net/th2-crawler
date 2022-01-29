@@ -16,8 +16,11 @@
 @file:JvmName("CrawlerUtilKt")
 package com.exactpro.th2.crawler.util
 
+import com.exactpro.cradle.utils.MessageUtils
+import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.dataprovider.grpc.MessageData
 import com.google.protobuf.Timestamp
+import java.lang.StringBuilder
 import java.time.Instant
 
 fun SearchResult<MessageData>.toCompactString(): String {
@@ -26,9 +29,10 @@ fun SearchResult<MessageData>.toCompactString(): String {
         .filter { (first, second) -> first.timestamp.toInstant().isAfter(second.timestamp.toInstant()) }
         .map { (first, second) -> "${first.extractIdWithTimstamp()} - ${second.extractIdWithTimstamp()}" }
         .toList()
-        .let { if (it.isNotEmpty()) "unordered messages:\n${it.joinToString("\n  ", "  ","\n")}" else "" }
 
-    return data
+    val timestamps = data.map { it.timestamp.toInstant() }
+
+    val streams = data
         .groupBy { Pair(it.messageId.connectionId.sessionAlias, it.messageId.direction) }
         .map { (sessionKey, elements) ->
             val (sessionAlias, direction) = sessionKey
@@ -40,18 +44,34 @@ fun SearchResult<MessageData>.toCompactString(): String {
                 .windowed(2, 1)
                 .filter { (first, second) -> first + 1 != second }
                 .toList()
-                .let { if(it.isNotEmpty()) "gaps=$it" else "" }
+                .let { if (it.isNotEmpty()) "gaps=$it" else "" }
 
             val timestamps = elements.map { it.timestamp.toInstant() }
             """
-                $sessionAlias:$direction
-                  min=$min max=$max $gaps
-                  early=${timestamps.minOrNull()} late=${timestamps.maxOrNull()}
-            """.trimIndent()
-        }.joinToString(
-            prefix = unorderedMessages,
-            separator = System.lineSeparator()
-        )
+                |    $sessionAlias:$direction
+                |      sequences: $min..$max count=${sequences.size} $gaps
+                |      timestamps: ${timestamps.minOrNull()}..${timestamps.maxOrNull()}
+            """.trimMargin()
+        }
+
+    val builder = StringBuilder("""
+        Search result: 
+          messages: count=${data.size}
+          timestamps: ${timestamps.minOrNull()}..${timestamps.maxOrNull()} 
+    """.trimIndent())
+    if (unorderedMessages.isNotEmpty()) {
+        builder.append(System.lineSeparator())
+        builder.append("""
+            |  unordered messages:
+            |    ${unorderedMessages.joinToString("\n    ")}
+        """.trimMargin())
+    }
+    builder.append(System.lineSeparator())
+        .append("  streams:")
+        .append(System.lineSeparator())
+    builder.append(streams.joinToString(System.lineSeparator()))
+
+    return builder.toString()
 }
 
 private fun Timestamp.toInstant() = Instant.ofEpochSecond(seconds, nanos.toLong())
