@@ -32,7 +32,7 @@ ext {
 
 dependencies {
     // BOM with external dependencies restrictions
-    api platform('com.exactpro.th2:bom:3.0.0')
+    api platform('com.exactpro.th2:bom:3.1.0-TH2-3093-1766515619-SNAPSHOT')
 
     api "com.exactpro.th2:cradle-core:${cradleVersion}"
 
