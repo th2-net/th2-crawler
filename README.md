@@ -150,6 +150,7 @@ Crawler takes events/messages from intervals with startTimestamps >= "from" and 
 Crawler works in two modes: EVENTS and MESSAGES.
 
 ####MESSAGES mode
-Crawler sends messages via gRPC request to Data-Processor(Processor). The Processor does with messages whatever it wants and sends response. </br>
+Crawler sends messages via gRPC request to Data-Processor(Processor). The Processor does with messages whatever it wants and sends response.
 The response may contain mapping entries of stream to [MessageID](https://github.com/th2-net/th2-grpc-common/blob/4dd3aa2917fa1af683b6cd50ff6d250e652b6bb7/src/main/proto/th2_grpc_common/common.proto#L37).
-Crawler receives and keeps this information in order </br>to resume send messages within streams since that ids in case of Processor failure.
+Each [MessageID](https://github.com/th2-net/th2-grpc-common/blob/4dd3aa2917fa1af683b6cd50ff6d250e652b6bb7/src/main/proto/th2_grpc_common/common.proto#L37) should be from the current interval.
+Crawler receives and keeps this information in order to resume send messages within streams since that ids in case of Processor failure.
