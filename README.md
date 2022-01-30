@@ -147,7 +147,7 @@ spec:
 ### Important notes
 
 Crawler takes events/messages from intervals with startTimestamps >= "from" and < "to" of intervals.
-Crawler works in to modes: EVENTS and MESSAGES.
+Crawler works in two modes: EVENTS and MESSAGES.
 
 ####MESSAGES mode
 Crawler sends messages via gRPC request to Data-Processor(Processor). The Processor does with messages whatever it wants and sends response. </br>
