@@ -58,6 +58,8 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import io.grpc.internal.GrpcUtil;
+
 public class CrawlerManager {
     public static final String NAME = "test_crawler";
     public static final String VERSION = "1";
@@ -126,9 +128,13 @@ public class CrawlerManager {
     }
 
     public static CrawlerConfiguration createConfig(String from, DataType dataType, Duration length, Set<String> sessions, int lagOffset, ChronoUnit lagOffsetUnit) {
+        return createConfig(from, dataType, length, sessions, lagOffset, lagOffsetUnit, GrpcUtil.DEFAULT_MAX_MESSAGE_SIZE);
+    }
+
+    public static CrawlerConfiguration createConfig(String from, DataType dataType, Duration length, Set<String> sessions, int lagOffset, ChronoUnit lagOffsetUnit, int maxOutgoingDataSize) {
         return new CrawlerConfiguration(from, null, NAME,
                 dataType, length.toString(), 1, ChronoUnit.NANOS, 1, 10, lagOffset,
-                lagOffsetUnit, true, sessions);
+                lagOffsetUnit, true, sessions, maxOutgoingDataSize);
     }
 
     private void prepare() throws IOException {

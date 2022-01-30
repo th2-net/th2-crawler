@@ -23,9 +23,12 @@ import static java.util.stream.Collectors.toUnmodifiableMap;
 import static java.util.stream.Stream.concat;
 import static java.util.stream.Stream.empty;
 
+import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -198,24 +201,75 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
             return Report.empty();
         }
 
-        MessageDataRequest messageRequest = MessageDataRequest.newBuilder().setId(crawlerId).addAllMessageData(messages).build();
+        // TODO: Extract to separate method
+        List<MessageID> responseIds = new ArrayList<>();
+        MessageDataRequest.Builder requestBuilder = MessageDataRequest.newBuilder().setId(crawlerId);
 
-        MessageResponse response = sendMessagesToProcessor(processor, messageRequest);
+        Deque<MessageData> queue = new ArrayDeque<>(messages);
+        Deque<MessageData> messagesForRequest = new ArrayDeque<>();
+        int messagesSize = 0;
+        while (!queue.isEmpty()) {
+            MessageData messageData = queue.pollFirst();
 
-        if (response.hasStatus()) {
-            if (response.getStatus().getHandshakeRequired()) {
-                return Report.handshake();
+            messagesSize += messageData.getSerializedSize();
+            messagesForRequest.add(messageData);
+            if (messagesSize >= config.getMaxOutgoingDataSize() || queue.isEmpty()) {
+                MessageDataRequest currentMessageRequest = requestBuilder.clearMessageData()
+                        .addAllMessageData(messagesForRequest)
+                        .build();
+
+                while (currentMessageRequest.getSerializedSize() > config.getMaxOutgoingDataSize()) {
+                    MessageData lastMessageData = messagesForRequest.pollLast();
+                    if (messagesForRequest.isEmpty()) {
+                        throw new IllegalStateException("Message can't be send to processaor via gRPC, maximum size '" + config.getMaxOutgoingDataSize() + " bytes' is exceeded"
+                                + ", message size '" + lastMessageData.getSerializedSize() + "' bytes"
+                                + ", request size '" + currentMessageRequest.getSerializedSize() + "' bytes"
+                                + ", message id " + MessageUtils.toJson(lastMessageData.getMessageId()));
+                    }
+                    queue.addFirst(lastMessageData); // put back element
+
+                    currentMessageRequest = requestBuilder.clearMessageData()
+                            .addAllMessageData(messagesForRequest)
+                            .build();
+                }
+
+                messagesSize = 0;
+                messagesForRequest.clear();
+
+                if (LOGGER.isDebugEnabled()) {
+                    MessageData first = currentMessageRequest.getMessageData(0);
+                    MessageData last = currentMessageRequest.getMessageData(currentMessageRequest.getMessageDataCount() - 1);
+                    LOGGER.debug("Send {} messages to processor, left to send {}, first {} - {}, second {} - {}",
+                            currentMessageRequest.getMessageDataCount(),
+                            queue.size(),
+                            MessageUtils.toJson(first.getMessageId()),
+                            MessageUtils.toJson(first.getTimestamp()),
+                            MessageUtils.toJson(last.getMessageId()),
+                            MessageUtils.toJson(last.getTimestamp())
+                    );
+                }
+
+                MessageResponse response = sendMessagesToProcessor(processor, currentMessageRequest);
+
+                if (response.hasStatus()) {
+                    if (response.getStatus().getHandshakeRequired()) {
+                        return Report.handshake();
+                    }
+                }
+
+                responseIds.addAll(response.getIdsList());
             }
         }
 
-        List<MessageID> responseIds = response.getIdsList();
+        // ---
+
         Entry<Integer, Map<StreamKey, MessageID>> processedResult = processServiceResponse(responseIds, messages);
 
         int processedMessagesCount = processedResult == null ? messages.size() : processedResult.getKey();
         long remaining = messages.size() - processedMessagesCount;
 
         ResumeMessageIDs continuation = null;
-        if (response.getIdsCount() > 0) {
+        if (!responseIds.isEmpty()) {
             requireNonNull(processedResult, () -> "processServiceResponse cannot be null for not empty IDs in response: " + responseIds);
             Map<StreamKey, MessageID> checkpoints = processedResult.getValue();
 
@@ -307,7 +361,7 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
                         .map(Stream::getLastId),
                 oppositeRequest == null ? empty() : oppositeRequest.getData().stream().map(MessageData::getMessageId)
         ).collect(toUnmodifiableMap(
-                this::createStreamKeyFrom,
+                MessagesStrategy::createStreamKeyFrom,
                 Function.identity(),
                 LATEST_SEQUENCE
         ));
@@ -344,9 +398,9 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
     }
 
     @NotNull
-    private Map<StreamKey, MessageID> associateWithStreamKey(java.util.stream.Stream<MessageID> stream, BinaryOperator<MessageID> mergeFunction) {
+    public static Map<StreamKey, MessageID> associateWithStreamKey(java.util.stream.Stream<MessageID> stream, BinaryOperator<MessageID> mergeFunction) {
         return stream.collect(toMap(
-                this::createStreamKeyFrom,
+                MessagesStrategy::createStreamKeyFrom,
                 Function.identity(),
                 mergeFunction
         ));
@@ -362,7 +416,7 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
     }
 
     @NotNull
-    private StreamKey createStreamKeyFrom(MessageID messageID) {
+    public static StreamKey createStreamKeyFrom(MessageID messageID) {
         return new StreamKey(messageID.getConnectionId().getSessionAlias(), messageID.getDirection());
     }
 

@@ -20,6 +20,8 @@ import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.Direction.FIRST
 import com.exactpro.th2.common.grpc.Direction.SECOND
 import com.exactpro.th2.common.message.toTimestamp
+import com.exactpro.th2.crawler.dataprocessor.grpc.MessageDataRequest
+import com.exactpro.th2.crawler.dataprocessor.grpc.MessageDataRequest.Builder
 import com.exactpro.th2.dataprovider.grpc.MessageData
 import com.exactpro.th2.dataprovider.grpc.StreamsInfo
 import org.junit.jupiter.api.Assertions

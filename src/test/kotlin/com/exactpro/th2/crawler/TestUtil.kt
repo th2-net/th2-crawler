@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Exactpro (Exactpro Systems Limited)
+ * Copyright 2022-2022 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,15 +13,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.exactpro.th2.crawler
 
-import com.exactpro.th2.common.grpc.Message
-import com.google.protobuf.util.JsonFormat
-import java.nio.file.Path
+import com.exactpro.th2.common.grpc.Direction
+import com.exactpro.th2.common.grpc.MessageID
 
-fun readMessages(path: Path) = path.toFile().readLines().map(::parseMessage).toList()
-
-fun parseMessage(message: String): Message = Message.newBuilder().apply {
-    JsonFormat.parser().merge(message, this)
+@JvmOverloads
+fun createMessageID(sessionAlias: String, direction: Direction, sequence: Long, subSequence: List<Int> = emptyList()): MessageID = MessageID.newBuilder().apply {
+    connectionIdBuilder.apply {
+        this.sessionAlias = sessionAlias
+    }
+    this.direction = direction
+    this.sequence = sequence
+    addAllSubsequence(subSequence)
 }.build()

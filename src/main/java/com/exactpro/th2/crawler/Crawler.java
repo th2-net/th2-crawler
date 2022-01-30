@@ -110,6 +110,7 @@ public class Crawler {
         this.sessionAliases = configuration.getSessionAliases();
         metrics = requireNonNull(crawlerContext.getMetrics(), "'metrics' must not be null");
         info = crawlerConnect(dataProcessor, CrawlerInfo.newBuilder().setId(crawlerId).build());
+        // TODO: overrides value of configuration.maxOutgoingDataSize by info.maxOutgoingDataSize if the info's value is less than configuration
         Map<DataType, DataTypeStrategyFactory<CrawlerData<Continuation>, Continuation>> knownStrategies = loadStrategies();
         DataTypeStrategyFactory<CrawlerData<Continuation>, Continuation> factory = requireNonNull(knownStrategies.get(crawlerType),
                 () -> "Cannot find factory for type: " + crawlerType + ". Known types: " + knownStrategies.keySet());
