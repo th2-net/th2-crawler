@@ -173,7 +173,7 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
         }
         return new MessagesCrawlerData(
                 messages,
-                new ResumeMessageIDs(startIDs, nextResumeIds),
+                new ResumeMessageIDs(startIDs, resumeIds),
                 messages.size() == batchSize
         );
     }
