@@ -57,6 +57,13 @@ The value will be interpreted as _shutdownTimeoutUnit_ unit. The default value i
 Allowed values are described [here](https://docs.oracle.com/en/java/javase/11/docs/api/java.base/java/time/temporal/ChronoUnit.html) in **Enum Constants** block.
 The default value is **SECONDS**.
 
+**filter** - defines filter for requested messages by message type. **DROP** - accepts all messages except defined. **ACCEPT** - accepts only defined messages. Format:
+```yaml
+filter:
+  names: ["MsgA", "MsgB"]
+  mode: DROP # ACCEPT
+```
+
 ## Configuration update instructions
 
 In order to update **sessionAliases** property, you will need to update the version

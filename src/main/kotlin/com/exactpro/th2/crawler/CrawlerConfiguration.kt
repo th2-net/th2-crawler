@@ -16,6 +16,7 @@
 
 package com.exactpro.th2.crawler
 
+import com.exactpro.th2.crawler.filters.NameFilter
 import com.fasterxml.jackson.annotation.JsonProperty
 import io.grpc.internal.GrpcUtil
 import java.time.temporal.ChronoUnit
@@ -50,6 +51,9 @@ class CrawlerConfiguration @JvmOverloads constructor(
     val sessionAliases: Set<String> = emptySet(),
     @JsonProperty
     val maxOutgoingDataSize: Int = GrpcUtil.DEFAULT_MAX_MESSAGE_SIZE,
+
+    @JsonProperty
+    val filter: NameFilter? = null,
 
     val shutdownTimeout: Long = 10,
     val shutdownTimeoutUnit: TimeUnit = TimeUnit.SECONDS

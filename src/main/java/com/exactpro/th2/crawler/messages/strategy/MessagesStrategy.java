@@ -60,6 +60,7 @@ import com.exactpro.th2.crawler.dataprocessor.grpc.IntervalInfo;
 import com.exactpro.th2.crawler.dataprocessor.grpc.MessageDataRequest;
 import com.exactpro.th2.crawler.dataprocessor.grpc.MessageIDs;
 import com.exactpro.th2.crawler.dataprocessor.grpc.MessageResponse;
+import com.exactpro.th2.crawler.filters.NameFilter;
 import com.exactpro.th2.crawler.messages.strategy.MessagesCrawlerData.ResumeMessageIDs;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics.Method;
@@ -80,6 +81,8 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
     public static final BinaryOperator<MessageID> LATEST_SEQUENCE = (first, second) -> first.getSequence() < second.getSequence() ? second : first;
     public static final BinaryOperator<MessageID> EARLIEST_SEQUENCE = (first, second) -> first.getSequence() > second.getSequence() ? second : first;
     private static final Logger LOGGER = LoggerFactory.getLogger(MessagesStrategy.class);
+
+    private static final int DEFAULT_SIZE = 16;
     private final DataProviderService provider;
     private final CrawlerMetrics metrics;
     private final CrawlerConfiguration config;
@@ -206,10 +209,18 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
         MessageDataRequest.Builder requestBuilder = MessageDataRequest.newBuilder().setId(crawlerId);
 
         Deque<MessageData> queue = new ArrayDeque<>(messages);
-        Deque<MessageData> messagesForRequest = new ArrayDeque<>();
+        // I think it is better to be optimistic and preallocate buffer with size at least half of the original collection
+        Deque<MessageData> messagesForRequest = new ArrayDeque<>(Math.max(queue.size() / 2, DEFAULT_SIZE));
         int messagesSize = 0;
+        NameFilter filter = config.getFilter();
         while (!queue.isEmpty()) {
             MessageData messageData = queue.pollFirst();
+            if (filter != null && !filter.accept(messageData.getMessageType())) {
+                if (LOGGER.isTraceEnabled()) {
+                    LOGGER.trace("Message with id {} was skipped", MessageUtils.toJson(messageData.getMessageId()));
+                }
+                continue;
+            }
 
             messagesSize += messageData.getSerializedSize();
             messagesForRequest.add(messageData);
@@ -219,17 +230,17 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
                         .build();
 
                 while (currentMessageRequest.getSerializedSize() > config.getMaxOutgoingDataSize()) {
-                    MessageData lastMessageData = messagesForRequest.pollLast();
+                    MessageData lastMessageData = requireNonNull(messagesForRequest.pollLast(), "at least one message must be in queue but have none");
                     if (messagesForRequest.isEmpty()) {
-                        throw new IllegalStateException("Message can't be send to processaor via gRPC, maximum size '" + config.getMaxOutgoingDataSize() + " bytes' is exceeded"
+                        throw new IllegalStateException("Message can't be send to processor via gRPC, maximum size '" + config.getMaxOutgoingDataSize() + " bytes' is exceeded"
                                 + ", message size '" + lastMessageData.getSerializedSize() + "' bytes"
                                 + ", request size '" + currentMessageRequest.getSerializedSize() + "' bytes"
                                 + ", message id " + MessageUtils.toJson(lastMessageData.getMessageId()));
                     }
                     queue.addFirst(lastMessageData); // put back element
 
-                    currentMessageRequest = requestBuilder.clearMessageData()
-                            .addAllMessageData(messagesForRequest)
+                    currentMessageRequest = requestBuilder
+                            .removeMessageData(requestBuilder.getMessageDataCount() - 1) // remove last from current list to avoid reallocation
                             .build();
                 }
 

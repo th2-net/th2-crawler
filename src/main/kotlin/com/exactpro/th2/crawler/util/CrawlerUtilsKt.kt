@@ -16,8 +16,6 @@
 @file:JvmName("CrawlerUtilKt")
 package com.exactpro.th2.crawler.util
 
-import com.exactpro.cradle.utils.MessageUtils
-import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.dataprovider.grpc.MessageData
 import com.google.protobuf.Timestamp
 import java.lang.StringBuilder
@@ -46,11 +44,11 @@ fun SearchResult<MessageData>.toCompactString(): String {
                 .toList()
                 .let { if (it.isNotEmpty()) "gaps=$it" else "" }
 
-            val timestamps = elements.map { it.timestamp.toInstant() }
+            val messageTimestamps = elements.map { it.timestamp.toInstant() }
             """
                 |    $sessionAlias:$direction
                 |      sequences: $min..$max count=${sequences.size} $gaps
-                |      timestamps: ${timestamps.minOrNull()}..${timestamps.maxOrNull()}
+                |      timestamps: ${messageTimestamps.minOrNull()}..${messageTimestamps.maxOrNull()}
             """.trimMargin()
         }
 
