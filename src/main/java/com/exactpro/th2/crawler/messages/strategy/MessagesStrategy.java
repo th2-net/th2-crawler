@@ -208,6 +208,7 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
         List<MessageID> responseIds = new ArrayList<>();
         MessageDataRequest.Builder requestBuilder = MessageDataRequest.newBuilder().setId(crawlerId);
 
+        int droppedCounter = 0;
         Deque<MessageData> queue = new ArrayDeque<>(messages);
         // I think it is better to be optimistic and preallocate buffer with size at least half of the original collection
         Deque<MessageData> messagesForRequest = new ArrayDeque<>(Math.max(queue.size() / 2, DEFAULT_SIZE));
@@ -216,6 +217,7 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
         while (!queue.isEmpty()) {
             MessageData messageData = queue.pollFirst();
             if (filter != null && !filter.accept(messageData.getMessageType())) {
+                droppedCounter++;
                 if (LOGGER.isTraceEnabled()) {
                     LOGGER.trace("Message with id {} was skipped", MessageUtils.toJson(messageData.getMessageId()));
                 }
@@ -270,6 +272,10 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
 
                 responseIds.addAll(response.getIdsList());
             }
+        }
+
+        if(droppedCounter > 0) {
+            LOGGER.info("Dropped {} messages from {} by the filter option in custom config", droppedCounter, messages.size());
         }
 
         // ---
