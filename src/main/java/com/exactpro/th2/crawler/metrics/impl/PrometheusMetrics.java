@@ -38,7 +38,7 @@ public class PrometheusMetrics implements CrawlerMetrics {
     private final Histogram processingTime = Histogram.build()
             .name("th2_crawler_processing_data_time_seconds")
             .help("time in seconds to process an interval")
-            .buckets(0.005, 0.01, 0.05, 0.1, 0.5, 1, 2.5, 5, 7.5, 10, 15, 20, 25)
+            .buckets(0.005, 0.01, 0.05, 0.1, 0.5, 1, 2.5, 5, 7.5, 10, 15, 20, 25, 30, 45, 60)
             .labelNames("data_type", "method")
             .register();
     private final Counter processedDataCount = Counter.build()
