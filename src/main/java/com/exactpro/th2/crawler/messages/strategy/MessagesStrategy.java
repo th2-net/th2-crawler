@@ -23,14 +23,13 @@ import static java.util.stream.Collectors.toUnmodifiableMap;
 import static java.util.stream.Stream.concat;
 import static java.util.stream.Stream.empty;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -50,17 +49,18 @@ import com.exactpro.th2.common.message.MessageUtils;
 import com.exactpro.th2.crawler.AbstractStrategy;
 import com.exactpro.th2.crawler.Action;
 import com.exactpro.th2.crawler.CrawlerConfiguration;
+import com.exactpro.th2.crawler.CrawlerData;
 import com.exactpro.th2.crawler.DataParameters;
 import com.exactpro.th2.crawler.DataType;
 import com.exactpro.th2.crawler.InternalInterval;
 import com.exactpro.th2.crawler.Report;
-import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId;
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService;
 import com.exactpro.th2.crawler.dataprocessor.grpc.IntervalInfo;
 import com.exactpro.th2.crawler.dataprocessor.grpc.MessageDataRequest;
 import com.exactpro.th2.crawler.dataprocessor.grpc.MessageIDs;
 import com.exactpro.th2.crawler.dataprocessor.grpc.MessageResponse;
 import com.exactpro.th2.crawler.filters.NameFilter;
+import com.exactpro.th2.crawler.messages.strategy.MessagesCrawlerData.MessagePart;
 import com.exactpro.th2.crawler.messages.strategy.MessagesCrawlerData.ResumeMessageIDs;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics.Method;
@@ -70,14 +70,17 @@ import com.exactpro.th2.crawler.state.v1.RecoveryState;
 import com.exactpro.th2.crawler.state.v1.StreamKey;
 import com.exactpro.th2.crawler.util.CrawlerUtils;
 import com.exactpro.th2.crawler.util.MessagesSearchParameters;
-import com.exactpro.th2.crawler.util.SearchResult;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import com.exactpro.th2.dataprovider.grpc.MessageData;
 import com.exactpro.th2.dataprovider.grpc.Stream;
+import com.exactpro.th2.dataprovider.grpc.StreamResponse;
+import com.exactpro.th2.dataprovider.grpc.StreamsInfo;
 import com.exactpro.th2.dataprovider.grpc.TimeRelation;
 import com.google.protobuf.Timestamp;
 
-public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, ResumeMessageIDs> {
+import kotlin.Pair;
+
+public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, MessagePart> {
     public static final BinaryOperator<MessageID> LATEST_SEQUENCE = (first, second) -> first.getSequence() < second.getSequence() ? second : first;
     public static final BinaryOperator<MessageID> EARLIEST_SEQUENCE = (first, second) -> first.getSequence() > second.getSequence() ? second : first;
     private static final Logger LOGGER = LoggerFactory.getLogger(MessagesStrategy.class);
@@ -140,8 +143,8 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
 
     @NotNull
     @Override
-    public MessagesCrawlerData requestData(@NotNull Timestamp start, @NotNull Timestamp end, @NotNull DataParameters parameters,
-                                           @Nullable ResumeMessageIDs continuation) {
+    public CrawlerData<ResumeMessageIDs, MessagePart> requestData(@NotNull Timestamp start, @NotNull Timestamp end, @NotNull DataParameters parameters,
+                                                                  @Nullable ResumeMessageIDs continuation) {
         requireNonNull(start, "'start' parameter");
         requireNonNull(end, "'end' parameter");
         requireNonNull(parameters, "'parameters' parameter");
@@ -155,29 +158,15 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
                 .setResumeIds(resumeIds)
                 .setAliases(parameters.getSessionAliases())
                 .build();
-        SearchResult<MessageData> result = CrawlerUtils.searchMessages(provider, searchParams, metrics);
-        List<MessageData> messages = result.getData();
 
-        resumeIds = new HashMap<>(resumeIds == null ? Collections.emptyMap() : resumeIds);
-        Map<StreamKey, MessageID> nextResumeIds = requireNonNull(result.getStreamsInfo(), "response from data provider does not have the StreamsInfo")
-                .getStreamsList()
-                .stream()
-                .collect(toUnmodifiableMap(
-                        stream -> new StreamKey(stream.getSession(), stream.getDirection()),
-                        Stream::getLastId,
-                        BinaryOperator.maxBy(Comparator.comparingLong(MessageID::getSequence))
-                ));
-
-        putAndCheck(nextResumeIds, resumeIds, "computing resume IDs");
-        if (LOGGER.isDebugEnabled()) {
-            LOGGER.debug("New resume ids: {}", resumeIds.entrySet().stream()
-                    .map(entry -> entry.getKey() + "=" + MessageUtils.toJson(entry.getValue()))
-                    .collect(Collectors.joining(",")));
-        }
+        NameFilter filter = config.getFilter();
         return new MessagesCrawlerData(
-                messages,
-                new ResumeMessageIDs(startIDs, resumeIds),
-                messages.size() == batchSize
+                CrawlerUtils.searchMessages(provider, searchParams, metrics),
+                startIDs,
+                parameters.getCrawlerId(),
+                batchSize,
+                config.getMaxOutgoingDataSize(),
+                msg -> filter == null || filter.accept(msg.getMessageType())
         );
     }
 
@@ -187,17 +176,17 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
             @NotNull DataProcessorService processor,
             @NotNull InternalInterval interval,
             @NotNull DataParameters parameters,
-            @NotNull MessagesCrawlerData data
-    ) {
+            @NotNull MessagePart data,
+            @Nullable ResumeMessageIDs prevCheckpoint) {
         requireNonNull(processor, "'processor' parameter");
         requireNonNull(interval, "'interval' parameter");
         requireNonNull(parameters, "'parameters' parameter");
         requireNonNull(data, "'data' parameter");
 
-        CrawlerId crawlerId = parameters.getCrawlerId();
         Interval original = interval.getOriginal();
 
-        List<MessageData> messages = data.getData();
+        MessageDataRequest request = data.getRequest();
+        List<MessageData> messages = request.getMessageDataList();
 
         if (messages.isEmpty()) {
             LOGGER.info("No more messages in interval from: {}, to: {}", original.getStartTime(), original.getEndTime());
@@ -205,80 +194,16 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
         }
 
         // TODO: Extract to separate method
-        List<MessageID> responseIds = new ArrayList<>();
-        MessageDataRequest.Builder requestBuilder = MessageDataRequest.newBuilder().setId(crawlerId);
 
-        int droppedCounter = 0;
-        Deque<MessageData> queue = new ArrayDeque<>(messages);
-        // I think it is better to be optimistic and preallocate buffer with size at least half of the original collection
-        Deque<MessageData> messagesForRequest = new ArrayDeque<>(Math.max(queue.size() / 2, DEFAULT_SIZE));
-        int messagesSize = 0;
-        NameFilter filter = config.getFilter();
-        while (!queue.isEmpty()) {
-            MessageData messageData = queue.pollFirst();
-            if (filter != null && !filter.accept(messageData.getMessageType())) {
-                droppedCounter++;
-                if (LOGGER.isTraceEnabled()) {
-                    LOGGER.trace("Message with id {} was skipped", MessageUtils.toJson(messageData.getMessageId()));
-                }
-                continue;
-            }
+        MessageResponse response = sendMessagesToProcessor(processor, request);
 
-            messagesSize += messageData.getSerializedSize();
-            messagesForRequest.add(messageData);
-            if (messagesSize >= config.getMaxOutgoingDataSize() || queue.isEmpty()) {
-                MessageDataRequest currentMessageRequest = requestBuilder.clearMessageData()
-                        .addAllMessageData(messagesForRequest)
-                        .build();
-
-                while (currentMessageRequest.getSerializedSize() > config.getMaxOutgoingDataSize()) {
-                    MessageData lastMessageData = requireNonNull(messagesForRequest.pollLast(), "at least one message must be in queue but have none");
-                    if (messagesForRequest.isEmpty()) {
-                        throw new IllegalStateException("Message can't be send to processor via gRPC, maximum size '" + config.getMaxOutgoingDataSize() + " bytes' is exceeded"
-                                + ", message size '" + lastMessageData.getSerializedSize() + "' bytes"
-                                + ", request size '" + currentMessageRequest.getSerializedSize() + "' bytes"
-                                + ", message id " + MessageUtils.toJson(lastMessageData.getMessageId()));
-                    }
-                    queue.addFirst(lastMessageData); // put back element
-
-                    currentMessageRequest = requestBuilder
-                            .removeMessageData(requestBuilder.getMessageDataCount() - 1) // remove last from current list to avoid reallocation
-                            .build();
-                }
-
-                messagesSize = 0;
-                messagesForRequest.clear();
-
-                if (LOGGER.isDebugEnabled()) {
-                    MessageData first = currentMessageRequest.getMessageData(0);
-                    MessageData last = currentMessageRequest.getMessageData(currentMessageRequest.getMessageDataCount() - 1);
-                    LOGGER.debug("Send {} messages to processor, left to send {}, first {} - {}, second {} - {}",
-                            currentMessageRequest.getMessageDataCount(),
-                            queue.size(),
-                            MessageUtils.toJson(first.getMessageId()),
-                            MessageUtils.toJson(first.getTimestamp()),
-                            MessageUtils.toJson(last.getMessageId()),
-                            MessageUtils.toJson(last.getTimestamp())
-                    );
-                }
-
-                MessageResponse response = sendMessagesToProcessor(processor, currentMessageRequest);
-
-                if (response.hasStatus()) {
-                    if (response.getStatus().getHandshakeRequired()) {
-                        return Report.handshake();
-                    }
-                }
-
-                responseIds.addAll(response.getIdsList());
+        if (response.hasStatus()) {
+            if (response.getStatus().getHandshakeRequired()) {
+                return Report.handshake();
             }
         }
 
-        if(droppedCounter > 0) {
-            LOGGER.info("Dropped {} messages from {} by the filter option in custom config", droppedCounter, messages.size());
-        }
-
-        // ---
+        List<MessageID> responseIds = response.getIdsList();
 
         Entry<Integer, Map<StreamKey, MessageID>> processedResult = processServiceResponse(responseIds, messages);
 
@@ -292,10 +217,9 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
 
             if (!checkpoints.isEmpty()) {
 
-                ResumeMessageIDs previous = data.getContinuation();
-                Map<StreamKey, MessageID> grouped = new HashMap<>(previous.getStartIDs());
+                Map<StreamKey, MessageID> grouped = new HashMap<>(prevCheckpoint == null ? data.getStartIDs() : prevCheckpoint.getIds());
                 putAndCheck(checkpoints, grouped, "creating continuation from processor response");
-                continuation = new ResumeMessageIDs(previous.getStartIDs(), grouped);
+                continuation = new ResumeMessageIDs(data.getStartIDs(), grouped);
             }
         }
 
@@ -322,10 +246,21 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
         return response;
     }
 
-    private void putAndCheck(
+    @NotNull
+    static Map<StreamKey, MessageID> collectResumeIDs(StreamsInfo streamsInfo) {
+        return streamsInfo.getStreamsList().stream()
+                .collect(toUnmodifiableMap(
+                        stream -> new StreamKey(stream.getSession(), stream.getDirection()),
+                        Stream::getLastId,
+                        BinaryOperator.maxBy(Comparator.comparingLong(MessageID::getSequence))
+                ));
+    }
+
+    static void putAndCheck(
             Map<StreamKey, MessageID> transferFrom,
             Map<StreamKey, MessageID> transferTo,
-            String action
+            String action,
+            Logger logger
     ) {
         for (Entry<StreamKey, MessageID> entry : transferFrom.entrySet()) {
             var streamKey = entry.getKey();
@@ -336,13 +271,21 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
                 }
                 boolean prevSeqHigher = prevInnerMessageId.getSequence() > innerMessageId.getSequence();
                 if (prevSeqHigher) {
-                    LOGGER.warn("The new checkpoint ID {} has less sequence than the previous one {} for stream key {} when {}",
+                    logger.warn("The new checkpoint ID {} has less sequence than the previous one {} for stream key {} when {}",
                             innerMessageId.getSequence(), prevInnerMessageId.getSequence(), key, action);
                     return prevInnerMessageId;
                 }
                 return innerMessageId;
             });
         }
+    }
+
+    private static void putAndCheck(
+            Map<StreamKey, MessageID> transferFrom,
+            Map<StreamKey, MessageID> transferTo,
+            String action
+    ) {
+        putAndCheck(transferFrom, transferTo, action, LOGGER);
     }
 
     private Map<StreamKey, MessageID> initialStartIds(Timestamp fromTimestamp, Collection<String> aliases) {
@@ -353,35 +296,58 @@ public class MessagesStrategy extends AbstractStrategy<MessagesCrawlerData, Resu
                 .setBatchSize(batchSize)
                 .setAliases(aliases)
                 .build();
-        SearchResult<MessageData> searchResult = CrawlerUtils.searchMessages(provider, parameters, metrics);
-        SearchResult<MessageData> oppositeRequest = null;
+        Pair<List<MessageData>, StreamsInfo> searchResult = collect(CrawlerUtils.searchMessages(provider, parameters, metrics));
+        Pair<List<MessageData>, StreamsInfo> oppositeRequest = null;
 
-        if (!searchResult.getData().isEmpty()) {
+        if (!searchResult.getFirst().isEmpty()) {
             if (LOGGER.isWarnEnabled()) {
-                LOGGER.warn("Initialising start IDs request has returned unexpected data: " + searchResult.getData().stream()
+                LOGGER.warn("Initialising start IDs request has returned unexpected data: " + searchResult.getFirst().stream()
                         .map(MessageUtils::toJson).collect(Collectors.joining(", ")));
                 // We have a message with timestamp equal the `fromTimestamp`
                 // Because of that we need to make a request in opposite direction
                 // and select the first message for each pair alias + direction that were in the response (should be a single message)
-                oppositeRequest = CrawlerUtils.searchMessages(provider, MessagesSearchParameters.builder()
+                oppositeRequest = collect(CrawlerUtils.searchMessages(provider, MessagesSearchParameters.builder()
                         .setFrom(fromTimestamp)
                         .setBatchSize(batchSize)
-                        .setResumeIds(associateWithStreamKey(searchResult.getData().stream().map(MessageData::getMessageId), EARLIEST_SEQUENCE))
+                        .setResumeIds(associateWithStreamKey(searchResult.getFirst().stream().map(MessageData::getMessageId), EARLIEST_SEQUENCE))
                         .setAliases(aliases)
                         .setTimeRelation(TimeRelation.PREVIOUS)
-                        .build(), metrics);
+                        .build(), metrics));
             }
         }
         return concat(
-                requireNonNull(searchResult.getStreamsInfo(), "stream info is null for initial start IDs response")
+                requireNonNull(searchResult.getSecond(), "stream info is null for initial start IDs response")
                         .getStreamsList().stream()
                         .map(Stream::getLastId),
-                oppositeRequest == null ? empty() : oppositeRequest.getData().stream().map(MessageData::getMessageId)
+                oppositeRequest == null ? empty() : oppositeRequest.getFirst().stream().map(MessageData::getMessageId)
         ).collect(toUnmodifiableMap(
                 MessagesStrategy::createStreamKeyFrom,
                 Function.identity(),
                 LATEST_SEQUENCE
         ));
+    }
+
+    private @NotNull Pair<List<MessageData>, StreamsInfo> collect(Iterator<StreamResponse> responses) {
+        List<MessageData> data = null;
+        StreamsInfo info = null;
+
+        while (responses.hasNext()) {
+            StreamResponse next = responses.next();
+            if (next.hasMessage()) {
+                if (data == null) {
+                    data = new ArrayList<>();
+                }
+                data.add(next.getMessage());
+                continue;
+            }
+            if (next.hasStreamInfo()) {
+                info = next.getStreamInfo();
+            }
+        }
+        return new Pair<>(
+                data == null ? Collections.emptyList() : data,
+                requireNonNull(info, "stream info is null for initial start IDs response")
+        );
     }
 
     private @Nullable Entry<@NotNull Integer, @NotNull Map<StreamKey, MessageID>> processServiceResponse(

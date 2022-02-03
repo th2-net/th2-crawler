@@ -23,6 +23,7 @@ import com.exactpro.th2.crawler.CrawlerConfiguration;
 import com.exactpro.th2.crawler.DataType;
 import com.exactpro.th2.crawler.DataTypeStrategy;
 import com.exactpro.th2.crawler.DataTypeStrategyFactory;
+import com.exactpro.th2.crawler.events.strategy.EventsCrawlerData.EventPart;
 import com.exactpro.th2.crawler.events.strategy.EventsCrawlerData.ResumeEventId;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
 import com.exactpro.th2.crawler.state.StateService;
@@ -31,7 +32,7 @@ import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import com.google.auto.service.AutoService;
 
 @AutoService(DataTypeStrategyFactory.class)
-public class EventsStrategyFactory implements DataTypeStrategyFactory<EventsCrawlerData, ResumeEventId> {
+public class EventsStrategyFactory implements DataTypeStrategyFactory<ResumeEventId, EventPart> {
     @NotNull
     @Override
     public DataType getDataType() {
@@ -40,7 +41,7 @@ public class EventsStrategyFactory implements DataTypeStrategyFactory<EventsCraw
 
     @NotNull
     @Override
-    public DataTypeStrategy<EventsCrawlerData, ResumeEventId> create(
+    public DataTypeStrategy<ResumeEventId, EventPart> create(
             @NotNull IntervalsWorker worker,
             @NotNull DataProviderService provider,
             @NotNull StateService<RecoveryState> stateService,

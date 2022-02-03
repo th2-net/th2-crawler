@@ -34,6 +34,7 @@ import com.exactpro.th2.common.grpc.EventID;
 import com.exactpro.th2.crawler.AbstractStrategy;
 import com.exactpro.th2.crawler.Action;
 import com.exactpro.th2.crawler.CrawlerConfiguration;
+import com.exactpro.th2.crawler.CrawlerData;
 import com.exactpro.th2.crawler.DataParameters;
 import com.exactpro.th2.crawler.DataType;
 import com.exactpro.th2.crawler.InternalInterval;
@@ -43,6 +44,7 @@ import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService;
 import com.exactpro.th2.crawler.dataprocessor.grpc.EventDataRequest;
 import com.exactpro.th2.crawler.dataprocessor.grpc.EventResponse;
 import com.exactpro.th2.crawler.dataprocessor.grpc.IntervalInfo.Builder;
+import com.exactpro.th2.crawler.events.strategy.EventsCrawlerData.EventPart;
 import com.exactpro.th2.crawler.events.strategy.EventsCrawlerData.ResumeEventId;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics.Method;
@@ -51,14 +53,13 @@ import com.exactpro.th2.crawler.state.v1.InnerEventId;
 import com.exactpro.th2.crawler.state.v1.RecoveryState;
 import com.exactpro.th2.crawler.util.CrawlerUtils;
 import com.exactpro.th2.crawler.util.CrawlerUtils.EventsSearchParameters;
-import com.exactpro.th2.crawler.util.SearchResult;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import com.exactpro.th2.dataprovider.grpc.EventData;
 import com.google.protobuf.Timestamp;
 
 import kotlin.Pair;
 
-public class EventsStrategy extends AbstractStrategy<EventsCrawlerData, ResumeEventId> {
+public class EventsStrategy extends AbstractStrategy<ResumeEventId, EventPart> {
     private static final Logger LOGGER = LoggerFactory.getLogger(EventsStrategy.class);
 
     private final DataProviderService provider;
@@ -85,22 +86,19 @@ public class EventsStrategy extends AbstractStrategy<EventsCrawlerData, ResumeEv
 
     @NotNull
     @Override
-    public EventsCrawlerData requestData(@NotNull Timestamp start, @NotNull Timestamp end, @NotNull DataParameters parameters,
-                                         @Nullable EventsCrawlerData.ResumeEventId prevResult) {
+    public CrawlerData<ResumeEventId, EventPart> requestData(@NotNull Timestamp start, @NotNull Timestamp end, @NotNull DataParameters parameters,
+                                                             @Nullable EventsCrawlerData.ResumeEventId prevResult) {
         requireNonNull(start, "'start' parameter");
         requireNonNull(end, "'end' parameter");
         requireNonNull(parameters, "'parameters' parameter");
         EventID resumeId = getResumeId(prevResult);
         int batchSize = config.getBatchSize();
-        SearchResult<EventData> result = CrawlerUtils.searchEvents(provider,
-                new EventsSearchParameters(start, end, batchSize, resumeId), metrics);
-        List<EventData> events = result.getData();
-        if (events.isEmpty()) {
-            LOGGER.info("No more events in interval from: {}, to: {}", start, end);
-        }
-        return new EventsCrawlerData(events,
-                events.isEmpty() ? null : resumeIdFromEvent(events.get(events.size() - 1)),
-                events.size() == batchSize
+        return new EventsCrawlerData(
+                CrawlerUtils.searchEvents(provider,
+                        new EventsSearchParameters(start, end, batchSize, resumeId), metrics),
+                parameters.getCrawlerId(),
+                batchSize,
+                config.getMaxOutgoingDataSize()
         );
     }
 
@@ -110,25 +108,22 @@ public class EventsStrategy extends AbstractStrategy<EventsCrawlerData, ResumeEv
             @NotNull DataProcessorService processor,
             @NotNull InternalInterval interval,
             @NotNull DataParameters parameters,
-            @NotNull EventsCrawlerData data
-    ) {
+            @NotNull EventPart data,
+            @Nullable ResumeEventId prevCheckpoint) {
         requireNonNull(processor, "'processor' parameter");
         requireNonNull(interval, "'interval' parameter");
         requireNonNull(parameters, "'parameters' parameter");
         requireNonNull(data, "'data' parameter");
 
-        CrawlerId crawlerId = parameters.getCrawlerId();
         Interval original = interval.getOriginal();
 
-        List<EventData> events = data.getData();
+        EventDataRequest eventRequest = data.getRequest();
 
+        List<EventData> events = eventRequest.getEventDataList();
         if (events.isEmpty()) {
             LOGGER.info("No more events in interval from: {}, to: {}", original.getStartTime(), original.getEndTime());
             return Report.empty();
         }
-
-        EventDataRequest.Builder eventRequestBuilder = EventDataRequest.newBuilder();
-        EventDataRequest eventRequest = eventRequestBuilder.setId(crawlerId).addAllEventData(events).build();
 
         EventResponse response = sendEventsToProcessor(processor, eventRequest);
 

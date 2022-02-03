@@ -55,6 +55,8 @@ import com.exactpro.th2.dataprovider.grpc.StreamResponse;
 import com.exactpro.th2.dataprovider.grpc.StreamsInfo;
 import com.exactpro.th2.dataprovider.grpc.StringList;
 import com.exactpro.th2.dataprovider.grpc.TimeRelation;
+import com.google.common.collect.AbstractIterator;
+import com.google.common.collect.Iterators;
 import com.google.protobuf.BoolValue;
 import com.google.protobuf.Int32Value;
 import com.google.protobuf.MessageOrBuilder;
@@ -74,8 +76,8 @@ public class CrawlerUtils {
         return Instant.ofEpochSecond(timestamp.getSeconds(), timestamp.getNanos());
     }
 
-    public static SearchResult<EventData> searchEvents(DataProviderService dataProviderService,
-                                                       EventsSearchParameters info, CrawlerMetrics metrics) {
+    public static Iterator<StreamResponse> searchEvents(DataProviderService dataProviderService,
+                                                        EventsSearchParameters info, CrawlerMetrics metrics) {
 
         EventSearchRequest.Builder eventSearchBuilder = EventSearchRequest.newBuilder()
                 .setMetadataOnly(METADATA_ONLY)
@@ -95,10 +97,10 @@ public class CrawlerUtils {
         }
 
         metrics.providerMethodInvoked(ProviderMethod.SEARCH_EVENTS);
-        return metrics.measureTime(DataType.EVENTS, Method.REQUEST_DATA, () -> collectEvents(dataProviderService.searchEvents(request), info.to));
+        return collectEvents(dataProviderService.searchEvents(request), info.to);
     }
 
-    public static SearchResult<MessageData> searchMessages(DataProviderService dataProviderService,
+    public static Iterator<StreamResponse> searchMessages(DataProviderService dataProviderService,
                                                    MessagesSearchParameters info, CrawlerMetrics metrics) {
 
         MessageSearchRequest.Builder messageSearchBuilder = MessageSearchRequest.newBuilder()
@@ -124,7 +126,7 @@ public class CrawlerUtils {
             LOGGER.debug("Requesting messages from data provider with parameters: {}", MessageUtils.toJson(request));
         }
         metrics.providerMethodInvoked(ProviderMethod.SEARCH_MESSAGES);
-        return metrics.measureTime(DataType.MESSAGES, Method.REQUEST_DATA, () -> collectMessages(dataProviderService.searchMessages(request), info.getTo()));
+        return collectMessages(dataProviderService.searchMessages(request), info.getTo());
     }
 
     public static void updateEventRecoveryState(
@@ -192,53 +194,23 @@ public class CrawlerUtils {
         return worker.updateRecoveryState(interval, stateService.serialize(newState));
     }
 
-    public static SearchResult<EventData> collectEvents(Iterator<StreamResponse> iterator, Timestamp to) {
+    public static Iterator<StreamResponse> collectEvents(Iterator<StreamResponse> iterator, Timestamp to) {
         return collectData(iterator, to, response -> response.hasEvent() ? response.getEvent() : null,
                 eventData -> eventData.hasStartTimestamp() ? eventData.getStartTimestamp() : null);
     }
 
-    public static SearchResult<MessageData> collectMessages(Iterator<StreamResponse> iterator, Timestamp to) {
-        SearchResult<MessageData> result = collectData(iterator, to, response -> response.hasMessage() ? response.getMessage() : null,
+    public static Iterator<StreamResponse> collectMessages(Iterator<StreamResponse> iterator, Timestamp to) {
+        return collectData(iterator, to, response -> response.hasMessage() ? response.getMessage() : null,
                 messageData -> messageData.hasTimestamp() ? messageData.getTimestamp() : null);
-        if (LOGGER.isDebugEnabled()) {
-            LOGGER.debug("Data from provider " + CrawlerUtilKt.toCompactString(result));
-        }
-        return result;
     }
 
-    public static <T extends MessageOrBuilder> SearchResult<T> collectData(Iterator<StreamResponse> iterator, Timestamp to,
+    public static <T extends MessageOrBuilder> Iterator<StreamResponse> collectData(Iterator<StreamResponse> iterator, Timestamp to,
                                                                    Function<StreamResponse, T> objectExtractor,
                                                                    Function<T, Timestamp> timeExtractor) {
-        List<T> data = null;
-        StreamsInfo streamsInfo = null;
-
-        LOGGER.trace("Iterator traversal is started");
-        while (iterator.hasNext()) {
-            StreamResponse r = iterator.next();
-            if (r.hasStreamInfo()) {
-                streamsInfo = r.getStreamInfo();
-                continue;
-            }
-
-            T object = objectExtractor.apply(r);
-            if (object == null) {
-                continue;
-            }
-            if (data == null) {
-                data = new ArrayList<>();
-            }
-
-            if (to != null && !to.equals(timeExtractor.apply(object))) {
-                data.add(object);
-
-                if (LOGGER.isTraceEnabled()) {
-                    LOGGER.trace("Got object of type {}: {}", object.getClass().getSimpleName(), MessageUtils.toJson(object));
-                }
-            }
-        }
-        LOGGER.trace("Iterator traversal is ended");
-
-        return new SearchResult<>(data == null ? Collections.emptyList() : data, streamsInfo);
+        return Iterators.filter(iterator, el -> {
+            T obj = objectExtractor.apply(el);
+            return obj == null || !to.equals(timeExtractor.apply(obj));
+        });
     }
 
     public static class EventsSearchParameters {
