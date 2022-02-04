@@ -32,7 +32,6 @@ import java.util.Set;
 import java.util.function.BinaryOperator;
 
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -186,6 +185,12 @@ public class Crawler {
                     DataPart nextPart = currentData.next();
                     Continuation prevCheckpoint = sendingReport == null ? null : sendingReport.getCheckpoint();
                     sendingReport = typeStrategy.processData(dataProcessor, currentInt, parameters, nextPart, prevCheckpoint);
+
+                    if (sendingReport.getAction() == Action.HANDSHAKE) {
+                        LOGGER.info("Handshake from {}:{} received. Stop processing", dataProcessorName, dataProcessorVersion);
+                        break;
+                    }
+
                     if (nextPart.getSize() > 0) {
                         metrics.updateProcessedData(crawlerType, nextPart.getSize());
                     }
@@ -197,8 +202,22 @@ public class Crawler {
                         currentInt.updateState(state, intervalsWorker);
                     }
                 }
-                continuation = data.getContinuation();
                 sendingReport = requireNonNullElse(sendingReport, Report.empty());
+
+                if (sendingReport.getAction() == Action.HANDSHAKE) {
+                    if (currentData.hasNext()) {
+                        LOGGER.info("Finishing data iterator because of handshake");
+                        int parts = 0;
+                        while (currentData.hasNext()) {
+                            DataPart dataPart = currentData.next();
+                            parts++;
+                        }
+                        LOGGER.info("Remaining parts in data iterator: {}", parts);
+                    }
+                    break; // exit from lopping until all data is processed for the interval
+                }
+
+                continuation = data.getContinuation(); // because we can do it only when all data was received from provider
             } while (data.isNeedsNextRequest());
 
             Action action = sendingReport.getAction();
