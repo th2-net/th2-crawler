@@ -16,6 +16,8 @@
 
 package com.exactpro.th2.crawler.metrics.impl;
 
+import static com.exactpro.th2.common.metrics.CommonMetrics.*;
+
 import java.io.IOException;
 
 import com.exactpro.cradle.intervals.Interval;
@@ -26,19 +28,17 @@ import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
 import com.exactpro.th2.crawler.util.CrawlerUtils;
 import com.exactpro.th2.dataprovider.grpc.EventData;
 import com.exactpro.th2.dataprovider.grpc.MessageData;
+
 import io.prometheus.client.Counter;
 import io.prometheus.client.Gauge;
 import io.prometheus.client.Histogram;
 import io.prometheus.client.Histogram.Timer;
 
-import static com.exactpro.th2.common.metrics.CommonMetrics.DEFAULT_DIRECTION_LABEL_NAME;
-import static com.exactpro.th2.common.metrics.CommonMetrics.DEFAULT_SESSION_ALIAS_LABEL_NAME;
-
 public class PrometheusMetrics implements CrawlerMetrics {
     private final Histogram processingTime = Histogram.build()
             .name("th2_crawler_processing_data_time_seconds")
             .help("time in seconds to process an interval")
-            .buckets(0.005, 0.01, 0.05, 0.1, 0.5, 1, 2.5, 5, 7.5, 10, 15, 20, 25, 30, 45, 60)
+            .buckets(0.005, 0.01, 0.05, 0.1, 0.5, 1, 2.5, 5, 7.5, 10, 15, 20, 25, 30, 45, 60, 90, 120)
             .labelNames("data_type", "method")
             .register();
     private final Counter processedDataCount = Counter.build()
@@ -50,12 +50,12 @@ public class PrometheusMetrics implements CrawlerMetrics {
     private final Gauge lastMessageSequence = Gauge.build()
             .name("th2_crawler_processing_message_sequence_number")
             .help("contains the sequence number of the last processed message for corresponding alias and direction")
-            .labelNames(DEFAULT_SESSION_ALIAS_LABEL_NAME, DEFAULT_DIRECTION_LABEL_NAME)
+            .labelNames(SESSION_ALIAS_LABEL, DIRECTION_LABEL)
             .register();
     private final Gauge lastMessageTimestamp = Gauge.build()
             .name("th2_crawler_processing_message_timestamp_milliseconds")
             .help("contains the timestamp of the last processed message in milliseconds for corresponding alias and direction")
-            .labelNames(DEFAULT_SESSION_ALIAS_LABEL_NAME, DEFAULT_DIRECTION_LABEL_NAME)
+            .labelNames(SESSION_ALIAS_LABEL, DIRECTION_LABEL)
             .register();
     //endregion
     private final Gauge lastEventTimestamp = Gauge.build()
