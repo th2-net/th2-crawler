@@ -24,6 +24,8 @@ import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerInfo;
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorInfo;
 import com.exactpro.th2.crawler.dataprocessor.grpc.EventDataRequest;
 import com.exactpro.th2.crawler.dataprocessor.grpc.EventResponse;
+import com.exactpro.th2.crawler.dataprocessor.grpc.IntervalInfo;
+import com.exactpro.th2.crawler.dataprocessor.grpc.IntervalStartResponse;
 import com.exactpro.th2.crawler.dataprocessor.grpc.MessageDataRequest;
 import com.exactpro.th2.crawler.dataprocessor.grpc.MessageResponse;
 import com.exactpro.th2.crawler.dataprocessor.grpc.Status;
@@ -44,6 +46,7 @@ import com.exactpro.th2.dataprovider.grpc.StreamsInfo;
 
 import org.apache.commons.lang3.StringUtils;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -118,6 +121,8 @@ public class CrawlerTest {
                 "2021-06-16T12:00:00.00Z", DataType.EVENTS, Collections.emptySet());
         CrawlerManager manager = new CrawlerManager(configuration);
 
+        when(manager.getDataServiceMock().intervalStart(any(IntervalInfo.class))).thenReturn(IntervalStartResponse.getDefaultInstance());
+
         Crawler crawler = manager.createCrawler();
         crawler.process();
 
@@ -138,6 +143,7 @@ public class CrawlerTest {
         Iterator<StreamResponse> iterator = new MessageSearchResponse(messages).iterator();
         when(manager.getDataProviderMock().searchMessages(any(MessageSearchRequest.class))).thenReturn(iterator);
         when(manager.getDataServiceMock().sendMessage(any(MessageDataRequest.class))).thenReturn(MessageResponse.getDefaultInstance());
+        when(manager.getDataServiceMock().intervalStart(any(IntervalInfo.class))).thenReturn(IntervalStartResponse.getDefaultInstance());
 
         crawler.process();
 
@@ -175,6 +181,7 @@ public class CrawlerTest {
                         MessageResponse.newBuilder()
                                 .addIds(createMessageID("alias1", Direction.SECOND, 3))
                                 .build());
+        when(manager.getDataServiceMock().intervalStart(any(IntervalInfo.class))).thenReturn(IntervalStartResponse.getDefaultInstance());
 
         crawler.process();
 
@@ -209,6 +216,7 @@ public class CrawlerTest {
         Iterator<StreamResponse> iterator = new MessageSearchResponse(messages).iterator();
         when(manager.getDataProviderMock().searchMessages(any(MessageSearchRequest.class))).thenReturn(iterator);
         when(manager.getDataServiceMock().sendMessage(any(MessageDataRequest.class))).thenReturn(MessageResponse.getDefaultInstance());
+        when(manager.getDataServiceMock().intervalStart(any(IntervalInfo.class))).thenReturn(IntervalStartResponse.getDefaultInstance());
 
         Assertions.assertThrows(IllegalStateException.class, crawler::process);
     }
@@ -236,6 +244,9 @@ public class CrawlerTest {
         CrawlerManager manager = new CrawlerManager(configuration);
         Crawler crawler = manager.createCrawler();
 
+        String dataProcessorName = "another_crawler";
+        String dataProcessorVersion = CrawlerManager.VERSION;
+
         when(manager.getDataServiceMock().crawlerConnect(any(CrawlerInfo.class)))
                 .thenReturn(DataProcessorInfo.newBuilder().setName("another_crawler").setVersion(CrawlerManager.VERSION).build());
 
@@ -249,7 +260,14 @@ public class CrawlerTest {
             return EventResponse.newBuilder().setId(eventID).setStatus(Status.newBuilder().setHandshakeRequired(true).build()).build();
         });
 
-        Assertions.assertThrows(UnexpectedDataProcessorException.class, crawler::process);
+        when(manager.getDataServiceMock().intervalStart(any(IntervalInfo.class))).thenReturn(
+                IntervalStartResponse.newBuilder().setStatus(Status.newBuilder().setHandshakeRequired(true).build()).build()
+        );
+
+        crawler.process();
+
+        Assertions.assertEquals(dataProcessorName, crawler.getProcessorInfo().getDataProcessorName());
+        Assertions.assertEquals(dataProcessorVersion, crawler.getProcessorInfo().getDataProcessorVersion());
     }
 
     @Test
