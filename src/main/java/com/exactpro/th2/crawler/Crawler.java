@@ -277,6 +277,7 @@ public class Crawler {
     private Report<IntervalStartReport> intervalStartForProcessor(DataProcessorService dataProcessor, Interval interval, RecoveryState state) {
         LOGGER.trace("Notifying about interval start (from {} to {})", interval.getStartTime(), interval.getEndTime());
         var intervalInfoBuilder = IntervalInfo.newBuilder()
+                .setId(crawlerId)
                 .setStartTime(toTimestamp(interval.getStartTime()))
                 .setEndTime(toTimestamp(interval.getEndTime()));
         typeStrategy.setupIntervalInfo(intervalInfoBuilder, state);
