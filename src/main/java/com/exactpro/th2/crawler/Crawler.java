@@ -178,6 +178,9 @@ public class Crawler {
                 processorInfo.setDataProcessorName(name);
                 processorInfo.setDataProcessorVersion(version);
                 from = getOrCreateInterval(name, version, crawlerType).interval.getStartTime();
+
+                LOGGER.info("Crawler received a handshake from {}:{} when it tried to send interval start request. " +
+                        "Further processing starts from {}", name, version, from);
             }
 
             Continuation continuation = state == null ? null : typeStrategy.continuationFromState(state);
