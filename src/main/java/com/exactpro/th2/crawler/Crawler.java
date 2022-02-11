@@ -171,16 +171,10 @@ public class Crawler {
             Report<IntervalStartReport> report = intervalStartForProcessor(dataProcessor, interval, state);
 
             if (report.getAction() == Action.HANDSHAKE) {
-                DataProcessorInfo info = crawlerConnect(dataProcessor, CrawlerInfo.newBuilder().setId(crawlerId).build());
-                String name = info.getName();
-                String version = info.getVersion();
-
-                processorInfo.setDataProcessorName(name);
-                processorInfo.setDataProcessorVersion(version);
-                from = getOrCreateInterval(name, version, crawlerType).interval.getStartTime();
+                ProcessorInfo info = handleHandshake();
 
                 LOGGER.info("Crawler received a handshake from {}:{} when it tried to send interval start request. " +
-                        "Further processing starts from {}", name, version, from);
+                        "Further processing starts from {}", info.getDataProcessorName(), info.getDataProcessorVersion(), from);
             }
 
             Continuation continuation = state == null ? null : typeStrategy.continuationFromState(state);
@@ -238,20 +232,8 @@ public class Crawler {
             Action action = sendingReport.getAction();
             switch (action) {
             case HANDSHAKE:
-                DataProcessorInfo info = crawlerConnect(dataProcessor, CrawlerInfo.newBuilder().setId(crawlerId).build());
-
-                String name = info.getName();
-                String version = info.getVersion();
-
-                if (!processorInfo.getDataProcessorName().equals(info.getName()) || !processorInfo.getDataProcessorVersion().equals(info.getVersion())) {
-                    processorInfo.setDataProcessorName(name);
-                    processorInfo.setDataProcessorVersion(version);
-                    from = getOrCreateInterval(name, version, crawlerType).interval.getStartTime();
-                    LOGGER.info("Got a new name and/or version of data-service. " +
-                            "Old name: " + name + ", old version: " + version + ". " +
-                            "New name: " + name + ", new version: " + version + ". Staring processing from " + from);
-                }
-                LOGGER.info("Got the same name ({}) and version ({}) from repeated crawlerConnect", name, version);
+                ProcessorInfo info = handleHandshake();
+                LOGGER.info("Got the same name ({}) and version ({}) from repeated crawlerConnect", info.getDataProcessorName(), info.getDataProcessorVersion());
                 break;
             case CONTINUE:
                 currentInt.processed(true, intervalsWorker);
@@ -480,6 +462,24 @@ public class Crawler {
         LOGGER.info("Crawler created interval from: {}, to: {}", newInterval.getStartTime(), newInterval.getEndTime());
 
         return new FetchIntervalReport(newInterval, sleepTime, true);
+    }
+
+    private ProcessorInfo handleHandshake() throws IOException {
+        DataProcessorInfo info = crawlerConnect(dataProcessor, CrawlerInfo.newBuilder().setId(crawlerId).build());
+        String name = info.getName();
+        String version = info.getVersion();
+
+        if (!processorInfo.getDataProcessorName().equals(info.getName()) || !processorInfo.getDataProcessorVersion().equals(info.getVersion())) {
+            processorInfo.setDataProcessorName(name);
+            processorInfo.setDataProcessorVersion(version);
+            from = getOrCreateInterval(name, version, crawlerType).interval.getStartTime();
+
+            LOGGER.info("Got a new name and/or version of data-service. " +
+                    "Old name: " + name + ", old version: " + version + ". " +
+                    "New name: " + name + ", new version: " + version + ". Staring processing from " + from);
+        }
+
+        return new ProcessorInfo(name, version);
     }
 
     private long getSleepTime(Instant from, Instant to) {
