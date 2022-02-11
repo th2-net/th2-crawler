@@ -16,25 +16,6 @@
 
 package com.exactpro.th2.crawler;
 
-import static com.exactpro.th2.common.message.MessageUtils.toTimestamp;
-import static java.lang.String.format;
-import static java.util.Objects.requireNonNull;
-import static java.util.Objects.requireNonNullElse;
-import static java.util.stream.Collectors.toUnmodifiableMap;
-
-import java.io.IOException;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import java.util.Map;
-import java.util.ServiceLoader;
-import java.util.Set;
-import java.util.function.BinaryOperator;
-
-import org.jetbrains.annotations.NotNull;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.exactpro.cradle.CradleStorage;
 import com.exactpro.cradle.intervals.Interval;
 import com.exactpro.cradle.intervals.IntervalsWorker;
@@ -44,6 +25,8 @@ import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerInfo;
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorInfo;
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService;
 import com.exactpro.th2.crawler.dataprocessor.grpc.IntervalInfo;
+import com.exactpro.th2.crawler.dataprocessor.grpc.IntervalStartResponse;
+import com.exactpro.th2.crawler.dataprocessor.grpc.Status;
 import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException;
 import com.exactpro.th2.crawler.exception.UnsupportedRecoveryStateException;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
@@ -55,6 +38,24 @@ import com.exactpro.th2.crawler.util.CrawlerTime;
 import com.exactpro.th2.crawler.util.CrawlerUtils;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import com.google.protobuf.Timestamp;
+import org.jetbrains.annotations.NotNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.Map;
+import java.util.ServiceLoader;
+import java.util.Set;
+import java.util.function.BinaryOperator;
+
+import static com.exactpro.th2.common.message.MessageUtils.toTimestamp;
+import static java.lang.String.format;
+import static java.util.Objects.requireNonNull;
+import static java.util.Objects.requireNonNullElse;
+import static java.util.stream.Collectors.toUnmodifiableMap;
 
 public class Crawler {
     private static final Logger LOGGER = LoggerFactory.getLogger(Crawler.class);
@@ -73,13 +74,13 @@ public class Crawler {
     private final boolean workAlone;
     private final DataType crawlerType;
     private final int batchSize;
-    private final DataProcessorInfo info;
     private final CrawlerId crawlerId;
     private final StateService<RecoveryState> stateService;
     private final CrawlerMetrics metrics;
     private final DataTypeStrategy<Continuation, DataPart> typeStrategy;
+    private final ProcessorInfo processorInfo;
 
-    private final Instant from;
+    private Instant from;
     private Instant to;
     private boolean reachedTo;
     private Instant lastIntervalCompatibilityChecked;
@@ -109,7 +110,8 @@ public class Crawler {
         this.crawlerId = CrawlerId.newBuilder().setName(configuration.getName()).build();
         this.sessionAliases = configuration.getSessionAliases();
         metrics = requireNonNull(crawlerContext.getMetrics(), "'metrics' must not be null");
-        info = crawlerConnect(dataProcessor, CrawlerInfo.newBuilder().setId(crawlerId).build());
+        DataProcessorInfo info = crawlerConnect(dataProcessor, CrawlerInfo.newBuilder().setId(crawlerId).build());
+        this.processorInfo = new ProcessorInfo(info.getName(), info.getVersion());
         // TODO: overrides value of configuration.maxOutgoingDataSize by info.maxOutgoingDataSize if the info's value is less than configuration
         Map<DataType, DataTypeStrategyFactory<Continuation, DataPart>> knownStrategies = loadStrategies();
         DataTypeStrategyFactory<Continuation, DataPart> factory = requireNonNull(knownStrategies.get(crawlerType),
@@ -147,11 +149,9 @@ public class Crawler {
         return metrics.measureTimeWithException(crawlerType, Method.HANDLE_INTERVAL, this::internalProcess);
     }
 
-    private Duration internalProcess() throws IOException, UnexpectedDataProcessorException {
-        String dataProcessorName = info.getName();
-        String dataProcessorVersion = info.getVersion();
-
-        FetchIntervalReport fetchIntervalReport = getOrCreateInterval(dataProcessorName, dataProcessorVersion, crawlerType);
+    private Duration internalProcess() throws IOException {
+        FetchIntervalReport fetchIntervalReport =
+                getOrCreateInterval(processorInfo.getDataProcessorName(), processorInfo.getDataProcessorVersion(), crawlerType);
 
         Interval interval = fetchIntervalReport.interval;
 
@@ -167,7 +167,15 @@ public class Crawler {
 
             InternalInterval currentInt = new InternalInterval(stateService, interval);
             RecoveryState state = currentInt.getState();
-            intervalStartForProcessor(dataProcessor, interval, state);
+
+            Report<IntervalStartReport> report = intervalStartForProcessor(dataProcessor, interval, state);
+
+            if (report.getAction() == Action.HANDSHAKE) {
+                ProcessorInfo info = handleHandshake();
+
+                LOGGER.info("Crawler received a handshake from {}:{} when it tried to send interval start request. " +
+                        "Further processing starts from {}", info.getDataProcessorName(), info.getDataProcessorVersion(), from);
+            }
 
             Continuation continuation = state == null ? null : typeStrategy.continuationFromState(state);
             DataParameters parameters = new DataParameters(crawlerId, sessionAliases);
@@ -187,7 +195,8 @@ public class Crawler {
                     sendingReport = typeStrategy.processData(dataProcessor, currentInt, parameters, nextPart, prevCheckpoint);
 
                     if (sendingReport.getAction() == Action.HANDSHAKE) {
-                        LOGGER.info("Handshake from {}:{} received. Stop processing", dataProcessorName, dataProcessorVersion);
+                        LOGGER.info("Handshake from {}:{} received. Stop processing",
+                                processorInfo.getDataProcessorName(), processorInfo.getDataProcessorVersion());
                         break;
                     }
 
@@ -223,13 +232,8 @@ public class Crawler {
             Action action = sendingReport.getAction();
             switch (action) {
             case HANDSHAKE:
-                DataProcessorInfo info = crawlerConnect(dataProcessor, CrawlerInfo.newBuilder().setId(crawlerId).build());
-                if (!dataProcessorName.equals(info.getName()) || !dataProcessorVersion.equals(info.getVersion())) {
-                    throw new UnexpectedDataProcessorException("Need to restart Crawler because of changed name and/or version of data-service. " +
-                            "Old name: " + dataProcessorName + ", old version: " + dataProcessorVersion + ". " +
-                            "New name: " + info.getName() + ", new version: " + info.getVersion());
-                }
-                LOGGER.info("Got the same name ({}) and version ({}) from repeated crawlerConnect", dataProcessorName, dataProcessorVersion);
+                ProcessorInfo info = handleHandshake();
+                LOGGER.info("Got the same name ({}) and version ({}) from repeated crawlerConnect", info.getDataProcessorName(), info.getDataProcessorVersion());
                 break;
             case CONTINUE:
                 currentInt.processed(true, intervalsWorker);
@@ -255,14 +259,24 @@ public class Crawler {
         return typeStrategy.requestData(startTime, endTime, parameters, continuation);
     }
 
-    private void intervalStartForProcessor(DataProcessorService dataProcessor, Interval interval, RecoveryState state) {
+    private Report<IntervalStartReport> intervalStartForProcessor(DataProcessorService dataProcessor, Interval interval, RecoveryState state) {
         LOGGER.trace("Notifying about interval start (from {} to {})", interval.getStartTime(), interval.getEndTime());
         var intervalInfoBuilder = IntervalInfo.newBuilder()
+                .setId(crawlerId)
                 .setStartTime(toTimestamp(interval.getStartTime()))
                 .setEndTime(toTimestamp(interval.getEndTime()));
         typeStrategy.setupIntervalInfo(intervalInfoBuilder, state);
-        dataProcessor.intervalStart(intervalInfoBuilder.build());
+        IntervalStartResponse response = dataProcessor.intervalStart(intervalInfoBuilder.build());
+
+        if (response.hasStatus()) {
+            if (response.getStatus().getHandshakeRequired()) {
+                return Report.handshake();
+            }
+        }
+
         metrics.processorMethodInvoked(ProcessorMethod.INTERVAL_START);
+
+        return Report.empty();
     }
 
     private GetIntervalReport getInterval(Iterable<Interval> intervals) throws IOException {
@@ -450,8 +464,30 @@ public class Crawler {
         return new FetchIntervalReport(newInterval, sleepTime, true);
     }
 
+    private ProcessorInfo handleHandshake() throws IOException {
+        DataProcessorInfo info = crawlerConnect(dataProcessor, CrawlerInfo.newBuilder().setId(crawlerId).build());
+        String name = info.getName();
+        String version = info.getVersion();
+
+        if (!processorInfo.getDataProcessorName().equals(info.getName()) || !processorInfo.getDataProcessorVersion().equals(info.getVersion())) {
+            processorInfo.setDataProcessorName(name);
+            processorInfo.setDataProcessorVersion(version);
+            from = getOrCreateInterval(name, version, crawlerType).interval.getStartTime();
+
+            LOGGER.info("Got a new name and/or version of data-service. " +
+                    "Old name: " + name + ", old version: " + version + ". " +
+                    "New name: " + name + ", new version: " + version + ". Staring processing from " + from);
+        }
+
+        return new ProcessorInfo(name, version);
+    }
+
     private long getSleepTime(Instant from, Instant to) {
         return Duration.between(from, to).abs().toMillis();
+    }
+
+    public ProcessorInfo getProcessorInfo() {
+        return processorInfo;
     }
 
     private static class GetIntervalReport {
@@ -475,6 +511,14 @@ public class Crawler {
             this.interval = interval;
             this.sleepTime = sleepTime;
             this.processFromStart = processFromStart;
+        }
+    }
+
+    private static class IntervalStartReport implements Continuation {
+        private final Status status;
+
+        public IntervalStartReport(Status status) {
+            this.status = status;
         }
     }
 }
