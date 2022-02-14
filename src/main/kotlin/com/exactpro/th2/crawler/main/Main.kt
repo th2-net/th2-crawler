@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2021 Exactpro (Exactpro Systems Limited)
+ * Copyright 2020-2022 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ import com.exactpro.th2.crawler.state.StateService
 import com.exactpro.th2.crawler.state.v1.RecoveryState
 import com.exactpro.th2.crawler.util.impl.CrawlerTimeImpl
 import com.exactpro.th2.dataprovider.grpc.DataProviderService
+import com.exactpro.th2.dataprovidermerger.grpc.MergerServiceImpl
 import mu.KotlinLogging
 import java.io.IOException
 import java.util.Deque
@@ -68,11 +69,11 @@ fun main(args: Array<String>) {
 
         val cradleManager = factory.cradleManager
 
+        val configuration = factory.getCustomConfiguration(CrawlerConfiguration::class.java)
+
         val grpcRouter = factory.grpcRouter
         val dataProcessor = grpcRouter.getService(DataProcessorService::class.java)
-        val dataProviderService = grpcRouter.getService(DataProviderService::class.java)
-
-        val configuration = factory.getCustomConfiguration(CrawlerConfiguration::class.java)
+        val dataProviderService = createDataProviderService(factory, configuration)
 
         // The BOX is alive
         LIVENESS_MONITOR.enable()
@@ -138,6 +139,14 @@ fun main(args: Array<String>) {
     } catch (ex: Exception) {
         LOGGER.error(ex) { "Cannot start Crawler" }
         exitProcess(1)
+    }
+}
+
+private fun createDataProviderService(commonFactory: CommonFactory, configuration: CrawlerConfiguration): DataProviderService {
+    return if (configuration.useSorter) {
+        MergerServiceImpl(commonFactory)
+    } else {
+        commonFactory.grpcRouter.getService(DataProviderService::class.java)
     }
 }
 
