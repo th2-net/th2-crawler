@@ -132,7 +132,7 @@ public class CrawlerManager {
 
     public static CrawlerConfiguration createConfig(String from, DataType dataType, Duration length, Set<String> sessions, int lagOffset, ChronoUnit lagOffsetUnit, int maxOutgoingDataSize) {
         return new CrawlerConfiguration(from, null, NAME,
-                dataType, length.toString(), 1, ChronoUnit.NANOS, 1, 10, lagOffset,
+                dataType, length.toString(), 1, ChronoUnit.NANOS, 1, lagOffset,
                 lagOffsetUnit, true, sessions, maxOutgoingDataSize);
     }
 

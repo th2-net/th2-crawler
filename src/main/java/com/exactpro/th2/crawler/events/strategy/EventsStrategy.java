@@ -90,12 +90,10 @@ public class EventsStrategy extends AbstractStrategy<ResumeEventId, EventPart> {
         requireNonNull(end, "'end' parameter");
         requireNonNull(parameters, "'parameters' parameter");
         EventID resumeId = getResumeId(prevResult);
-        int batchSize = config.getBatchSize();
         return new EventsCrawlerData(
                 CrawlerUtils.searchEvents(provider,
-                        new EventsSearchParameters(start, end, batchSize, resumeId), metrics),
+                        new EventsSearchParameters(start, end, resumeId), metrics),
                 parameters.getCrawlerId(),
-                batchSize,
                 config.getMaxOutgoingDataSize()
         );
     }

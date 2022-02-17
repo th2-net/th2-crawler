@@ -62,7 +62,6 @@ class TestMessagesCrawlerData {
             responses.iterator(), emptyMap(), CrawlerId.newBuilder()
                 .setName("test")
                 .build(),
-            100,
             oneMessageSize * 2 /*2 msg per request*/ + oneMessageSize / 2 /*for request*/
         ) { true }
 

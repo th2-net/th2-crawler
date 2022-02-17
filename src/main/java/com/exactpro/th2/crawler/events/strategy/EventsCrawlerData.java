@@ -40,8 +40,8 @@ import com.exactpro.th2.dataprovider.grpc.EventSearchResponse;
 public class EventsCrawlerData extends AbstractCrawlerData<EventSearchResponse, ResumeEventId, EventPart, EventResponse> {
     private EventResponse lastEvent;
 
-    public EventsCrawlerData(Iterator<EventSearchResponse> data, CrawlerId id, int limit, int maxSize) {
-        super(data, id, limit, maxSize);
+    public EventsCrawlerData(Iterator<EventSearchResponse> data, CrawlerId id,  int maxSize) {
+        super(data, id, maxSize);
     }
 
     @Nullable

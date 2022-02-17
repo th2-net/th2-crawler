@@ -77,8 +77,7 @@ public class CrawlerUtils {
         EventSearchRequest.Builder eventSearchBuilder = EventSearchRequest.newBuilder()
                 .setMetadataOnly(METADATA_ONLY)
                 .setStartTimestamp(info.from)
-                .setEndTimestamp(info.to)
-                .setResultCountLimit(Int32Value.of(info.batchSize));
+                .setEndTimestamp(info.to);
 
         EventSearchRequest request;
         if (info.resumeId == null) {
@@ -103,8 +102,12 @@ public class CrawlerUtils {
         if (info.getTo() != null) {
             messageSearchBuilder.setEndTimestamp(info.getTo());
         }
-        messageSearchBuilder.setResultCountLimit(Int32Value.of(info.getBatchSize()))
-                .setSearchDirection(requireNonNullElse(info.getTimeRelation(), TimeRelation.NEXT));
+
+        Integer limit = info.getBatchSize();
+        if (limit != null) {
+            messageSearchBuilder.setResultCountLimit(Int32Value.of(limit));
+        }
+        messageSearchBuilder.setSearchDirection(requireNonNullElse(info.getTimeRelation(), TimeRelation.NEXT));
         if (info.getAliases() != null) {
             var builder = MessageStream.newBuilder();
             for (String alias : info.getAliases()) {
@@ -221,14 +224,11 @@ public class CrawlerUtils {
     public static class EventsSearchParameters {
         private final Timestamp from;
         private final Timestamp to;
-        private final int batchSize;
         private final EventID resumeId;
 
-        public EventsSearchParameters(Timestamp from, Timestamp to,
-                                      int batchSize, EventID resumeId) {
+        public EventsSearchParameters(Timestamp from, Timestamp to, EventID resumeId) {
             this.from = Objects.requireNonNull(from, "Timestamp 'from' must not be null");
             this.to = Objects.requireNonNull(to, "Timestamp 'to' must not be null");
-            this.batchSize = batchSize;
             this.resumeId = resumeId;
         }
     }

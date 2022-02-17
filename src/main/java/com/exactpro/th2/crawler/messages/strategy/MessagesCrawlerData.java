@@ -51,9 +51,9 @@ public class MessagesCrawlerData extends AbstractCrawlerData<MessageSearchRespon
     private final Predicate<Message> acceptMessages;
     private ResumeMessageIDs resumeMessageIDs;
 
-    public MessagesCrawlerData(Iterator<MessageSearchResponse> data, Map<StreamKey, MessageID> startIDs, CrawlerId id, int limit, int maxSize,
+    public MessagesCrawlerData(Iterator<MessageSearchResponse> data, Map<StreamKey, MessageID> startIDs, CrawlerId id, int maxSize,
                                Predicate<Message> acceptMessages) {
-        super(data, id, limit, maxSize);
+        super(data, id, maxSize);
         this.startIDs = requireNonNull(startIDs, "'Start ids' parameter");
         this.acceptMessages = requireNonNull(acceptMessages, "'Accept messages' parameter");
     }

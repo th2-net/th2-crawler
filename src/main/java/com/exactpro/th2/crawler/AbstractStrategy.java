@@ -49,7 +49,6 @@ public abstract class AbstractStrategy<C extends Continuation, P extends DataPar
 
         private final Iterator<S> data;
         private final Deque<VALUE> cache = new ArrayDeque<>();
-        private final int limit;
         private final int maxSize;
         private final CrawlerId crawlerId;
         private int elements;
@@ -57,12 +56,8 @@ public abstract class AbstractStrategy<C extends Continuation, P extends DataPar
         private int dropped;
         private boolean finished;
 
-        protected AbstractCrawlerData(Iterator<S> data, CrawlerId id, int limit, int maxSize) {
+        protected AbstractCrawlerData(Iterator<S> data, CrawlerId id, int maxSize) {
             this.data = Objects.requireNonNull(data, "'Data' parameter");
-            if (limit <= 0) {
-                throw new IllegalArgumentException("not positive limit " + limit);
-            }
-            this.limit = limit;
             if (maxSize <= 0) {
                 throw new IllegalArgumentException("not positive maxSize " + maxSize);
             }
@@ -152,12 +147,6 @@ public abstract class AbstractStrategy<C extends Continuation, P extends DataPar
         public final boolean getHasData() {
             assertFinished();
             return elements > 0;
-        }
-
-        @Override
-        public final boolean isNeedsNextRequest() {
-            assertFinished();
-            return elements == limit;
         }
 
         @Override

@@ -40,8 +40,6 @@ class CrawlerConfiguration @JvmOverloads constructor(
     @JsonProperty
     val delay: Long = 10,
     @JsonProperty
-    val batchSize: Int = 300,
-    @JsonProperty
     val toLag: Int = 1,
     @JsonProperty
     val toLagOffsetUnit: ChronoUnit = ChronoUnit.HOURS,

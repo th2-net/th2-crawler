@@ -86,7 +86,6 @@ interface DataPart {
 }
 
 interface CrawlerData<C : Continuation, D : DataPart> : Iterator<D> {
-    val isNeedsNextRequest: Boolean
     val hasData: Boolean
     val continuation: C?
     fun size(): Int

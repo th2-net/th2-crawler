@@ -151,11 +151,9 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
         requireNonNull(parameters, "'parameters' parameter");
         Map<StreamKey, MessageID> resumeIds = continuation == null ? null : continuation.getIds();
         Map<StreamKey, MessageID> startIDs = resumeIds == null ? initialStartIds(start, parameters.getSessionAliases()) : resumeIds;
-        int batchSize = config.getBatchSize();
         MessagesSearchParameters searchParams = MessagesSearchParameters.builder()
                 .setFrom(start)
                 .setTo(end)
-                .setBatchSize(batchSize)
                 .setResumeIds(resumeIds)
                 .setAliases(parameters.getSessionAliases())
                 .build();
@@ -165,7 +163,6 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
                 CrawlerUtils.searchMessages(provider, searchParams, metrics),
                 startIDs,
                 parameters.getCrawlerId(),
-                batchSize,
                 config.getMaxOutgoingDataSize(),
                 msg -> filter == null || filter.accept(msg.getMetadata().getMessageType())
         );
