@@ -31,7 +31,6 @@ import org.slf4j.LoggerFactory;
 import com.exactpro.th2.crawler.AbstractStrategy.AbstractCrawlerData.SizableDataPart;
 import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
-import com.exactpro.th2.dataprovider.grpc.StreamResponse;
 import com.google.common.collect.AbstractIterator;
 import com.google.protobuf.Message;
 
@@ -42,13 +41,13 @@ public abstract class AbstractStrategy<C extends Continuation, P extends DataPar
         this.metrics = Objects.requireNonNull(metrics, "'Metrics' parameter");
     }
 
-    public abstract static class AbstractCrawlerData<C extends Continuation, DATA extends SizableDataPart<VALUE>, VALUE extends Message>
+    public abstract static class AbstractCrawlerData<S, C extends Continuation, DATA extends SizableDataPart<VALUE>, VALUE extends Message>
             extends AbstractIterator<DATA>
             implements CrawlerData<C, DATA> {
 
         private static final Logger LOGGER = LoggerFactory.getLogger(AbstractCrawlerData.class);
 
-        private final Iterator<StreamResponse> data;
+        private final Iterator<S> data;
         private final Deque<VALUE> cache = new ArrayDeque<>();
         private final int limit;
         private final int maxSize;
@@ -58,7 +57,7 @@ public abstract class AbstractStrategy<C extends Continuation, P extends DataPar
         private int dropped;
         private boolean finished;
 
-        protected AbstractCrawlerData(Iterator<StreamResponse> data, CrawlerId id, int limit, int maxSize) {
+        protected AbstractCrawlerData(Iterator<S> data, CrawlerId id, int limit, int maxSize) {
             this.data = Objects.requireNonNull(data, "'Data' parameter");
             if (limit <= 0) {
                 throw new IllegalArgumentException("not positive limit " + limit);
@@ -74,20 +73,21 @@ public abstract class AbstractStrategy<C extends Continuation, P extends DataPar
         @Override
         protected final DATA computeNext() {
             while (data.hasNext()) {
-                StreamResponse response = data.next();
+                S response = data.next();
                 updateState(response);
                 VALUE value = extractValue(response);
                 if (value != null) {
                     elements++;
-                    if (dropValue(value)) {
+                    VALUE filtered = filterValue(value);
+                    if (filtered == null) {
                         dropped++;
                         if (LOGGER.isTraceEnabled()) {
-                            LOGGER.trace("Value with ID {} was dropped", extractId(value));
+                            LOGGER.trace("Value with ID {} was dropped. Values inside: {}", extractId(value), extractCount(value));
                         }
                         continue;
                     }
-                    cache.addLast(value);
-                    currentValuesSize += value.getSerializedSize();
+                    cache.addLast(filtered);
+                    currentValuesSize += filtered.getSerializedSize();
                     if (currentValuesSize >= maxSize) {
                         return createDataPart(cache);
                     }
@@ -103,8 +103,9 @@ public abstract class AbstractStrategy<C extends Continuation, P extends DataPar
             return endOfData();
         }
 
-        protected boolean dropValue(VALUE value) {
-            return false;
+        @Nullable
+        protected VALUE filterValue(VALUE value) {
+            return value;
         }
 
         @NotNull
@@ -129,10 +130,12 @@ public abstract class AbstractStrategy<C extends Continuation, P extends DataPar
 
         protected abstract String extractId(VALUE last);
 
-        protected abstract void updateState(StreamResponse response);
+        protected abstract void updateState(S response);
 
         @Nullable
-        protected abstract VALUE extractValue(StreamResponse response);
+        protected abstract VALUE extractValue(S response);
+
+        protected abstract int extractCount(VALUE value);
 
         protected abstract DATA buildDataPart(CrawlerId crawlerId, Collection<VALUE> values);
 

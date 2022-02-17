@@ -22,16 +22,16 @@ import com.exactpro.cradle.intervals.Interval;
 import com.exactpro.th2.common.grpc.Direction;
 import com.exactpro.th2.crawler.DataType;
 import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException;
-import com.exactpro.th2.dataprovider.grpc.EventData;
-import com.exactpro.th2.dataprovider.grpc.MessageData;
+import com.exactpro.th2.dataprovider.grpc.EventResponse;
+import com.exactpro.th2.dataprovider.grpc.MessageGroupResponse;
 
 public interface CrawlerMetrics {
 
-    void lastMessage(String alias, Direction direction, MessageData messageData);
+    void lastMessage(String alias, Direction direction, MessageGroupResponse messageData);
 
     void currentInterval(Interval interval);
 
-    void lastEvent(EventData event);
+    void lastEvent(EventResponse event);
 
     void processorMethodInvoked(ProcessorMethod method);
 

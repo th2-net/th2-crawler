@@ -22,7 +22,6 @@ import java.time.Instant;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Objects;
 
 import org.jetbrains.annotations.Nullable;
 
@@ -35,38 +34,37 @@ import com.exactpro.th2.crawler.dataprocessor.grpc.EventDataRequest;
 import com.exactpro.th2.crawler.events.strategy.EventsCrawlerData.EventPart;
 import com.exactpro.th2.crawler.events.strategy.EventsCrawlerData.ResumeEventId;
 import com.exactpro.th2.crawler.util.CrawlerUtils;
-import com.exactpro.th2.dataprovider.grpc.EventData;
-import com.exactpro.th2.dataprovider.grpc.MessageData;
-import com.exactpro.th2.dataprovider.grpc.StreamResponse;
+import com.exactpro.th2.dataprovider.grpc.EventResponse;
+import com.exactpro.th2.dataprovider.grpc.EventSearchResponse;
 
-public class EventsCrawlerData extends AbstractCrawlerData<ResumeEventId, EventPart, EventData> {
-    private EventData lastEvent;
+public class EventsCrawlerData extends AbstractCrawlerData<EventSearchResponse, ResumeEventId, EventPart, EventResponse> {
+    private EventResponse lastEvent;
 
-    public EventsCrawlerData(Iterator<StreamResponse> data, CrawlerId id, int limit, int maxSize) {
+    public EventsCrawlerData(Iterator<EventSearchResponse> data, CrawlerId id, int limit, int maxSize) {
         super(data, id, limit, maxSize);
     }
 
     @Nullable
     @Override
     public ResumeEventId getContinuationInternal() {
-        EventData data = lastEvent;
+        EventResponse data = lastEvent;
         return data == null ? null : resumeIdFromEvent(data);
     }
 
     @Override
-    protected String extractId(EventData last) {
+    protected String extractId(EventResponse last) {
         return MessageUtils.toJson(last.getEventId());
     }
 
     @Override
-    protected void updateState(StreamResponse response) {
+    protected void updateState(EventSearchResponse response) {
         if (response.hasEvent()) {
             lastEvent = response.getEvent();
         }
     }
 
     @Override
-    protected @Nullable EventData extractValue(StreamResponse response) {
+    protected @Nullable EventResponse extractValue(EventSearchResponse response) {
         if (response.hasEvent()) {
             return response.getEvent();
         }
@@ -74,19 +72,24 @@ public class EventsCrawlerData extends AbstractCrawlerData<ResumeEventId, EventP
     }
 
     @Override
-    protected EventPart buildDataPart(CrawlerId crawlerId, Collection<EventData> eventData) {
+    protected int extractCount(EventResponse eventResponse) {
+        return 1;
+    }
+
+    @Override
+    protected EventPart buildDataPart(CrawlerId crawlerId, Collection<EventResponse> eventData) {
         return new EventPart(crawlerId, eventData);
     }
 
-    public static ResumeEventId resumeIdFromEvent(EventData data) {
+    public static ResumeEventId resumeIdFromEvent(EventResponse data) {
         return new ResumeEventId(data.getEventId(), CrawlerUtils.fromTimestamp(data.getStartTimestamp()));
     }
 
-    public static class EventPart implements SizableDataPart<EventData> {
+    public static class EventPart implements SizableDataPart<EventResponse> {
         private final EventDataRequest.Builder builder;
         private EventDataRequest request;
 
-        private EventPart(CrawlerId id, Collection<EventData> data) {
+        private EventPart(CrawlerId id, Collection<EventResponse> data) {
             this.builder = EventDataRequest.newBuilder()
                     .setId(id)
                     .addAllEventData(data);
@@ -103,13 +106,13 @@ public class EventsCrawlerData extends AbstractCrawlerData<ResumeEventId, EventP
         }
 
         @Override
-        public @Nullable EventData pullLast() {
-            List<EventData> dataList = builder.getEventDataList();
+        public @Nullable EventResponse pullLast() {
+            List<EventResponse> dataList = builder.getEventDataList();
             if (dataList.isEmpty()) {
                 return null;
             }
             int lastIndex = dataList.size() - 1;
-            EventData last = dataList.get(lastIndex);
+            EventResponse last = dataList.get(lastIndex);
             builder.removeEventData(lastIndex);
             request = builder.build();
             return last;

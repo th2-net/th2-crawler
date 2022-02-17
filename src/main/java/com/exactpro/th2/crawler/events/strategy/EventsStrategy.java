@@ -39,10 +39,8 @@ import com.exactpro.th2.crawler.DataParameters;
 import com.exactpro.th2.crawler.DataType;
 import com.exactpro.th2.crawler.InternalInterval;
 import com.exactpro.th2.crawler.Report;
-import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId;
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService;
 import com.exactpro.th2.crawler.dataprocessor.grpc.EventDataRequest;
-import com.exactpro.th2.crawler.dataprocessor.grpc.EventResponse;
 import com.exactpro.th2.crawler.dataprocessor.grpc.IntervalInfo.Builder;
 import com.exactpro.th2.crawler.events.strategy.EventsCrawlerData.EventPart;
 import com.exactpro.th2.crawler.events.strategy.EventsCrawlerData.ResumeEventId;
@@ -54,7 +52,7 @@ import com.exactpro.th2.crawler.state.v1.RecoveryState;
 import com.exactpro.th2.crawler.util.CrawlerUtils;
 import com.exactpro.th2.crawler.util.CrawlerUtils.EventsSearchParameters;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
-import com.exactpro.th2.dataprovider.grpc.EventData;
+import com.exactpro.th2.dataprovider.grpc.EventResponse;
 import com.google.protobuf.Timestamp;
 
 import kotlin.Pair;
@@ -119,13 +117,13 @@ public class EventsStrategy extends AbstractStrategy<ResumeEventId, EventPart> {
 
         EventDataRequest eventRequest = data.getRequest();
 
-        List<EventData> events = eventRequest.getEventDataList();
+        List<EventResponse> events = eventRequest.getEventDataList();
         if (events.isEmpty()) {
             LOGGER.info("No more events in interval from: {}, to: {}", original.getStartTime(), original.getEndTime());
             return Report.empty();
         }
 
-        EventResponse response = sendEventsToProcessor(processor, eventRequest);
+        com.exactpro.th2.crawler.dataprocessor.grpc.EventResponse response = sendEventsToProcessor(processor, eventRequest);
 
         if (response.hasStatus()) {
             if (response.getStatus().getHandshakeRequired()) {
@@ -141,7 +139,7 @@ public class EventsStrategy extends AbstractStrategy<ResumeEventId, EventPart> {
 
         ResumeEventId continuation = null;
         if (hasCheckpoint) {
-            EventData checkpointEvent = countAndCheckpoint.getSecond();
+            EventResponse checkpointEvent = countAndCheckpoint.getSecond();
             if (checkpointEvent != null) {
                 Instant startTimeStamp = CrawlerUtils.fromTimestamp(checkpointEvent.getStartTimestamp());
                 continuation = new ResumeEventId(checkpointEvent.getEventId(), startTimeStamp);
@@ -184,19 +182,19 @@ public class EventsStrategy extends AbstractStrategy<ResumeEventId, EventPart> {
         );
     }
 
-    private EventResponse sendEventsToProcessor(DataProcessorService dataProcessor, EventDataRequest eventRequest) {
-        EventResponse response = metrics.measureTime(DataType.EVENTS, Method.PROCESS_DATA, () -> dataProcessor.sendEvent(eventRequest));
+    private com.exactpro.th2.crawler.dataprocessor.grpc.EventResponse sendEventsToProcessor(DataProcessorService dataProcessor, EventDataRequest eventRequest) {
+        com.exactpro.th2.crawler.dataprocessor.grpc.EventResponse response = metrics.measureTime(DataType.EVENTS, Method.PROCESS_DATA, () -> dataProcessor.sendEvent(eventRequest));
         metrics.processorMethodInvoked(ProcessorMethod.SEND_EVENT);
         return response;
     }
 
-    private Pair<@NotNull Integer, @Nullable EventData> processServiceResponse(@Nullable EventID checkpoint, List<EventData> events) {
+    private Pair<@NotNull Integer, @Nullable EventResponse> processServiceResponse(@Nullable EventID checkpoint, List<EventResponse> events) {
         if (checkpoint == null) {
             return new Pair<>(events.size(), null);
         }
         int processed = 0;
-        EventData checkpointEvent = null;
-        for (EventData event : events) {
+        EventResponse checkpointEvent = null;
+        for (EventResponse event : events) {
             if (checkpointEvent == null) {
                 processed++;
             }
@@ -208,10 +206,6 @@ public class EventsStrategy extends AbstractStrategy<ResumeEventId, EventPart> {
             metrics.lastEvent(events.get(events.size() - 1));
         }
         return new Pair<>(processed, checkpointEvent);
-    }
-
-    private static ResumeEventId resumeIdFromEvent(EventData data) {
-        return new ResumeEventId(data.getEventId(), CrawlerUtils.fromTimestamp(data.getStartTimestamp()));
     }
 
     @Nullable

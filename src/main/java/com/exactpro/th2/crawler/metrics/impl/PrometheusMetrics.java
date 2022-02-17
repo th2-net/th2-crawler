@@ -26,8 +26,8 @@ import com.exactpro.th2.crawler.DataType;
 import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
 import com.exactpro.th2.crawler.util.CrawlerUtils;
-import com.exactpro.th2.dataprovider.grpc.EventData;
-import com.exactpro.th2.dataprovider.grpc.MessageData;
+import com.exactpro.th2.dataprovider.grpc.EventResponse;
+import com.exactpro.th2.dataprovider.grpc.MessageGroupResponse;
 
 import io.prometheus.client.Counter;
 import io.prometheus.client.Gauge;
@@ -83,7 +83,7 @@ public class PrometheusMetrics implements CrawlerMetrics {
     //endregion
 
     @Override
-    public void lastMessage(String alias, Direction direction, MessageData messageData) {
+    public void lastMessage(String alias, Direction direction, MessageGroupResponse messageData) {
         String[] labels = {alias, direction.name()};
         lastMessageSequence
                 .labels(labels)
@@ -99,7 +99,7 @@ public class PrometheusMetrics implements CrawlerMetrics {
     }
 
     @Override
-    public void lastEvent(EventData event) {
+    public void lastEvent(EventResponse event) {
         lastEventTimestamp.set(CrawlerUtils.fromTimestamp(event.getStartTimestamp()).toEpochMilli());
     }
 

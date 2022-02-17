@@ -20,10 +20,8 @@ import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.Direction.FIRST
 import com.exactpro.th2.common.grpc.Direction.SECOND
 import com.exactpro.th2.common.message.toTimestamp
-import com.exactpro.th2.crawler.dataprocessor.grpc.MessageDataRequest
-import com.exactpro.th2.crawler.dataprocessor.grpc.MessageDataRequest.Builder
-import com.exactpro.th2.dataprovider.grpc.MessageData
-import com.exactpro.th2.dataprovider.grpc.StreamsInfo
+import com.exactpro.th2.dataprovider.grpc.MessageGroupResponse
+import com.exactpro.th2.dataprovider.grpc.MessageStreamPointers
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 import java.time.Instant
@@ -32,7 +30,7 @@ class CrawlerUtilTest {
 
     @Test
     fun `search result of message data toCompactString test`() {
-        val compactString = SearchResult<MessageData>(listOf(
+        val compactString = SearchResult(listOf(
             /*
              A:FIRST ordered
              A:SECOND only one
@@ -48,7 +46,7 @@ class CrawlerUtilTest {
             createMessageData("B", FIRST, 32, "1970-01-01T00:00:04Z"),
             createMessageData("C", FIRST, 41, "1970-01-01T00:00:06Z"),
             createMessageData("C", FIRST, 42, "1970-01-01T00:00:05Z"),
-        ), StreamsInfo.getDefaultInstance()).toCompactString()
+        ), MessageStreamPointers.getDefaultInstance()).toCompactString()
 
         Assertions.assertEquals("""
             Search result: 
@@ -76,14 +74,15 @@ class CrawlerUtilTest {
         """.trimIndent(), compactString)
     }
 
-    private fun createMessageData(sessionAlias: String, direction: Direction, sequence: Long, timestamp: String) = MessageData.newBuilder().apply {
-        this.timestamp = Instant.parse(timestamp).toTimestamp()
-        messageIdBuilder.apply {
-            this.direction = direction
-            this.sequence = sequence
-            connectionIdBuilder.apply {
-                this.sessionAlias = sessionAlias
+    private fun createMessageData(sessionAlias: String, direction: Direction, sequence: Long, timestamp: String): MessageGroupResponse =
+        MessageGroupResponse.newBuilder().apply {
+            this.timestamp = Instant.parse(timestamp).toTimestamp()
+            messageIdBuilder.apply {
+                this.direction = direction
+                this.sequence = sequence
+                connectionIdBuilder.apply {
+                    this.sessionAlias = sessionAlias
+                }
             }
-        }
-    }.build()
+        }.build()
 }

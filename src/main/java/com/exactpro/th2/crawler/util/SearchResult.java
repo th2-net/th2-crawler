@@ -19,23 +19,23 @@ package com.exactpro.th2.crawler.util;
 import java.util.List;
 import java.util.Objects;
 
-import com.exactpro.th2.dataprovider.grpc.StreamsInfo;
+import com.exactpro.th2.dataprovider.grpc.MessageStreamPointers;
 import com.google.protobuf.MessageOrBuilder;
 
 public class SearchResult<T extends MessageOrBuilder> {
     private final List<T> data;
-    private final StreamsInfo streamsInfo;
+    private final MessageStreamPointers pointers;
 
-    public SearchResult(List<T> data, StreamsInfo streamsInfo) {
+    public SearchResult(List<T> data, MessageStreamPointers pointers) {
         this.data = Objects.requireNonNull(data, "'Data' parameter");
-        this.streamsInfo = streamsInfo;
+        this.pointers = pointers;
     }
 
     public List<T> getData() {
         return data;
     }
 
-    public StreamsInfo getStreamsInfo() {
-        return streamsInfo;
+    public MessageStreamPointers getPointers() {
+        return pointers;
     }
 }
