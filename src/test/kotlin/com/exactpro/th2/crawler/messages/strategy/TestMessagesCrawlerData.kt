@@ -19,30 +19,34 @@ import com.exactpro.th2.common.grpc.ConnectionID
 import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.Message
 import com.exactpro.th2.common.grpc.MessageID
+import com.exactpro.th2.common.message.toTimestamp
+import com.exactpro.th2.crawler.createMessageID
 import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId
 import com.exactpro.th2.crawler.state.v1.StreamKey
-import com.exactpro.th2.dataprovider.grpc.MessageData
-import com.exactpro.th2.dataprovider.grpc.Stream
-import com.exactpro.th2.dataprovider.grpc.StreamResponse
-import com.exactpro.th2.dataprovider.grpc.StreamsInfo
+import com.exactpro.th2.dataprovider.grpc.MessageGroupItem
+import com.exactpro.th2.dataprovider.grpc.MessageGroupResponse
+import com.exactpro.th2.dataprovider.grpc.MessageSearchResponse
+import com.exactpro.th2.dataprovider.grpc.MessageStream
+import com.exactpro.th2.dataprovider.grpc.MessageStreamPointer
+import com.exactpro.th2.dataprovider.grpc.MessageStreamPointers
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
+import java.time.Instant
 
 class TestMessagesCrawlerData {
-    private val responses: Collection<StreamResponse> =
-        ArrayList<StreamResponse>().apply {
+    private val responses: Collection<MessageSearchResponse> =
+        ArrayList<MessageSearchResponse>().apply {
             repeat(10) {
                 add(message(it.toLong()))
             }
             val allIds = this.mapNotNull { if (it.hasMessage()) it.message.messageId else null }
             add(
-                StreamResponse.newBuilder()
-                    .setStreamInfo(StreamsInfo.newBuilder()
-                        .addAllStreams(allIds.groupBy { it.run { connectionId.sessionAlias to direction } }.map { (key, ids) ->
+                MessageSearchResponse.newBuilder()
+                    .setMessageStreamPointers(MessageStreamPointers.newBuilder()
+                        .addAllMessageStreamPointer(allIds.groupBy { it.run { connectionId.sessionAlias to direction } }.map { (key, ids) ->
                             val (alias, direction) = key
-                            Stream.newBuilder()
-                                .setDirection(direction)
-                                .setSession(alias)
+                            MessageStreamPointer.newBuilder()
+                                .setMessageStream(MessageStream.newBuilder().setName(alias).setDirection(direction))
                                 .setLastId(requireNotNull(ids.maxByOrNull { it.sequence }))
                                 .build()
                         })
@@ -58,7 +62,6 @@ class TestMessagesCrawlerData {
             responses.iterator(), emptyMap(), CrawlerId.newBuilder()
                 .setName("test")
                 .build(),
-            100,
             oneMessageSize * 2 /*2 msg per request*/ + oneMessageSize / 2 /*for request*/
         ) { true }
 
@@ -79,25 +82,22 @@ class TestMessagesCrawlerData {
         )
     }
 
-    private fun message(sequence: Long, alias: String = "test", name: String = "test_message"): StreamResponse {
+    private fun message(sequence: Long, alias: String = "test", name: String = "test_message"): MessageSearchResponse {
         val direction = Direction.FIRST
-        val messageID = MessageID.newBuilder()
-            .setDirection(direction)
-            .setSequence(sequence)
-            .setConnectionId(ConnectionID.newBuilder().setSessionAlias(alias))
-            .build()
-        return StreamResponse.newBuilder()
-            .setMessage(MessageData.newBuilder()
-                .setDirection(direction)
+        val messageID = createMessageID(alias, direction, sequence)
+        return MessageSearchResponse.newBuilder()
+            .setMessage(
+                MessageGroupResponse.newBuilder()
                 .setMessageId(messageID)
-                .setMessage(Message.newBuilder().apply {
-                    metadataBuilder.apply {
-                        id = messageID
-                        messageType = name
-                    }
-                })
-                .setSessionId(messageID.connectionId)
-                .setMessageType(name)
+                    .addMessageItem(MessageGroupItem.newBuilder()
+                        .setMessage(Message.newBuilder().apply {
+                            metadataBuilder.apply {
+                                id = messageID
+                                messageType = name
+                            }
+                        })
+                    )
+                .setTimestamp(Instant.now().toTimestamp())
                 .build())
             .build()
     }

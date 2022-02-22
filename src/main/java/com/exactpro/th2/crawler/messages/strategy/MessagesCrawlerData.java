@@ -31,6 +31,7 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.exactpro.th2.common.grpc.Message;
 import com.exactpro.th2.common.grpc.MessageID;
 import com.exactpro.th2.common.message.MessageUtils;
 import com.exactpro.th2.crawler.AbstractStrategy.AbstractCrawlerData;
@@ -40,36 +41,50 @@ import com.exactpro.th2.crawler.dataprocessor.grpc.MessageDataRequest;
 import com.exactpro.th2.crawler.messages.strategy.MessagesCrawlerData.MessagePart;
 import com.exactpro.th2.crawler.messages.strategy.MessagesCrawlerData.ResumeMessageIDs;
 import com.exactpro.th2.crawler.state.v1.StreamKey;
-import com.exactpro.th2.dataprovider.grpc.MessageData;
-import com.exactpro.th2.dataprovider.grpc.StreamResponse;
+import com.exactpro.th2.dataprovider.grpc.MessageGroupItem;
+import com.exactpro.th2.dataprovider.grpc.MessageGroupResponse;
+import com.exactpro.th2.dataprovider.grpc.MessageSearchResponse;
 
-public class MessagesCrawlerData extends AbstractCrawlerData<ResumeMessageIDs, MessagePart, MessageData> {
+public class MessagesCrawlerData extends AbstractCrawlerData<MessageSearchResponse, ResumeMessageIDs, MessagePart, MessageGroupResponse> {
     private static final Logger LOGGER = LoggerFactory.getLogger(MessagesCrawlerData.class);
     private final Map<StreamKey, MessageID> startIDs;
-    private final Predicate<MessageData> acceptMessages;
+    private final Predicate<Message> acceptMessages;
     private ResumeMessageIDs resumeMessageIDs;
 
-    public MessagesCrawlerData(Iterator<StreamResponse> data, Map<StreamKey, MessageID> startIDs, CrawlerId id, int limit, int maxSize,
-                               Predicate<MessageData> acceptMessages) {
-        super(data, id, limit, maxSize);
+    public MessagesCrawlerData(Iterator<MessageSearchResponse> data, Map<StreamKey, MessageID> startIDs, CrawlerId id, int maxSize,
+                               Predicate<Message> acceptMessages) {
+        super(data, id, maxSize);
         this.startIDs = requireNonNull(startIDs, "'Start ids' parameter");
         this.acceptMessages = requireNonNull(acceptMessages, "'Accept messages' parameter");
     }
 
+    @Nullable
     @Override
-    protected boolean dropValue(MessageData messageData) {
-        return !acceptMessages.test(messageData);
+    protected MessageGroupResponse filterValue(MessageGroupResponse messageData) {
+        if (messageData.getMessageItemCount() == 0) {
+            return messageData;
+        }
+        List<MessageGroupItem> accepted = messageData.getMessageItemList().stream()
+                .filter(it -> acceptMessages.test(it.getMessage()))
+                .collect(Collectors.toList());
+        if (accepted.isEmpty()) {
+            return null;
+        }
+        if (accepted.size() == messageData.getMessageItemCount()) {
+            return messageData;
+        }
+        return messageData.toBuilder().clearMessageItem().addAllMessageItem(accepted).build();
     }
 
     @Override
-    protected String extractId(MessageData last) {
+    protected String extractId(MessageGroupResponse last) {
         return MessageUtils.toJson(last.getMessageId());
     }
 
     @Override
-    protected void updateState(StreamResponse response) {
-        if (response.hasStreamInfo()) {
-            Map<StreamKey, MessageID> resumeMessageIDs = MessagesStrategy.collectResumeIDs(response.getStreamInfo());
+    protected void updateState(MessageSearchResponse response) {
+        if (response.hasMessageStreamPointers()) {
+            Map<StreamKey, MessageID> resumeMessageIDs = MessagesStrategy.collectResumeIDs(response.getMessageStreamPointers());
             Map<StreamKey, MessageID> resumeIds = new HashMap<>(startIDs);
             MessagesStrategy.putAndCheck(resumeMessageIDs, resumeIds, "collect next resume IDs from crawler data", LOGGER);
             if (LOGGER.isDebugEnabled()) {
@@ -82,7 +97,7 @@ public class MessagesCrawlerData extends AbstractCrawlerData<ResumeMessageIDs, M
     }
 
     @Override
-    protected @Nullable MessageData extractValue(StreamResponse response) {
+    protected @Nullable MessageGroupResponse extractValue(MessageSearchResponse response) {
         if (response.hasMessage()) {
             return response.getMessage();
         }
@@ -90,7 +105,12 @@ public class MessagesCrawlerData extends AbstractCrawlerData<ResumeMessageIDs, M
     }
 
     @Override
-    protected MessagePart buildDataPart(CrawlerId crawlerId, Collection<MessageData> messageData) {
+    protected int extractCount(MessageGroupResponse value) {
+        return value.getMessageItemCount();
+    }
+
+    @Override
+    protected MessagePart buildDataPart(CrawlerId crawlerId, Collection<MessageGroupResponse> messageData) {
         return new MessagePart(crawlerId, messageData, startIDs);
     }
 
@@ -100,12 +120,12 @@ public class MessagesCrawlerData extends AbstractCrawlerData<ResumeMessageIDs, M
         return requireNonNull(resumeMessageIDs, "stream info was not received");
     }
 
-    public static class MessagePart implements SizableDataPart<MessageData> {
+    public static class MessagePart implements SizableDataPart<MessageGroupResponse> {
         private final MessageDataRequest.Builder builder;
         private final Map<StreamKey, MessageID> startIDs;
         private MessageDataRequest request;
 
-        private MessagePart(CrawlerId id, Collection<MessageData> data, Map<StreamKey, MessageID> startIDs) {
+        private MessagePart(CrawlerId id, Collection<MessageGroupResponse> data, Map<StreamKey, MessageID> startIDs) {
             this.startIDs = requireNonNull(startIDs, "'Start ids' parameter");
             builder = MessageDataRequest.newBuilder()
                     .setId(id)
@@ -127,13 +147,13 @@ public class MessagesCrawlerData extends AbstractCrawlerData<ResumeMessageIDs, M
         }
 
         @Override
-        public @Nullable MessageData pullLast() {
-            List<MessageData> dataList = builder.getMessageDataList();
+        public @Nullable MessageGroupResponse pullLast() {
+            List<MessageGroupResponse> dataList = builder.getMessageDataList();
             if (dataList.isEmpty()) {
                 return null;
             }
             int lastIndex = dataList.size() - 1;
-            MessageData last = dataList.get(lastIndex);
+            MessageGroupResponse last = dataList.get(lastIndex);
             builder.removeMessageData(lastIndex);
             request = builder.build();
             return last;

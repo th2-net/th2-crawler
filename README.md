@@ -33,9 +33,6 @@ The default value is **HOURS**
 **delay: _10_** - the delay in seconds between the Crawler has processed the current interval and starts processing the next one.
 The default value is **10**
 
-**batchSize: 500** - the size of data chunks the Crawler requests from the data provider and feeds to the data processor.
-The default value is **300**
-
 **toLag: _5_** - the offset from the real time. When the interval's higher bound is greater than the **current time - toLag**
 the Crawler will wait until the interval's end is less than **current time - toLag**.
 The default value is **1**.
@@ -93,7 +90,6 @@ spec:
         lastUpdateOffset: 2
         lastUpdateOffsetUnit: HOURS
         delay: 10
-        batchSize: 300
         toLag: 5
         toLagOffsetUnit: MINUTES
     pins:

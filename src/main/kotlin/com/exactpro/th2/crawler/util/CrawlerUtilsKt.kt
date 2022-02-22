@@ -16,12 +16,11 @@
 @file:JvmName("CrawlerUtilKt")
 package com.exactpro.th2.crawler.util
 
-import com.exactpro.th2.dataprovider.grpc.MessageData
+import com.exactpro.th2.dataprovider.grpc.MessageGroupResponse
 import com.google.protobuf.Timestamp
-import java.lang.StringBuilder
 import java.time.Instant
 
-fun SearchResult<MessageData>.toCompactString(): String {
+fun SearchResult<MessageGroupResponse>.toCompactString(): String {
     val unorderedMessages = data.asSequence()
         .windowed(2, 1)
         .filter { (first, second) -> first.timestamp.toInstant().isAfter(second.timestamp.toInstant()) }
@@ -73,4 +72,4 @@ fun SearchResult<MessageData>.toCompactString(): String {
 }
 
 private fun Timestamp.toInstant() = Instant.ofEpochSecond(seconds, nanos.toLong())
-private fun MessageData.extractIdWithTimstamp() = "${messageId.connectionId.sessionAlias}:${messageId.direction}:${messageId.sequence}(${timestamp.toInstant()})"
+private fun MessageGroupResponse.extractIdWithTimstamp() = "${messageId.connectionId.sessionAlias}:${messageId.direction}:${messageId.sequence}(${timestamp.toInstant()})"

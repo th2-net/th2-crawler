@@ -33,14 +33,13 @@ import com.exactpro.th2.common.grpc.EventID;
 import com.exactpro.th2.common.grpc.MessageID;
 import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException;
 
-import com.exactpro.th2.dataprovider.grpc.EventData;
 import com.exactpro.th2.dataprovider.grpc.EventSearchRequest;
-import com.exactpro.th2.dataprovider.grpc.MessageData;
-import com.exactpro.th2.dataprovider.grpc.MessageData.Builder;
+import com.exactpro.th2.dataprovider.grpc.MessageGroupResponse;
 import com.exactpro.th2.dataprovider.grpc.MessageSearchRequest;
-import com.exactpro.th2.dataprovider.grpc.Stream;
-import com.exactpro.th2.dataprovider.grpc.StreamResponse;
-import com.exactpro.th2.dataprovider.grpc.StreamsInfo;
+import com.exactpro.th2.dataprovider.grpc.MessageSearchResponse;
+import com.exactpro.th2.dataprovider.grpc.MessageStream;
+import com.exactpro.th2.dataprovider.grpc.MessageStreamPointer;
+import com.exactpro.th2.dataprovider.grpc.MessageStreamPointers;
 
 import org.apache.commons.lang3.StringUtils;
 import org.junit.jupiter.api.Assertions;
@@ -135,7 +134,7 @@ public class CrawlerTest {
         Crawler crawler = manager.createCrawler();
 
         Collection<Message> messages = MessageReaderKt.readMessages(Paths.get("src/test/resources/messages.txt"));
-        Iterator<StreamResponse> iterator = new MessageSearchResponse(messages).iterator();
+        Iterator<MessageSearchResponse> iterator = new MessageSearchResponseAdapter(messages).iterator();
         when(manager.getDataProviderMock().searchMessages(any(MessageSearchRequest.class))).thenReturn(iterator);
         when(manager.getDataServiceMock().sendMessage(any(MessageDataRequest.class))).thenReturn(MessageResponse.getDefaultInstance());
 
@@ -153,9 +152,10 @@ public class CrawlerTest {
     @Test
     public void testCrawlerMessagesMaxOutgoingMessageSize() throws IOException, UnexpectedDataProcessorException {
         Message prototype = MessageReaderKt.parseMessage("{\"metadata\":{\"id\":{\"connectionId\":{\"sessionAlias\":\"alias1\"},\"direction\":\"SECOND\",\"sequence\":\"1635664585511283004\"},\"timestamp\":\"2021-10-31T07:18:18.085342Z\",\"messageType\":\"reqType\",\"protocol\":\"prtcl\"}}");
+        MessageGroupResponse prototypeResp = MessageSearchResponseAdapter.createMessageGroupResponse(prototype).build();
 
         CrawlerConfiguration configuration = CrawlerManager.createConfig(
-                "2021-06-16T12:00:00.00Z", DataType.MESSAGES, Duration.ofHours(1), Set.of(CrawlerManager.SESSIONS), 5, ChronoUnit.MINUTES, prototype.getSerializedSize() * 3);
+                "2021-06-16T12:00:00.00Z", DataType.MESSAGES, Duration.ofHours(1), Set.of(CrawlerManager.SESSIONS), 5, ChronoUnit.MINUTES, prototypeResp.getSerializedSize() * 3);
 
         CrawlerManager manager = new CrawlerManager(configuration);
         Crawler crawler = manager.createCrawler();
@@ -165,7 +165,7 @@ public class CrawlerTest {
                 modifyMessage(prototype,2, ""),
                 modifyMessage(prototype,3, "")
         );
-        Iterator<StreamResponse> iterator = new MessageSearchResponse(messages).iterator();
+        Iterator<MessageSearchResponse> iterator = new MessageSearchResponseAdapter(messages).iterator();
         when(manager.getDataProviderMock().searchMessages(any(MessageSearchRequest.class))).thenReturn(iterator);
         when(manager.getDataServiceMock()
                 .sendMessage(any(MessageDataRequest.class)))
@@ -206,7 +206,7 @@ public class CrawlerTest {
         List<Message> messages = List.of(
                 modifyMessage(prototype,1, StringUtils.repeat("a", prototype.getSerializedSize() * 2))
         );
-        Iterator<StreamResponse> iterator = new MessageSearchResponse(messages).iterator();
+        Iterator<MessageSearchResponse> iterator = new MessageSearchResponseAdapter(messages).iterator();
         when(manager.getDataProviderMock().searchMessages(any(MessageSearchRequest.class))).thenReturn(iterator);
         when(manager.getDataServiceMock().sendMessage(any(MessageDataRequest.class))).thenReturn(MessageResponse.getDefaultInstance());
 
@@ -222,7 +222,7 @@ public class CrawlerTest {
 
     private static MessageDataRequest createExpectedMessageDataRequest(Collection<Message> messages) {
         return messages.stream()
-                .map(MessageData.newBuilder()::setMessage)
+                .map(MessageSearchResponseAdapter::createMessageGroupResponse)
                 .collect(MessageDataRequest::newBuilder, MessageDataRequest.Builder::addMessageData, (b1, b2) -> b1.mergeFrom(b2.build()))
                 .build();
     }
@@ -242,7 +242,7 @@ public class CrawlerTest {
         when(manager.getDataServiceMock().sendEvent(any(EventDataRequest.class))).then(invocation -> {
             EventDataRequest request = invocation.getArgument(0);
 
-            List<EventData> events = request.getEventDataList();
+            List<com.exactpro.th2.dataprovider.grpc.EventResponse> events = request.getEventDataList();
 
             EventID eventID = events.get(events.size() - 1).getEventId();
 
@@ -263,37 +263,32 @@ public class CrawlerTest {
 
         String exceptionMessage = "Test exception";
 
-        Builder responseMessage = MessageData.newBuilder()
-                .setDirectionValue(1).setMessageId(MessageID.newBuilder()
-                        .setDirection(Direction.FIRST).setConnectionId(ConnectionID.newBuilder()
-                                .setSessionAlias("alias1").build()).setSequence(2).build());
+        Message.Builder responseMessage = MessageUtils.message("test", Direction.FIRST, "alias1");
+        MessageUtils.setSequence(responseMessage, 2);
         when(manager.getDataProviderMock().searchMessages(any(MessageSearchRequest.class))).then(invocation -> {
-            List<StreamResponse> responses = new ArrayList<>();
+            List<MessageSearchResponse> responses = new ArrayList<>();
 
             MessageSearchRequest request = invocation.getArgument(0);
-            MessageID messageId = responseMessage.getMessageId();
-            if (!request.getStartTimestamp().equals(request.getEndTimestamp())) {
-                StreamResponse response = StreamResponse.newBuilder()
-                        .setMessage(responseMessage).build();
+            MessageID messageId = responseMessage.getMetadata().getId();
+            MessageSearchResponse pointers = MessageSearchResponse.newBuilder()
+                    .setMessageStreamPointers(MessageStreamPointers.newBuilder()
+                            .addMessageStreamPointer(MessageStreamPointer.newBuilder()
+                                    .setMessageStream(
+                                            MessageStream.newBuilder()
+                                                    .setName(messageId.getConnectionId().getSessionAlias())
+                                                    .setDirection(messageId.getDirection())
+                                    )
+                                    .setLastId(messageId.toBuilder().setSequence(1)).build())
+                            .build())
+                    .build();
+            if (request.getStartTimestamp().equals(request.getEndTimestamp())) {
+                responses.add(pointers);
+            } else {
+                MessageSearchResponse response = MessageSearchResponse.newBuilder()
+                        .setMessage(MessageSearchResponseAdapter.createMessageGroupResponse(responseMessage.build())).build();
 
                 responses.add(response);
-                responses.add(StreamResponse.newBuilder()
-                        .setStreamInfo(StreamsInfo.newBuilder()
-                                .addStreams(Stream.newBuilder()
-                                        .setSession(messageId.getConnectionId().getSessionAlias())
-                                        .setDirection(messageId.getDirection())
-                                        .setLastId(messageId).build())
-                                .build())
-                        .build());
-            } else {
-                responses.add(StreamResponse.newBuilder()
-                        .setStreamInfo(StreamsInfo.newBuilder()
-                                .addStreams(Stream.newBuilder()
-                                        .setSession(messageId.getConnectionId().getSessionAlias())
-                                        .setDirection(messageId.getDirection())
-                                        .setLastId(messageId.toBuilder().setSequence(1)).build())
-                                .build())
-                        .build());
+                responses.add(pointers);
             }
 
             return responses.iterator();

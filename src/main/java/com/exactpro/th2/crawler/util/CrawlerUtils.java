@@ -20,26 +20,23 @@ import static java.util.Objects.requireNonNullElse;
 
 import java.io.IOException;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.exactpro.cradle.intervals.Interval;
 import com.exactpro.cradle.intervals.IntervalsWorker;
+import com.exactpro.th2.common.grpc.Direction;
 import com.exactpro.th2.common.grpc.EventID;
 import com.exactpro.th2.common.message.MessageUtils;
-import com.exactpro.th2.crawler.DataType;
 import com.exactpro.th2.crawler.InternalInterval;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
-import com.exactpro.th2.crawler.metrics.CrawlerMetrics.Method;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics.ProviderMethod;
 import com.exactpro.th2.crawler.state.StateService;
 import com.exactpro.th2.crawler.state.v1.InnerEventId;
@@ -47,15 +44,13 @@ import com.exactpro.th2.crawler.state.v1.InnerMessageId;
 import com.exactpro.th2.crawler.state.v1.RecoveryState;
 import com.exactpro.th2.crawler.state.v1.StreamKey;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
-import com.exactpro.th2.dataprovider.grpc.EventData;
 import com.exactpro.th2.dataprovider.grpc.EventSearchRequest;
-import com.exactpro.th2.dataprovider.grpc.MessageData;
+import com.exactpro.th2.dataprovider.grpc.EventSearchResponse;
 import com.exactpro.th2.dataprovider.grpc.MessageSearchRequest;
-import com.exactpro.th2.dataprovider.grpc.StreamResponse;
-import com.exactpro.th2.dataprovider.grpc.StreamsInfo;
-import com.exactpro.th2.dataprovider.grpc.StringList;
+import com.exactpro.th2.dataprovider.grpc.MessageSearchResponse;
+import com.exactpro.th2.dataprovider.grpc.MessageStream;
+import com.exactpro.th2.dataprovider.grpc.MessageStreamPointer;
 import com.exactpro.th2.dataprovider.grpc.TimeRelation;
-import com.google.common.collect.AbstractIterator;
 import com.google.common.collect.Iterators;
 import com.google.protobuf.BoolValue;
 import com.google.protobuf.Int32Value;
@@ -76,14 +71,13 @@ public class CrawlerUtils {
         return Instant.ofEpochSecond(timestamp.getSeconds(), timestamp.getNanos());
     }
 
-    public static Iterator<StreamResponse> searchEvents(DataProviderService dataProviderService,
-                                                        EventsSearchParameters info, CrawlerMetrics metrics) {
+    public static Iterator<EventSearchResponse> searchEvents(DataProviderService dataProviderService,
+                                                             EventsSearchParameters info, CrawlerMetrics metrics) {
 
         EventSearchRequest.Builder eventSearchBuilder = EventSearchRequest.newBuilder()
                 .setMetadataOnly(METADATA_ONLY)
                 .setStartTimestamp(info.from)
-                .setEndTimestamp(info.to)
-                .setResultCountLimit(Int32Value.of(info.batchSize));
+                .setEndTimestamp(info.to);
 
         EventSearchRequest request;
         if (info.resumeId == null) {
@@ -100,7 +94,7 @@ public class CrawlerUtils {
         return collectEvents(dataProviderService.searchEvents(request), info.to);
     }
 
-    public static Iterator<StreamResponse> searchMessages(DataProviderService dataProviderService,
+    public static Iterator<MessageSearchResponse> searchMessages(DataProviderService dataProviderService,
                                                    MessagesSearchParameters info, CrawlerMetrics metrics) {
 
         MessageSearchRequest.Builder messageSearchBuilder = MessageSearchRequest.newBuilder()
@@ -108,10 +102,19 @@ public class CrawlerUtils {
         if (info.getTo() != null) {
             messageSearchBuilder.setEndTimestamp(info.getTo());
         }
-        messageSearchBuilder.setResultCountLimit(Int32Value.of(info.getBatchSize()))
-                .setSearchDirection(requireNonNullElse(info.getTimeRelation(), TimeRelation.NEXT));
+
+        Integer limit = info.getBatchSize();
+        if (limit != null) {
+            messageSearchBuilder.setResultCountLimit(Int32Value.of(limit));
+        }
+        messageSearchBuilder.setSearchDirection(requireNonNullElse(info.getTimeRelation(), TimeRelation.NEXT));
         if (info.getAliases() != null) {
-            messageSearchBuilder.setStream(StringList.newBuilder().addAllListString(info.getAliases()).build());
+            var builder = MessageStream.newBuilder();
+            for (String alias : info.getAliases()) {
+                builder.setName(alias);
+                messageSearchBuilder.addStream(builder.setDirection(Direction.FIRST));
+                messageSearchBuilder.addStream(builder.setDirection(Direction.SECOND));
+            }
         }
 
 
@@ -119,7 +122,12 @@ public class CrawlerUtils {
         if (info.getResumeIds() == null || info.getResumeIds().isEmpty()) {
             request = messageSearchBuilder.build();
         } else {
-            request = messageSearchBuilder.addAllMessageId(info.getResumeIds().values()).build();
+            request = messageSearchBuilder.addAllStreamPointer(info.getResumeIds().entrySet().stream()
+                    .map(entry -> MessageStreamPointer.newBuilder()
+                            .setLastId(entry.getValue())
+                            .setMessageStream(MessageStream.newBuilder().setName(entry.getKey().getSessionAlias()).setDirection(entry.getKey().getDirection()))
+                            .build())
+                    .collect(Collectors.toList())).build();
         }
 
         if (LOGGER.isDebugEnabled()) {
@@ -194,18 +202,18 @@ public class CrawlerUtils {
         return worker.updateRecoveryState(interval, stateService.serialize(newState));
     }
 
-    public static Iterator<StreamResponse> collectEvents(Iterator<StreamResponse> iterator, Timestamp to) {
+    public static Iterator<EventSearchResponse> collectEvents(Iterator<EventSearchResponse> iterator, Timestamp to) {
         return collectData(iterator, to, response -> response.hasEvent() ? response.getEvent() : null,
                 eventData -> eventData.hasStartTimestamp() ? eventData.getStartTimestamp() : null);
     }
 
-    public static Iterator<StreamResponse> collectMessages(Iterator<StreamResponse> iterator, Timestamp to) {
+    public static Iterator<MessageSearchResponse> collectMessages(Iterator<MessageSearchResponse> iterator, Timestamp to) {
         return collectData(iterator, to, response -> response.hasMessage() ? response.getMessage() : null,
                 messageData -> messageData.hasTimestamp() ? messageData.getTimestamp() : null);
     }
 
-    public static <T extends MessageOrBuilder> Iterator<StreamResponse> collectData(Iterator<StreamResponse> iterator, Timestamp to,
-                                                                   Function<StreamResponse, T> objectExtractor,
+    public static <T extends MessageOrBuilder, R extends MessageOrBuilder> Iterator<R> collectData(Iterator<R> iterator, Timestamp to,
+                                                                   Function<R, T> objectExtractor,
                                                                    Function<T, Timestamp> timeExtractor) {
         return Iterators.filter(iterator, el -> {
             T obj = objectExtractor.apply(el);
@@ -216,14 +224,11 @@ public class CrawlerUtils {
     public static class EventsSearchParameters {
         private final Timestamp from;
         private final Timestamp to;
-        private final int batchSize;
         private final EventID resumeId;
 
-        public EventsSearchParameters(Timestamp from, Timestamp to,
-                                      int batchSize, EventID resumeId) {
+        public EventsSearchParameters(Timestamp from, Timestamp to, EventID resumeId) {
             this.from = Objects.requireNonNull(from, "Timestamp 'from' must not be null");
             this.to = Objects.requireNonNull(to, "Timestamp 'to' must not be null");
-            this.batchSize = batchSize;
             this.resumeId = resumeId;
         }
     }

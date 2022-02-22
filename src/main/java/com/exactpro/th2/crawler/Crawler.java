@@ -72,7 +72,6 @@ public class Crawler {
     private final boolean floatingToTime;
     private final boolean workAlone;
     private final DataType crawlerType;
-    private final int batchSize;
     private final DataProcessorInfo info;
     private final CrawlerId crawlerId;
     private final StateService<RecoveryState> stateService;
@@ -105,7 +104,6 @@ public class Crawler {
         this.defaultIntervalLength = Duration.parse(configuration.getDefaultLength());
         this.defaultSleepTime = configuration.getDelay() * 1000;
         this.crawlerType = configuration.getType();
-        this.batchSize = configuration.getBatchSize();
         this.crawlerId = CrawlerId.newBuilder().setName(configuration.getName()).build();
         this.sessionAliases = configuration.getSessionAliases();
         metrics = requireNonNull(crawlerContext.getMetrics(), "'metrics' must not be null");
@@ -171,54 +169,47 @@ public class Crawler {
 
             Continuation continuation = state == null ? null : typeStrategy.continuationFromState(state);
             DataParameters parameters = new DataParameters(crawlerId, sessionAliases);
-            CrawlerData<Continuation, DataPart> data;
             Report<Continuation> sendingReport = null;
             long processedElements = 0L;
             Timestamp startTime = toTimestamp(interval.getStartTime());
             Timestamp endTime = toTimestamp(interval.getEndTime());
-            do {
-                LOGGER.trace("Requesting data for interval");
-                data = requestData(startTime, endTime, continuation, parameters);
-                var currentData = data;
-                long remaining = sendingReport == null ? 0 : sendingReport.getRemainingData();
-                while (currentData.hasNext()) {
-                    DataPart nextPart = currentData.next();
-                    Continuation prevCheckpoint = sendingReport == null ? null : sendingReport.getCheckpoint();
-                    sendingReport = typeStrategy.processData(dataProcessor, currentInt, parameters, nextPart, prevCheckpoint);
-
-                    if (sendingReport.getAction() == Action.HANDSHAKE) {
-                        LOGGER.info("Handshake from {}:{} received. Stop processing", dataProcessorName, dataProcessorVersion);
-                        break;
-                    }
-
-                    if (nextPart.getSize() > 0) {
-                        metrics.updateProcessedData(crawlerType, nextPart.getSize());
-                    }
-
-                    Continuation checkpoint = sendingReport.getCheckpoint();
-                    processedElements += sendingReport.getProcessedData() + remaining;
-                    if (checkpoint != null) {
-                        state = typeStrategy.continuationToState(state, checkpoint, processedElements);
-                        currentInt.updateState(state, intervalsWorker);
-                    }
-                }
-                sendingReport = requireNonNullElse(sendingReport, Report.empty());
+            LOGGER.trace("Requesting data for interval");
+            CrawlerData<Continuation, DataPart> data = requestData(startTime, endTime, continuation, parameters);
+            long remaining = 0;
+            while (data.hasNext()) {
+                DataPart nextPart = data.next();
+                Continuation prevCheckpoint = sendingReport == null ? null : sendingReport.getCheckpoint();
+                sendingReport = typeStrategy.processData(dataProcessor, currentInt, parameters, nextPart, prevCheckpoint);
 
                 if (sendingReport.getAction() == Action.HANDSHAKE) {
-                    if (currentData.hasNext()) {
-                        LOGGER.info("Finishing data iterator because of handshake");
-                        int parts = 0;
-                        while (currentData.hasNext()) {
-                            DataPart dataPart = currentData.next();
-                            parts++;
-                        }
-                        LOGGER.info("Remaining parts in data iterator: {}", parts);
-                    }
-                    break; // exit from lopping until all data is processed for the interval
+                    LOGGER.info("Handshake from {}:{} received. Stop processing", dataProcessorName, dataProcessorVersion);
+                    break;
                 }
 
-                continuation = data.getContinuation(); // because we can do it only when all data was received from provider
-            } while (data.isNeedsNextRequest());
+                if (nextPart.getSize() > 0) {
+                    metrics.updateProcessedData(crawlerType, nextPart.getSize());
+                }
+
+                Continuation checkpoint = sendingReport.getCheckpoint();
+                processedElements += sendingReport.getProcessedData() + remaining;
+                if (checkpoint != null) {
+                    state = typeStrategy.continuationToState(state, checkpoint, processedElements);
+                    currentInt.updateState(state, intervalsWorker);
+                }
+            }
+            sendingReport = requireNonNullElse(sendingReport, Report.empty());
+
+            if (sendingReport.getAction() == Action.HANDSHAKE) {
+                if (data.hasNext()) {
+                    LOGGER.info("Finishing data iterator because of handshake");
+                    int parts = 0;
+                    while (data.hasNext()) {
+                        DataPart dataPart = data.next();
+                        parts++;
+                    }
+                    LOGGER.info("Remaining parts in data iterator: {}", parts);
+                }
+            }
 
             Action action = sendingReport.getAction();
             switch (action) {

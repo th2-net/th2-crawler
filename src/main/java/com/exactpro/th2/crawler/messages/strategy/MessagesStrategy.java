@@ -36,6 +36,7 @@ import java.util.Map.Entry;
 import java.util.function.BinaryOperator;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -71,10 +72,11 @@ import com.exactpro.th2.crawler.state.v1.StreamKey;
 import com.exactpro.th2.crawler.util.CrawlerUtils;
 import com.exactpro.th2.crawler.util.MessagesSearchParameters;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
-import com.exactpro.th2.dataprovider.grpc.MessageData;
-import com.exactpro.th2.dataprovider.grpc.Stream;
-import com.exactpro.th2.dataprovider.grpc.StreamResponse;
-import com.exactpro.th2.dataprovider.grpc.StreamsInfo;
+import com.exactpro.th2.dataprovider.grpc.MessageGroupResponse;
+import com.exactpro.th2.dataprovider.grpc.MessageSearchResponse;
+import com.exactpro.th2.dataprovider.grpc.MessageStream;
+import com.exactpro.th2.dataprovider.grpc.MessageStreamPointer;
+import com.exactpro.th2.dataprovider.grpc.MessageStreamPointers;
 import com.exactpro.th2.dataprovider.grpc.TimeRelation;
 import com.google.protobuf.Timestamp;
 
@@ -85,7 +87,6 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
     public static final BinaryOperator<MessageID> EARLIEST_SEQUENCE = (first, second) -> first.getSequence() > second.getSequence() ? second : first;
     private static final Logger LOGGER = LoggerFactory.getLogger(MessagesStrategy.class);
 
-    private static final int DEFAULT_SIZE = 16;
     private final DataProviderService provider;
     private final CrawlerMetrics metrics;
     private final CrawlerConfiguration config;
@@ -150,11 +151,9 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
         requireNonNull(parameters, "'parameters' parameter");
         Map<StreamKey, MessageID> resumeIds = continuation == null ? null : continuation.getIds();
         Map<StreamKey, MessageID> startIDs = resumeIds == null ? initialStartIds(start, parameters.getSessionAliases()) : resumeIds;
-        int batchSize = config.getBatchSize();
         MessagesSearchParameters searchParams = MessagesSearchParameters.builder()
                 .setFrom(start)
                 .setTo(end)
-                .setBatchSize(batchSize)
                 .setResumeIds(resumeIds)
                 .setAliases(parameters.getSessionAliases())
                 .build();
@@ -164,9 +163,8 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
                 CrawlerUtils.searchMessages(provider, searchParams, metrics),
                 startIDs,
                 parameters.getCrawlerId(),
-                batchSize,
                 config.getMaxOutgoingDataSize(),
-                msg -> filter == null || filter.accept(msg.getMessageType())
+                msg -> filter == null || filter.accept(msg.getMetadata().getMessageType())
         );
     }
 
@@ -186,7 +184,7 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
         Interval original = interval.getOriginal();
 
         MessageDataRequest request = data.getRequest();
-        List<MessageData> messages = request.getMessageDataList();
+        List<MessageGroupResponse> messages = request.getMessageDataList();
 
         if (messages.isEmpty()) {
             LOGGER.info("No more messages in interval from: {}, to: {}", original.getStartTime(), original.getEndTime());
@@ -247,11 +245,11 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
     }
 
     @NotNull
-    static Map<StreamKey, MessageID> collectResumeIDs(StreamsInfo streamsInfo) {
-        return streamsInfo.getStreamsList().stream()
+    static Map<StreamKey, MessageID> collectResumeIDs(MessageStreamPointers streamsInfo) {
+        return streamsInfo.getMessageStreamPointerList().stream()
                 .collect(toUnmodifiableMap(
-                        stream -> new StreamKey(stream.getSession(), stream.getDirection()),
-                        Stream::getLastId,
+                        stream -> keyFroMessageStream(stream.getMessageStream()),
+                        MessageStreamPointer::getLastId,
                         BinaryOperator.maxBy(Comparator.comparingLong(MessageID::getSequence))
                 ));
     }
@@ -296,8 +294,8 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
                 .setBatchSize(batchSize)
                 .setAliases(aliases)
                 .build();
-        Pair<List<MessageData>, StreamsInfo> searchResult = collect(CrawlerUtils.searchMessages(provider, parameters, metrics));
-        Pair<List<MessageData>, StreamsInfo> oppositeRequest = null;
+        Pair<List<MessageGroupResponse>, MessageStreamPointers> searchResult = collect(CrawlerUtils.searchMessages(provider, parameters, metrics));
+        Pair<List<MessageGroupResponse>, MessageStreamPointers> oppositeRequest = null;
 
         if (!searchResult.getFirst().isEmpty()) {
             if (LOGGER.isWarnEnabled()) {
@@ -309,7 +307,7 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
                 oppositeRequest = collect(CrawlerUtils.searchMessages(provider, MessagesSearchParameters.builder()
                         .setFrom(fromTimestamp)
                         .setBatchSize(batchSize)
-                        .setResumeIds(associateWithStreamKey(searchResult.getFirst().stream().map(MessageData::getMessageId), EARLIEST_SEQUENCE))
+                        .setResumeIds(associateWithStreamKey(searchResult.getFirst().stream().map(MessageGroupResponse::getMessageId), EARLIEST_SEQUENCE))
                         .setAliases(aliases)
                         .setTimeRelation(TimeRelation.PREVIOUS)
                         .build(), metrics));
@@ -317,9 +315,9 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
         }
         return concat(
                 requireNonNull(searchResult.getSecond(), "stream info is null for initial start IDs response")
-                        .getStreamsList().stream()
-                        .map(Stream::getLastId),
-                oppositeRequest == null ? empty() : oppositeRequest.getFirst().stream().map(MessageData::getMessageId)
+                        .getMessageStreamPointerList().stream()
+                        .map(MessageStreamPointer::getLastId),
+                oppositeRequest == null ? empty() : oppositeRequest.getFirst().stream().map(MessageGroupResponse::getMessageId)
         ).collect(toUnmodifiableMap(
                 MessagesStrategy::createStreamKeyFrom,
                 Function.identity(),
@@ -327,12 +325,16 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
         ));
     }
 
-    private @NotNull Pair<List<MessageData>, StreamsInfo> collect(Iterator<StreamResponse> responses) {
-        List<MessageData> data = null;
-        StreamsInfo info = null;
+    private static StreamKey keyFroMessageStream(MessageStream stream) {
+        return new StreamKey(stream.getName(), stream.getDirection());
+    }
+
+    private @NotNull Pair<List<MessageGroupResponse>, MessageStreamPointers> collect(Iterator<MessageSearchResponse> responses) {
+        List<MessageGroupResponse> data = null;
+        MessageStreamPointers info = null;
 
         while (responses.hasNext()) {
-            StreamResponse next = responses.next();
+            MessageSearchResponse next = responses.next();
             if (next.hasMessage()) {
                 if (data == null) {
                     data = new ArrayList<>();
@@ -340,8 +342,8 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
                 data.add(next.getMessage());
                 continue;
             }
-            if (next.hasStreamInfo()) {
-                info = next.getStreamInfo();
+            if (next.hasMessageStreamPointers()) {
+                info = next.getMessageStreamPointers();
             }
         }
         return new Pair<>(
@@ -352,7 +354,7 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
 
     private @Nullable Entry<@NotNull Integer, @NotNull Map<StreamKey, MessageID>> processServiceResponse(
             List<MessageID> responseIds,
-            List<MessageData> messages
+            List<MessageGroupResponse> messages
     ) {
         if (responseIds.isEmpty()) {
             return null;
@@ -361,7 +363,7 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
 
         int messageCount = 0;
         var skipAliases = new HashSet<String>(responseIds.size());
-        for (MessageData data : messages) {
+        for (MessageGroupResponse data : messages) {
             MessageID messageId = data.getMessageId();
             String sessionAlias = messageId.getConnectionId().getSessionAlias();
             // Update the last message for alias + direction
@@ -381,7 +383,7 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
     }
 
     @NotNull
-    public static Map<StreamKey, MessageID> associateWithStreamKey(java.util.stream.Stream<MessageID> stream, BinaryOperator<MessageID> mergeFunction) {
+    public static Map<StreamKey, MessageID> associateWithStreamKey(Stream<MessageID> stream, BinaryOperator<MessageID> mergeFunction) {
         return stream.collect(toMap(
                 MessagesStrategy::createStreamKeyFrom,
                 Function.identity(),
