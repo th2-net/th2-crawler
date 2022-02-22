@@ -78,7 +78,7 @@ public class Crawler {
     private final StateService<RecoveryState> stateService;
     private final CrawlerMetrics metrics;
     private final DataTypeStrategy<Continuation, DataPart> typeStrategy;
-    private final ProcessorInfo processorInfo;
+    private ProcessorInfo processorInfo;
 
     private Instant from;
     private Instant to;
@@ -170,11 +170,13 @@ public class Crawler {
 
             Report<IntervalStartReport> report = intervalStartForProcessor(dataProcessor, interval, state);
 
-            if (report.getAction() == Action.HANDSHAKE) {
+            while (report.getAction() == Action.HANDSHAKE) {
                 ProcessorInfo info = handleHandshake();
 
-                LOGGER.info("Crawler received a handshake from {}:{} when it tried to send interval start request. " +
-                        "Further processing starts from {}", info.getDataProcessorName(), info.getDataProcessorVersion(), from);
+                LOGGER.info("Crawler received a handshake from {}:{} when it tried to send interval start request. ",
+                        info.getDataProcessorName(), info.getDataProcessorVersion());
+
+                report = intervalStartForProcessor(dataProcessor, interval, state);
             }
 
             Continuation continuation = state == null ? null : typeStrategy.continuationFromState(state);
@@ -268,13 +270,13 @@ public class Crawler {
         typeStrategy.setupIntervalInfo(intervalInfoBuilder, state);
         IntervalStartResponse response = dataProcessor.intervalStart(intervalInfoBuilder.build());
 
+        metrics.processorMethodInvoked(ProcessorMethod.INTERVAL_START);
+
         if (response.hasStatus()) {
             if (response.getStatus().getHandshakeRequired()) {
                 return Report.handshake();
             }
         }
-
-        metrics.processorMethodInvoked(ProcessorMethod.INTERVAL_START);
 
         return Report.empty();
     }
@@ -470,9 +472,7 @@ public class Crawler {
         String version = info.getVersion();
 
         if (!processorInfo.getDataProcessorName().equals(info.getName()) || !processorInfo.getDataProcessorVersion().equals(info.getVersion())) {
-            processorInfo.setDataProcessorName(name);
-            processorInfo.setDataProcessorVersion(version);
-            from = getOrCreateInterval(name, version, crawlerType).interval.getStartTime();
+            processorInfo = new ProcessorInfo(name, version);
 
             LOGGER.info("Got a new name and/or version of data-service. " +
                     "Old name: " + name + ", old version: " + version + ". " +
@@ -486,7 +486,7 @@ public class Crawler {
         return Duration.between(from, to).abs().toMillis();
     }
 
-    public ProcessorInfo getProcessorInfo() {
+    ProcessorInfo getProcessorInfo() {
         return processorInfo;
     }
 

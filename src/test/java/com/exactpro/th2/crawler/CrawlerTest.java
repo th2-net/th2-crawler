@@ -248,7 +248,7 @@ public class CrawlerTest {
         String dataProcessorVersion = CrawlerManager.VERSION;
 
         when(manager.getDataServiceMock().crawlerConnect(any(CrawlerInfo.class)))
-                .thenReturn(DataProcessorInfo.newBuilder().setName("another_crawler").setVersion(CrawlerManager.VERSION).build());
+                .thenReturn(DataProcessorInfo.newBuilder().setName(dataProcessorName).setVersion(dataProcessorVersion).build());
 
         when(manager.getDataServiceMock().sendEvent(any(EventDataRequest.class))).then(invocation -> {
             EventDataRequest request = invocation.getArgument(0);
@@ -267,6 +267,7 @@ public class CrawlerTest {
         crawler.process();
 
         Assertions.assertEquals(dataProcessorName, crawler.getProcessorInfo().getDataProcessorName());
+        Assertions.assertEquals(dataProcessorVersion, crawler.getProcessorInfo().getDataProcessorVersion());
         Assertions.assertEquals(dataProcessorVersion, crawler.getProcessorInfo().getDataProcessorVersion());
     }
 
