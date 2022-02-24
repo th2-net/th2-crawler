@@ -26,7 +26,6 @@ import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorInfo;
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService;
 import com.exactpro.th2.crawler.dataprocessor.grpc.IntervalInfo;
 import com.exactpro.th2.crawler.dataprocessor.grpc.IntervalStartResponse;
-import com.exactpro.th2.crawler.dataprocessor.grpc.Status;
 import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException;
 import com.exactpro.th2.crawler.exception.UnsupportedRecoveryStateException;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
@@ -80,7 +79,7 @@ public class Crawler {
     private final DataTypeStrategy<Continuation, DataPart> typeStrategy;
     private ProcessorInfo processorInfo;
 
-    private Instant from;
+    private final Instant from;
     private Instant to;
     private boolean reachedTo;
     private Instant lastIntervalCompatibilityChecked;
@@ -168,7 +167,7 @@ public class Crawler {
             InternalInterval currentInt = new InternalInterval(stateService, interval);
             RecoveryState state = currentInt.getState();
 
-            Report<IntervalStartReport> report = intervalStartForProcessor(dataProcessor, interval, state);
+            Report<Continuation> report = intervalStartForProcessor(dataProcessor, interval, state);
 
             while (report.getAction() == Action.HANDSHAKE) {
                 ProcessorInfo info = handleHandshake();
@@ -261,7 +260,7 @@ public class Crawler {
         return typeStrategy.requestData(startTime, endTime, parameters, continuation);
     }
 
-    private Report<IntervalStartReport> intervalStartForProcessor(DataProcessorService dataProcessor, Interval interval, RecoveryState state) {
+    private Report<Continuation> intervalStartForProcessor(DataProcessorService dataProcessor, Interval interval, RecoveryState state) {
         LOGGER.trace("Notifying about interval start (from {} to {})", interval.getStartTime(), interval.getEndTime());
         var intervalInfoBuilder = IntervalInfo.newBuilder()
                 .setId(crawlerId)
@@ -514,11 +513,4 @@ public class Crawler {
         }
     }
 
-    private static class IntervalStartReport implements Continuation {
-        private final Status status;
-
-        public IntervalStartReport(Status status) {
-            this.status = status;
-        }
-    }
 }
