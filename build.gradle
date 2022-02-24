@@ -38,7 +38,7 @@ dependencies {
 
     implementation "com.exactpro.th2:cradle-cassandra:${cradleVersion}"
 
-    implementation "com.exactpro.th2:th2-merger-lib:0.1.0-TH2-3187-1835063353-SNAPSHOT"
+    implementation "com.exactpro.th2:th2-merger-lib:0.1.0-th2-3263-1894409421-SNAPSHOT"
 
     // the library for interaction with infra API
     implementation 'com.exactpro.th2:common:3.33.1-dev-1801872848-SNAPSHOT'
