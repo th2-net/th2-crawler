@@ -235,6 +235,12 @@ public class CrawlerTest {
                 .build();
     }
 
+    private IntervalStartResponse createIntervalStartResponse(boolean handshakeNeeded) {
+        return IntervalStartResponse.newBuilder()
+                .setStatus(Status.newBuilder().setHandshakeRequired(handshakeNeeded).build())
+                .build();
+    }
+
     @Test
     @DisplayName("Requiring handshake, getting other name and version")
     public void handshakeNeededAnother() throws IOException, UnexpectedDataProcessorException {
@@ -261,7 +267,8 @@ public class CrawlerTest {
         });
 
         when(manager.getDataServiceMock().intervalStart(any(IntervalInfo.class))).thenReturn(
-                IntervalStartResponse.newBuilder().setStatus(Status.newBuilder().setHandshakeRequired(true).build()).build()
+                createIntervalStartResponse(true),
+                createIntervalStartResponse(false)
         );
 
         crawler.process();
