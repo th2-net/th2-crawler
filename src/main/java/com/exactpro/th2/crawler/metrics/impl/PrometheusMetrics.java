@@ -65,7 +65,7 @@ public class PrometheusMetrics implements CrawlerMetrics {
 
     private final Gauge lastIntervalTimestamp = Gauge.build()
             .name("th2_crawler_processing_start_time_interval_milliseconds")
-            .help("contains the timestamp (creation time) of the last processed interval in milliseconds")
+            .help("contains the timestamp (start time) of the last processed interval in milliseconds")
             .register();
 
     //region Invocations metrics
@@ -95,7 +95,7 @@ public class PrometheusMetrics implements CrawlerMetrics {
 
     @Override
     public void currentInterval(Interval interval) {
-        lastIntervalTimestamp.set(interval.getEndTime().toEpochMilli());
+        lastIntervalTimestamp.set(interval.getStartTime().toEpochMilli());
     }
 
     @Override
