@@ -151,7 +151,8 @@ public class Crawler {
         String dataProcessorName = info.getName();
         String dataProcessorVersion = info.getVersion();
 
-        FetchIntervalReport fetchIntervalReport = getOrCreateInterval(dataProcessorName, dataProcessorVersion, crawlerType);
+        FetchIntervalReport fetchIntervalReport = metrics.measureTimeWithException(crawlerType, Method.RETRIEVE_INTERVALS,
+                () -> getOrCreateInterval(dataProcessorName, dataProcessorVersion, crawlerType));
 
         Interval interval = fetchIntervalReport.interval;
 
@@ -199,7 +200,7 @@ public class Crawler {
                     processedElements += sendingReport.getProcessedData() + remaining;
                     if (checkpoint != null) {
                         state = typeStrategy.continuationToState(state, checkpoint, processedElements);
-                        currentInt.updateState(state, intervalsWorker);
+                        updateState(currentInt, state);
                     }
                 }
                 sendingReport = requireNonNullElse(sendingReport, Report.empty());
@@ -218,6 +219,10 @@ public class Crawler {
                 }
 
                 continuation = data.getContinuation(); // because we can do it only when all data was received from provider
+                int totalSize = data.size();
+                if (totalSize > 0) {
+                    metrics.updateReceivedData(crawlerType, totalSize);
+                }
             } while (data.isNeedsNextRequest());
 
             Action action = sendingReport.getAction();
@@ -232,12 +237,9 @@ public class Crawler {
                 LOGGER.info("Got the same name ({}) and version ({}) from repeated crawlerConnect", dataProcessorName, dataProcessorVersion);
                 break;
             case CONTINUE:
-                currentInt.processed(true, intervalsWorker);
-                currentInt.updateState(state == null
-                                ? new RecoveryState(null, null, processedElements, 0)
-                                : new RecoveryState(state.getLastProcessedEvent(), state.getLastProcessedMessages(), processedElements, 0),
-                        intervalsWorker
-                );
+                updateProcessedState(currentInt, state == null
+                        ? new RecoveryState(null, null, processedElements, 0)
+                        : new RecoveryState(state.getLastProcessedEvent(), state.getLastProcessedMessages(), processedElements, 0));
                 LOGGER.info("Interval from {}, to {} was processed successfully", interval.getStartTime(), interval.getEndTime());
                 break;
             default:
@@ -251,6 +253,21 @@ public class Crawler {
         return Duration.of(sleepTime, ChronoUnit.MILLIS);
     }
 
+    private void updateState(InternalInterval currentInt, RecoveryState state) throws IOException, UnexpectedDataProcessorException {
+        metrics.measureTimeWithException(crawlerType, Method.UPDATE_STATE, () -> {
+            currentInt.updateState(state, intervalsWorker);
+            return null; // to infer return type
+        });
+    }
+
+    private void updateProcessedState(InternalInterval currentInt, RecoveryState state) throws IOException, UnexpectedDataProcessorException {
+        metrics.measureTimeWithException(crawlerType, Method.UPDATE_STATE, () -> {
+            currentInt.processed(true, intervalsWorker);
+            currentInt.updateState(state, intervalsWorker);
+            return null; // to infer return type
+        });
+    }
+
     private CrawlerData<Continuation, DataPart> requestData(Timestamp startTime, Timestamp endTime, Continuation continuation, DataParameters parameters) {
         return typeStrategy.requestData(startTime, endTime, parameters, continuation);
     }
@@ -261,7 +278,8 @@ public class Crawler {
                 .setStartTime(toTimestamp(interval.getStartTime()))
                 .setEndTime(toTimestamp(interval.getEndTime()));
         typeStrategy.setupIntervalInfo(intervalInfoBuilder, state);
-        dataProcessor.intervalStart(intervalInfoBuilder.build());
+        metrics.measureTime(crawlerType, Method.INFORM_INTERVAL_START,
+                () -> dataProcessor.intervalStart(intervalInfoBuilder.build()));
         metrics.processorMethodInvoked(ProcessorMethod.INTERVAL_START);
     }
 

@@ -35,16 +35,24 @@ import io.prometheus.client.Histogram;
 import io.prometheus.client.Histogram.Timer;
 
 public class PrometheusMetrics implements CrawlerMetrics {
+    private static final String DATA_TYPE_LABEL = "data_type";
+    private static final String METHOD_LABEL = "method";
+
     private final Histogram processingTime = Histogram.build()
             .name("th2_crawler_processing_data_time_seconds")
             .help("time in seconds to process an interval")
             .buckets(0.005, 0.01, 0.05, 0.1, 0.5, 1, 2.5, 5, 7.5, 10, 15, 20, 25, 30, 45, 60, 90, 120)
-            .labelNames("data_type", "method")
+            .labelNames(DATA_TYPE_LABEL, METHOD_LABEL)
             .register();
     private final Counter processedDataCount = Counter.build()
             .name("th2_crawler_processed_data_count")
             .help("number of data processed by the crawler")
-            .labelNames("data_type")
+            .labelNames(DATA_TYPE_LABEL)
+            .register();
+    private final Counter receivedDataCount = Counter.build()
+            .name("th2_crawler_received_data_count")
+            .help("number of data received by the crawler from the data provider")
+            .labelNames(DATA_TYPE_LABEL)
             .register();
     //region Message's metrics
     private final Gauge lastMessageSequence = Gauge.build()
@@ -72,13 +80,13 @@ public class PrometheusMetrics implements CrawlerMetrics {
     private final Counter dataProviderInvocations = Counter.build()
             .name("th2_crawler_data_provider_api_calls_count")
             .help("total number of invocations of corresponding data provider's method")
-            .labelNames("method")
+            .labelNames(METHOD_LABEL)
             .register();
 
     private final Counter dataProcessorInvocations = Counter.build()
             .name("th2_crawler_processor_api_calls_number")
             .help("total number of invocations of corresponding data processor's method")
-            .labelNames("method")
+            .labelNames(METHOD_LABEL)
             .register();
     //endregion
 
@@ -136,5 +144,10 @@ public class PrometheusMetrics implements CrawlerMetrics {
     @Override
     public void updateProcessedData(DataType dataType, long count) {
         processedDataCount.labels(dataType.getTypeName()).inc(count);
+    }
+
+    @Override
+    public void updateReceivedData(DataType dataType, long count) {
+        receivedDataCount.labels(dataType.getTypeName()).inc(count);
     }
 }
