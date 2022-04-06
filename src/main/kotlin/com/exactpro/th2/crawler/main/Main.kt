@@ -79,7 +79,7 @@ fun main(args: Array<String>) {
 
         val context = CrawlerContext()
             .setCrawlerTime(CrawlerTimeImpl())
-            .setMetrics(PrometheusMetrics())
+            .setMetrics(PrometheusMetrics(configuration))
         val crawler = Crawler(
             StateService.createFromClasspath(
                 dataProvider = dataProviderService,

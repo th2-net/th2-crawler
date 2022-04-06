@@ -19,9 +19,11 @@ package com.exactpro.th2.crawler.metrics.impl;
 import static com.exactpro.th2.common.metrics.CommonMetrics.*;
 
 import java.io.IOException;
+import java.time.Duration;
 
 import com.exactpro.cradle.intervals.Interval;
 import com.exactpro.th2.common.grpc.Direction;
+import com.exactpro.th2.crawler.CrawlerConfiguration;
 import com.exactpro.th2.crawler.DataType;
 import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
@@ -89,6 +91,17 @@ public class PrometheusMetrics implements CrawlerMetrics {
             .labelNames(METHOD_LABEL)
             .register();
     //endregion
+
+    private final Gauge crawlerIntervalExporter = Gauge.build()
+            .name("th2_crawler_interval")
+            .help("contains the information about current crawler interval in seconds")
+            .labelNames(DATA_TYPE_LABEL)
+            .register();
+
+    public PrometheusMetrics(CrawlerConfiguration configuration) {
+        crawlerIntervalExporter.labels(configuration.getType().getTypeName())
+                .set(Duration.parse(configuration.getDefaultLength()).toSeconds());
+    }
 
     @Override
     public void lastMessage(String alias, Direction direction, MessageData messageData) {
