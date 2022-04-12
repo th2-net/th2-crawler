@@ -145,6 +145,15 @@ public class MessagesCrawlerData extends AbstractCrawlerData<ResumeMessageIDs, M
         }
     }
 
+    @Override
+    public String toString() {
+        return "MessagesCrawlerData{" +
+                "startIDs=" + startIDs +
+                ", acceptMessages=" + acceptMessages +
+                ", resumeMessageIDs=" + resumeMessageIDs +
+                '}';
+    }
+
     public static class ResumeMessageIDs implements Continuation {
         private final Map<StreamKey, MessageID> startIDs;
         private final Map<StreamKey, MessageID> ids;
@@ -161,6 +170,14 @@ public class MessagesCrawlerData extends AbstractCrawlerData<ResumeMessageIDs, M
 
         public Map<StreamKey, MessageID> getIds() {
             return ids;
+        }
+
+        @Override
+        public String toString() {
+            return "ResumeMessageIDs{" +
+                    "startIDs=" + startIDs +
+                    ", ids=" + ids +
+                    '}';
         }
     }
 }
