@@ -149,7 +149,6 @@ public class MessagesCrawlerData extends AbstractCrawlerData<ResumeMessageIDs, M
     public String toString() {
         return "MessagesCrawlerData{" +
                 "startIDs=" + startIDs +
-                ", acceptMessages=" + acceptMessages +
                 ", resumeMessageIDs=" + resumeMessageIDs +
                 '}';
     }

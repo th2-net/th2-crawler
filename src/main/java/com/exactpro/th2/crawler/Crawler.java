@@ -181,7 +181,7 @@ public class Crawler {
                 data = requestData(startTime, endTime, continuation, parameters);
 
                 if (LOGGER.isDebugEnabled()) {
-                    LOGGER.debug("Data from interval {} - {}: {}", startTime, endTime, data);
+                    LOGGER.debug("Data from interval {} - {}: {}", interval.getStartTime(), interval.getEndTime(), data);
                 }
 
                 var currentData = data;
