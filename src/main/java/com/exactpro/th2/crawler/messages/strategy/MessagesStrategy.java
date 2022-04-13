@@ -130,15 +130,23 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
             Map<StreamKey, MessageID> startIntervalIDs = new HashMap<>(continuation.getStartIDs());
             putAndCheck(continuation.getIds(), startIntervalIDs, "creating state from continuation");
 
-            return new RecoveryState(null, toInnerMessageIDs(startIntervalIDs), 0, processedData);
+            var state = new RecoveryState(null, toInnerMessageIDs(startIntervalIDs), 0, processedData);
+
+            LOGGER.debug("Current recovery state is null. New recovery state: {}", state);
+
+            return state;
         }
         Map<StreamKey, InnerMessageId> old = current.getLastProcessedMessages();
         Map<StreamKey, MessageID> lastProcessedMessages = new HashMap<>(old == null ? continuation.getIds() : toMessageIDs(old));
         putAndCheck(continuation.getIds(), lastProcessedMessages, "creating state from current state and continuation");
 
-        return new RecoveryState(current.getLastProcessedEvent(), toInnerMessageIDs(lastProcessedMessages),
+        var state = new RecoveryState(current.getLastProcessedEvent(), toInnerMessageIDs(lastProcessedMessages),
                 current.getLastNumberOfEvents(),
                 processedData);
+
+        LOGGER.debug("Update previous recovery state with new one: {}", state);
+
+        return state;
     }
 
     @NotNull

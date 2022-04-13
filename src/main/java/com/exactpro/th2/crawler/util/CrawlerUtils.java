@@ -133,7 +133,6 @@ public class CrawlerUtils {
         if (LOGGER.isDebugEnabled()) {
             dataProviderService.searchMessages(request).forEachRemaining(list::add);
 
-            LOGGER.debug("StreamInfo from interval {} - {}", info.getFrom(), info.getTo());
             list.stream().filter(response -> !response.getStreamInfo().toString().isBlank())
                     .forEach(response -> LOGGER.debug("StreamInfo: {}", response.getStreamInfo()));
         }
