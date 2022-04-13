@@ -69,6 +69,11 @@ class TestMessagesCrawlerData {
         continuation!!
         Assertions.assertEquals(
             mapOf(
+                StreamKey("test", Direction.SECOND) to MessageID.newBuilder()
+                    .setDirection(Direction.SECOND)
+                    .setSequence(-1)
+                    .setConnectionId(ConnectionID.newBuilder().setSessionAlias("test"))
+                    .build(),
                 StreamKey("test", Direction.FIRST) to MessageID.newBuilder()
                     .setDirection(Direction.FIRST)
                     .setSequence(9)
