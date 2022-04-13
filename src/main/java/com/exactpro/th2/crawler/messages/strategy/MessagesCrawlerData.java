@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
+import com.exactpro.th2.crawler.util.CrawlerUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -77,6 +78,10 @@ public class MessagesCrawlerData extends AbstractCrawlerData<ResumeMessageIDs, M
                         .map(entry -> entry.getKey() + "=" + MessageUtils.toJson(entry.getValue()))
                         .collect(Collectors.joining(",")));
             }
+
+            CrawlerUtils.fillOppositeStream(startIDs);
+            CrawlerUtils.fillOppositeStream(resumeIds);
+
             this.resumeMessageIDs = new ResumeMessageIDs(startIDs, resumeIds);
         }
     }
