@@ -134,10 +134,11 @@ public class CrawlerUtils {
             dataProviderService.searchMessages(request).forEachRemaining(list::add);
 
             LOGGER.debug("StreamInfo from interval {} - {}", info.getFrom(), info.getTo());
-            list.forEach(response -> LOGGER.debug("StreamInfo: {}", response.getStreamInfo()));
+            list.stream().filter(response -> !response.getStreamInfo().toString().isBlank())
+                    .forEach(response -> LOGGER.debug("StreamInfo: {}", response.getStreamInfo()));
         }
 
-        return collectMessages(list.iterator(), info.getTo());
+        return collectMessages(list.isEmpty() ? dataProviderService.searchMessages(request) : list.iterator(), info.getTo());
     }
 
     public static void updateEventRecoveryState(
