@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
+import java.util.stream.StreamSupport;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -126,6 +127,15 @@ public class CrawlerUtils {
             LOGGER.debug("Requesting messages from data provider with parameters: {}", MessageUtils.toJson(request));
         }
         metrics.providerMethodInvoked(ProviderMethod.SEARCH_MESSAGES);
+
+        if (LOGGER.isDebugEnabled()) {
+            List<StreamResponse> list = new ArrayList<>();
+            dataProviderService.searchMessages(request).forEachRemaining(list::add);
+
+            LOGGER.debug("StreamInfo from interval {} - {}", info.getFrom(), info.getTo());
+            list.forEach(response -> LOGGER.debug("StreamInfo: {}", response.getStreamInfo()));
+        }
+
         return collectMessages(dataProviderService.searchMessages(request), info.getTo());
     }
 
