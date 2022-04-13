@@ -128,15 +128,16 @@ public class CrawlerUtils {
         }
         metrics.providerMethodInvoked(ProviderMethod.SEARCH_MESSAGES);
 
+        List<StreamResponse> list = new ArrayList<>();
+
         if (LOGGER.isDebugEnabled()) {
-            List<StreamResponse> list = new ArrayList<>();
             dataProviderService.searchMessages(request).forEachRemaining(list::add);
 
             LOGGER.debug("StreamInfo from interval {} - {}", info.getFrom(), info.getTo());
             list.forEach(response -> LOGGER.debug("StreamInfo: {}", response.getStreamInfo()));
         }
 
-        return collectMessages(dataProviderService.searchMessages(request), info.getTo());
+        return collectMessages(list.iterator(), info.getTo());
     }
 
     public static void updateEventRecoveryState(
