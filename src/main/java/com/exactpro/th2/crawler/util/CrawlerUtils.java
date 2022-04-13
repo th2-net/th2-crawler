@@ -211,7 +211,7 @@ public class CrawlerUtils {
         var entries = ids.entrySet();
         var keys = ids.keySet();
 
-        entries.forEach(entry -> {
+        entries.iterator().forEachRemaining(entry -> {
             StreamKey key = entry.getKey();
             Direction oppositeDirection = getOppositeDirection(key.getDirection());
             StreamKey streamKey = new StreamKey(key.getSessionAlias(), oppositeDirection);
