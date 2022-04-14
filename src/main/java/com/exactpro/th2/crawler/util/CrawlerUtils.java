@@ -120,16 +120,7 @@ public class CrawlerUtils {
         }
         metrics.providerMethodInvoked(ProviderMethod.SEARCH_MESSAGES);
 
-        List<StreamResponse> list = new ArrayList<>();
-
-        if (LOGGER.isDebugEnabled()) {
-            dataProviderService.searchMessages(request).forEachRemaining(list::add);
-
-            list.stream().filter(response -> !response.getStreamInfo().toString().isBlank())
-                    .forEach(response -> LOGGER.debug("StreamInfo: {}", response.getStreamInfo()));
-        }
-
-        return collectMessages(list.isEmpty() ? dataProviderService.searchMessages(request) : list.iterator(), info.getTo());
+        return collectMessages(dataProviderService.searchMessages(request), info.getTo());
     }
 
     public static void updateEventRecoveryState(
