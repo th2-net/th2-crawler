@@ -179,11 +179,6 @@ public class Crawler {
             do {
                 LOGGER.trace("Requesting data for interval");
                 data = requestData(startTime, endTime, continuation, parameters);
-
-                if (LOGGER.isDebugEnabled()) {
-                    LOGGER.debug("Data from interval {} - {}: {}", interval.getStartTime(), interval.getEndTime(), data);
-                }
-
                 var currentData = data;
                 long remaining = sendingReport == null ? 0 : sendingReport.getRemainingData();
                 while (currentData.hasNext()) {
