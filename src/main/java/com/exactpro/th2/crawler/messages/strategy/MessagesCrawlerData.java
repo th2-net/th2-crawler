@@ -73,13 +73,14 @@ public class MessagesCrawlerData extends AbstractCrawlerData<ResumeMessageIDs, M
             Map<StreamKey, MessageID> resumeMessageIDs = MessagesStrategy.collectResumeIDs(response.getStreamInfo());
             Map<StreamKey, MessageID> resumeIds = new HashMap<>(startIDs);
             MessagesStrategy.putAndCheck(resumeMessageIDs, resumeIds, "collect next resume IDs from crawler data", LOGGER);
+
+            this.resumeMessageIDs = CrawlerUtils.updateResumeMessageIDs(this.resumeMessageIDs, startIDs, resumeIds);
+
             if (LOGGER.isDebugEnabled()) {
-                LOGGER.debug("New resume ids: {}", resumeIds.entrySet().stream()
+                LOGGER.debug("New resume ids: {}", this.resumeMessageIDs.getIds().entrySet().stream()
                         .map(entry -> entry.getKey() + "=" + MessageUtils.toJson(entry.getValue()))
                         .collect(Collectors.joining(",")));
             }
-
-            this.resumeMessageIDs = CrawlerUtils.updateResumeMessageIDs(this.resumeMessageIDs, startIDs, resumeIds);
         }
     }
 

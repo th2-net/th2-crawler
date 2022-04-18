@@ -205,6 +205,10 @@ public class CrawlerUtils {
         if (resumeMessageIDs != null) {
             fillOppositeStream(resumeMessageIDs, startIds);
             fillOppositeStream(resumeMessageIDs, resumeIds);
+        } else {
+            var emptyResumeMessageIDs = new MessagesCrawlerData.ResumeMessageIDs(new HashMap<>(), new HashMap<>());
+            fillOppositeStream(emptyResumeMessageIDs, startIds);
+            fillOppositeStream(emptyResumeMessageIDs, resumeIds);
         }
 
         return new MessagesCrawlerData.ResumeMessageIDs(startIds, resumeIds);
