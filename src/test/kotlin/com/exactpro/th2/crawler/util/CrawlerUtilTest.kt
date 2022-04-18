@@ -16,12 +16,14 @@
 
 package com.exactpro.th2.crawler.util
 
+import com.exactpro.th2.common.grpc.ConnectionID
 import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.Direction.FIRST
 import com.exactpro.th2.common.grpc.Direction.SECOND
+import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.common.message.toTimestamp
-import com.exactpro.th2.crawler.dataprocessor.grpc.MessageDataRequest
-import com.exactpro.th2.crawler.dataprocessor.grpc.MessageDataRequest.Builder
+import com.exactpro.th2.crawler.messages.strategy.MessagesCrawlerData.ResumeMessageIDs
+import com.exactpro.th2.crawler.state.v1.StreamKey
 import com.exactpro.th2.dataprovider.grpc.MessageData
 import com.exactpro.th2.dataprovider.grpc.StreamsInfo
 import org.junit.jupiter.api.Assertions
@@ -74,6 +76,51 @@ class CrawlerUtilTest {
                   sequences: 41..42 count=2 
                   timestamps: 1970-01-01T00:00:05Z..1970-01-01T00:00:06Z
         """.trimIndent(), compactString)
+    }
+
+    @Test
+    fun `fills opposite stream correctly`() {
+        val alias = "test_alias"
+        val messageId1 = MessageID.newBuilder()
+            .setConnectionId(ConnectionID.newBuilder().setSessionAlias(alias).build())
+            .setDirection(FIRST)
+            .setSequence(1)
+            .build()
+        val messageId2 = MessageID.newBuilder()
+            .setConnectionId(ConnectionID.newBuilder().setSessionAlias(alias).build())
+            .setDirection(SECOND)
+            .setSequence(2)
+            .build()
+        val messageId3 = MessageID.newBuilder()
+            .setConnectionId(ConnectionID.newBuilder().setSessionAlias(alias).build())
+            .setDirection(FIRST)
+            .setSequence(3)
+            .build()
+
+        val startIds = mutableMapOf<StreamKey, MessageID>(
+            StreamKey(alias, FIRST) to messageId1,
+            StreamKey(alias, SECOND) to messageId2
+        )
+
+        val resumeIds = mutableMapOf<StreamKey, MessageID>(
+            StreamKey(alias, FIRST) to messageId1,
+            StreamKey(alias, SECOND) to messageId2
+        )
+
+        val newStartIds = mutableMapOf<StreamKey, MessageID>(
+            StreamKey(alias, FIRST) to messageId3
+        )
+
+        val newResumeIds = mutableMapOf<StreamKey, MessageID>(
+            StreamKey(alias, FIRST) to messageId3
+        )
+
+        val resumeMessageIDs = ResumeMessageIDs(startIds, resumeIds)
+
+        val updatedResumeMessageIDs = CrawlerUtils.updateResumeMessageIDs(resumeMessageIDs, newStartIds, newResumeIds)
+
+        Assertions.assertEquals(messageId2.sequence, updatedResumeMessageIDs.ids[StreamKey(alias, SECOND)]!!.sequence)
+        Assertions.assertEquals(messageId2.sequence, updatedResumeMessageIDs.startIDs[StreamKey(alias, SECOND)]!!.sequence)
     }
 
     private fun createMessageData(sessionAlias: String, direction: Direction, sequence: Long, timestamp: String) = MessageData.newBuilder().apply {

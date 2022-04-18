@@ -28,6 +28,7 @@ import java.util.function.Function;
 import com.exactpro.th2.common.grpc.ConnectionID;
 import com.exactpro.th2.common.grpc.Direction;
 import com.exactpro.th2.common.grpc.MessageID;
+import com.exactpro.th2.crawler.messages.strategy.MessagesCrawlerData;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -198,7 +199,23 @@ public class CrawlerUtils {
                 messageData -> messageData.hasTimestamp() ? messageData.getTimestamp() : null);
     }
 
-    public static void fillOppositeStream(Map<StreamKey, MessageID> ids) {
+    public static MessagesCrawlerData.ResumeMessageIDs updateResumeMessageIDs(MessagesCrawlerData.ResumeMessageIDs resumeMessageIDs,
+                                                                              Map<StreamKey, MessageID> startIds,
+                                                                              Map<StreamKey, MessageID> resumeIds) {
+        if (resumeMessageIDs != null) {
+            fillOppositeStream(resumeMessageIDs, startIds);
+            fillOppositeStream(resumeMessageIDs, resumeIds);
+        }
+
+        return new MessagesCrawlerData.ResumeMessageIDs(startIds, resumeIds);
+    }
+
+    public static Direction getOppositeDirection(Direction direction) {
+        return direction == FIRST ? SECOND : FIRST;
+    }
+
+    private static void fillOppositeStream(MessagesCrawlerData.ResumeMessageIDs resumeMessageIDs,
+                                           Map<StreamKey, MessageID> ids) {
         var entries = ids.entrySet();
         var keys = ids.keySet();
 
@@ -209,20 +226,26 @@ public class CrawlerUtils {
 
             if (!keys.contains(streamKey)) {
 
-                LOGGER.debug("Create message id for stream key {} as it was absent", streamKey);
+                MessageID previousId = resumeMessageIDs.getStartIDs().get(streamKey);
+
+                long sequence;
+
+                if (previousId == null) {
+                    sequence = -1;
+                    LOGGER.debug("Set {} sequence for stream key {} as it was absent in Processor's response", sequence, streamKey);
+                } else {
+                    sequence = previousId.getSequence();
+                    LOGGER.debug("Set previous sequence {} for stream key {} as it was absent in Processor's response", sequence, streamKey);
+                }
 
                 MessageID id = MessageID.newBuilder()
                         .setConnectionId(ConnectionID.newBuilder().setSessionAlias(key.getSessionAlias()).build())
                         .setDirection(oppositeDirection)
-                        .setSequence(-1)
+                        .setSequence(sequence)
                         .build();
                 ids.put(streamKey, id);
             }
         });
-    }
-
-    public static Direction getOppositeDirection(Direction direction) {
-        return direction == FIRST ? SECOND : FIRST;
     }
 
     public static <T extends MessageOrBuilder> Iterator<StreamResponse> collectData(Iterator<StreamResponse> iterator, Timestamp to,

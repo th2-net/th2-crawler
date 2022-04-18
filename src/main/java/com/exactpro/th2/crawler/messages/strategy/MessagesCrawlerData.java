@@ -79,10 +79,7 @@ public class MessagesCrawlerData extends AbstractCrawlerData<ResumeMessageIDs, M
                         .collect(Collectors.joining(",")));
             }
 
-            CrawlerUtils.fillOppositeStream(startIDs);
-            CrawlerUtils.fillOppositeStream(resumeIds);
-
-            this.resumeMessageIDs = new ResumeMessageIDs(startIDs, resumeIds);
+            this.resumeMessageIDs = CrawlerUtils.updateResumeMessageIDs(this.resumeMessageIDs, startIDs, resumeIds);
         }
     }
 
