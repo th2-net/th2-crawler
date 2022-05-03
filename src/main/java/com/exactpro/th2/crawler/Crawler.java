@@ -243,7 +243,6 @@ public class Crawler {
             default:
                 throw new IllegalStateException("Unsupported report action: " + action);
             }
-            metrics.currentInterval(CrawlerUtils.EMPTY);
         }
 
         long sleepTime = fetchIntervalReport.sleepTime;
@@ -399,6 +398,7 @@ public class Crawler {
         if (!floatingToTime) {
             LOGGER.info("All intervals between {} and {} were fully processed less than {} {} ago",
                     from, to, configuration.getLastUpdateOffset(), configuration.getLastUpdateOffsetUnit());
+            metrics.currentInterval(CrawlerUtils.EMPTY);
             return new FetchIntervalReport(null, defaultSleepTime, true);
         }
 
