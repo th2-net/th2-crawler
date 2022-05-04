@@ -31,8 +31,8 @@ import io.prometheus.client.Gauge;
 import io.prometheus.client.Histogram;
 import io.prometheus.client.Histogram.Timer;
 
-import static com.exactpro.th2.common.metrics.CommonMetrics.DEFAULT_DIRECTION_LABEL_NAME;
-import static com.exactpro.th2.common.metrics.CommonMetrics.DEFAULT_SESSION_ALIAS_LABEL_NAME;
+import static com.exactpro.th2.common.metrics.CommonMetrics.DIRECTION_LABEL;
+import static com.exactpro.th2.common.metrics.CommonMetrics.SESSION_ALIAS_LABEL;
 
 public class PrometheusMetrics implements CrawlerMetrics {
     private final Histogram processingTime = Histogram.build()
@@ -50,12 +50,12 @@ public class PrometheusMetrics implements CrawlerMetrics {
     private final Gauge lastMessageSequence = Gauge.build()
             .name("th2_crawler_processing_message_sequence_number")
             .help("contains the sequence number of the last processed message for corresponding alias and direction")
-            .labelNames(DEFAULT_SESSION_ALIAS_LABEL_NAME, DEFAULT_DIRECTION_LABEL_NAME)
+            .labelNames(SESSION_ALIAS_LABEL, DIRECTION_LABEL)
             .register();
     private final Gauge lastMessageTimestamp = Gauge.build()
             .name("th2_crawler_processing_message_timestamp_milliseconds")
             .help("contains the timestamp of the last processed message in milliseconds for corresponding alias and direction")
-            .labelNames(DEFAULT_SESSION_ALIAS_LABEL_NAME, DEFAULT_DIRECTION_LABEL_NAME)
+            .labelNames(SESSION_ALIAS_LABEL, DIRECTION_LABEL)
             .register();
     //endregion
     private final Gauge lastEventTimestamp = Gauge.build()
