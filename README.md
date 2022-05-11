@@ -61,6 +61,9 @@ filter:
   mode: DROP # ACCEPT
 ```
 
+**useGroupsForRequest** - if enabled the _sessionAliases_ parameter will be interpreted as groups name and corresponding request to data-provider will be sent.
+_Disabled by default_.
+
 ## Configuration update instructions
 
 In order to update **sessionAliases** property, you will need to update the version
