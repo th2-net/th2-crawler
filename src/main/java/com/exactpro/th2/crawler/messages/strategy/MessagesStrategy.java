@@ -20,8 +20,6 @@ import static java.util.Objects.requireNonNull;
 import static java.util.Objects.requireNonNullElse;
 import static java.util.stream.Collectors.toMap;
 import static java.util.stream.Collectors.toUnmodifiableMap;
-import static java.util.stream.Stream.concat;
-import static java.util.stream.Stream.empty;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -34,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.function.BinaryOperator;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -45,6 +44,7 @@ import org.slf4j.LoggerFactory;
 
 import com.exactpro.cradle.intervals.Interval;
 import com.exactpro.th2.common.grpc.ConnectionID;
+import com.exactpro.th2.common.grpc.Direction;
 import com.exactpro.th2.common.grpc.MessageID;
 import com.exactpro.th2.common.message.MessageUtils;
 import com.exactpro.th2.crawler.AbstractStrategy;
@@ -77,7 +77,6 @@ import com.exactpro.th2.dataprovider.grpc.MessageSearchResponse;
 import com.exactpro.th2.dataprovider.grpc.MessageStream;
 import com.exactpro.th2.dataprovider.grpc.MessageStreamPointer;
 import com.exactpro.th2.dataprovider.grpc.MessageStreamPointers;
-import com.exactpro.th2.dataprovider.grpc.TimeRelation;
 import com.google.protobuf.Timestamp;
 
 import kotlin.Pair;
@@ -150,12 +149,13 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
         requireNonNull(end, "'end' parameter");
         requireNonNull(parameters, "'parameters' parameter");
         Map<StreamKey, MessageID> resumeIds = continuation == null ? null : continuation.getIds();
-        Map<StreamKey, MessageID> startIDs = resumeIds == null ? initialStartIds(start, parameters.getSessionAliases()) : resumeIds;
+        Map<StreamKey, MessageID> startIDs = resumeIds == null ? initialStartIds(parameters.getSessionAliases()) : resumeIds;
         MessagesSearchParameters searchParams = MessagesSearchParameters.builder()
                 .setFrom(start)
                 .setTo(end)
                 .setResumeIds(resumeIds)
                 .setAliases(parameters.getSessionAliases())
+                .setUseGroups(config.getUseGroupsForRequest())
                 .build();
 
         NameFilter filter = config.getFilter();
@@ -286,43 +286,25 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
         putAndCheck(transferFrom, transferTo, action, LOGGER);
     }
 
-    private Map<StreamKey, MessageID> initialStartIds(Timestamp fromTimestamp, Collection<String> aliases) {
-        int batchSize = 1;
-        var parameters = MessagesSearchParameters.builder()
-                .setFrom(fromTimestamp)
-                .setTo(fromTimestamp)
-                .setBatchSize(batchSize)
-                .setAliases(aliases)
-                .build();
-        Pair<List<MessageGroupResponse>, MessageStreamPointers> searchResult = collect(CrawlerUtils.searchMessages(provider, parameters, metrics));
-        Pair<List<MessageGroupResponse>, MessageStreamPointers> oppositeRequest = null;
-
-        if (!searchResult.getFirst().isEmpty()) {
-            if (LOGGER.isWarnEnabled()) {
-                LOGGER.warn("Initialising start IDs request has returned unexpected data: " + searchResult.getFirst().stream()
-                        .map(MessageUtils::toJson).collect(Collectors.joining(", ")));
-                // We have a message with timestamp equal the `fromTimestamp`
-                // Because of that we need to make a request in opposite direction
-                // and select the first message for each pair alias + direction that were in the response (should be a single message)
-                oppositeRequest = collect(CrawlerUtils.searchMessages(provider, MessagesSearchParameters.builder()
-                        .setFrom(fromTimestamp)
-                        .setBatchSize(batchSize)
-                        .setResumeIds(associateWithStreamKey(searchResult.getFirst().stream().map(MessageGroupResponse::getMessageId), EARLIEST_SEQUENCE))
-                        .setAliases(aliases)
-                        .setTimeRelation(TimeRelation.PREVIOUS)
-                        .build(), metrics));
-            }
+    private Map<StreamKey, MessageID> initialStartIds(Collection<String> aliases) {
+        Map<StreamKey, MessageID> ids = new HashMap<>(aliases.size() * 2);
+        for (String alias : aliases) {
+            ConnectionID connectionID = ConnectionID.newBuilder().setSessionAlias(alias).build();
+            Consumer<Direction> addIdAction = direction -> ids.put(new StreamKey(alias, direction), createMessageId(connectionID, direction));
+            addIdAction.accept(Direction.FIRST);
+            addIdAction.accept(Direction.SECOND);
         }
-        return concat(
-                requireNonNull(searchResult.getSecond(), "stream info is null for initial start IDs response")
-                        .getMessageStreamPointerList().stream()
-                        .map(MessageStreamPointer::getLastId),
-                oppositeRequest == null ? empty() : oppositeRequest.getFirst().stream().map(MessageGroupResponse::getMessageId)
-        ).collect(toUnmodifiableMap(
-                MessagesStrategy::createStreamKeyFrom,
-                Function.identity(),
-                LATEST_SEQUENCE
-        ));
+
+        return ids;
+    }
+
+    @NotNull
+    private MessageID createMessageId(ConnectionID connectionID, Direction direction) {
+        return MessageID.newBuilder()
+                .setDirection(direction)
+                .setSequence(-1)
+                .setConnectionId(connectionID)
+                .build();
     }
 
     private static StreamKey keyFroMessageStream(MessageStream stream) {

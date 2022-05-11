@@ -54,5 +54,7 @@ class CrawlerConfiguration @JvmOverloads constructor(
     val filter: NameFilter? = null,
 
     val shutdownTimeout: Long = 10,
-    val shutdownTimeoutUnit: TimeUnit = TimeUnit.SECONDS
+    val shutdownTimeoutUnit: TimeUnit = TimeUnit.SECONDS,
+
+    val useGroupsForRequest: Boolean = false,
 )

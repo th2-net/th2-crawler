@@ -25,8 +25,8 @@ compileTestKotlin {
 }
 
 ext {
-    cradleVersion = '2.21.0'
-    grpcCrawlerVersion = '0.3.0-update-rpt-grpc-SNAPSHOT'
+    cradleVersion = '3.1.0-TH2-3490-2114567064-SNAPSHOT'
+    grpcCrawlerVersion = '0.3.0-th2-3661-SNAPSHOT'
     sharedDir = file("${project.rootDir}/shared")
 }
 

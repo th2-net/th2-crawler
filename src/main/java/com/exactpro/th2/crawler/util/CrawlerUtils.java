@@ -27,6 +27,7 @@ import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -46,6 +47,9 @@ import com.exactpro.th2.crawler.state.v1.StreamKey;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import com.exactpro.th2.dataprovider.grpc.EventSearchRequest;
 import com.exactpro.th2.dataprovider.grpc.EventSearchResponse;
+import com.exactpro.th2.dataprovider.grpc.MessageGroupsSearchRequest;
+import com.exactpro.th2.dataprovider.grpc.MessageGroupsSearchRequest.Builder;
+import com.exactpro.th2.dataprovider.grpc.MessageGroupsSearchRequest.Group;
 import com.exactpro.th2.dataprovider.grpc.MessageSearchRequest;
 import com.exactpro.th2.dataprovider.grpc.MessageSearchResponse;
 import com.exactpro.th2.dataprovider.grpc.MessageStream;
@@ -60,6 +64,8 @@ import com.google.protobuf.Timestamp;
 public class CrawlerUtils {
     private static final Logger LOGGER = LoggerFactory.getLogger(CrawlerUtils.class);
     private static final BoolValue METADATA_ONLY = BoolValue.newBuilder().setValue(false).build();
+
+    private static final BoolValue GROUP_SORT = BoolValue.newBuilder().setValue(true).build();
     public static final Interval EMPTY = Interval.builder()
             .crawlerName("Empty")
             .crawlerType("Empty")
@@ -97,6 +103,30 @@ public class CrawlerUtils {
     public static Iterator<MessageSearchResponse> searchMessages(DataProviderService dataProviderService,
                                                    MessagesSearchParameters info, CrawlerMetrics metrics) {
 
+        return info.isUseGroups()
+                ? searchByGroups(dataProviderService, info, metrics)
+                : searchByAliases(dataProviderService, info, metrics);
+    }
+
+    private static Iterator<MessageSearchResponse> searchByGroups(
+            DataProviderService dataProviderService,
+            MessagesSearchParameters info,
+            CrawlerMetrics metrics
+    ) {
+        Builder request = MessageGroupsSearchRequest.newBuilder()
+                .setStartTimestamp(info.getFrom())
+                .setEndTimestamp(info.getTo())
+                .addAllMessageGroup(Objects.requireNonNull(info.getAliases()).stream()
+                        .map(it -> Group.newBuilder().setName(it).build())
+                        .collect(Collectors.toUnmodifiableList()))
+                .setSort(GROUP_SORT);
+        metrics.providerMethodInvoked(ProviderMethod.SEARCH_MESSAGES);
+        return collectMessages(dataProviderService.searchMessageGroups(request.build()), info.getTo());
+    }
+
+    @NotNull
+    private static Iterator<MessageSearchResponse> searchByAliases(DataProviderService dataProviderService, MessagesSearchParameters info,
+            CrawlerMetrics metrics) {
         MessageSearchRequest.Builder messageSearchBuilder = MessageSearchRequest.newBuilder()
                 .setStartTimestamp(info.getFrom());
         if (info.getTo() != null) {
@@ -116,7 +146,6 @@ public class CrawlerUtils {
                 messageSearchBuilder.addStream(builder.setDirection(Direction.SECOND));
             }
         }
-
 
         MessageSearchRequest request;
         if (info.getResumeIds() == null || info.getResumeIds().isEmpty()) {

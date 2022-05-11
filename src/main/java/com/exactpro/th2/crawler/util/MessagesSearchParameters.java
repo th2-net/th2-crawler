@@ -34,13 +34,16 @@ public class MessagesSearchParameters {
     private final Collection<String> aliases;
     private final TimeRelation timeRelation;
 
+    private final boolean useGroups;
+
     private MessagesSearchParameters(
             Timestamp from,
             Timestamp to,
             Integer batchSize,
             Map<StreamKey, MessageID> resumeIds,
             Collection<String> aliases,
-            TimeRelation timeRelation
+            TimeRelation timeRelation,
+            boolean useGroups
     ) {
         if ((aliases == null || aliases.isEmpty()) && (resumeIds == null || resumeIds.isEmpty())) {
             throw new IllegalArgumentException("either aliases or resumeIds must be set");
@@ -51,6 +54,7 @@ public class MessagesSearchParameters {
         this.resumeIds = resumeIds;
         this.aliases = aliases;
         this.timeRelation = Objects.requireNonNull(timeRelation, "'Time relation' parameter");
+        this.useGroups = useGroups;
     }
 
     public Timestamp getFrom() {
@@ -80,6 +84,10 @@ public class MessagesSearchParameters {
         return timeRelation;
     }
 
+    public boolean isUseGroups() {
+        return useGroups;
+    }
+
     public static Builder builder() {
         return new Builder();
     }
@@ -91,6 +99,8 @@ public class MessagesSearchParameters {
         private Map<StreamKey, MessageID> resumeIds;
         private Collection<String> aliases;
         private TimeRelation timeRelation = TimeRelation.NEXT;
+        private boolean useGroups;
+
         private Builder() {
         }
 
@@ -124,8 +134,13 @@ public class MessagesSearchParameters {
             return this;
         }
 
+        public Builder setUseGroups(boolean useGroups) {
+            this.useGroups = useGroups;
+            return this;
+        }
+
         public MessagesSearchParameters build() {
-            return new MessagesSearchParameters(from, to, batchSize, resumeIds, aliases, timeRelation);
+            return new MessagesSearchParameters(from, to, batchSize, resumeIds, aliases, timeRelation, useGroups);
         }
     }
 }
