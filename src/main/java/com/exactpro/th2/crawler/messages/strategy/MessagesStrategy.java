@@ -184,6 +184,11 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
         Interval original = interval.getOriginal();
 
         MessageDataRequest request = data.getRequest();
+        if (LOGGER.isTraceEnabled()) {
+            LOGGER.trace("Sending request with messages: {}", request.getMessageDataList().stream()
+                    .map(MessagesStrategy::formatMessageId)
+                    .collect(Collectors.joining(",")));
+        }
         List<MessageGroupResponse> messages = request.getMessageDataList();
 
         if (messages.isEmpty()) {
@@ -401,5 +406,10 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
                         Entry::getKey,
                         this::toMessageId
                 ));
+    }
+
+    private static String formatMessageId(MessageGroupResponse msg) {
+        MessageID id = msg.getMessageId();
+        return id.getConnectionId().getSessionAlias() + ":" + id.getDirection() + ":" + id.getSequence();
     }
 }
