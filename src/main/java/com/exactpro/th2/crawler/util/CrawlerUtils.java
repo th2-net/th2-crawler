@@ -20,11 +20,8 @@ import static java.util.Objects.requireNonNullElse;
 
 import java.io.IOException;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
@@ -36,10 +33,8 @@ import com.exactpro.cradle.intervals.Interval;
 import com.exactpro.cradle.intervals.IntervalsWorker;
 import com.exactpro.th2.common.grpc.EventID;
 import com.exactpro.th2.common.message.MessageUtils;
-import com.exactpro.th2.crawler.DataType;
 import com.exactpro.th2.crawler.InternalInterval;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
-import com.exactpro.th2.crawler.metrics.CrawlerMetrics.Method;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics.ProviderMethod;
 import com.exactpro.th2.crawler.state.StateService;
 import com.exactpro.th2.crawler.state.v1.InnerEventId;
@@ -47,15 +42,11 @@ import com.exactpro.th2.crawler.state.v1.InnerMessageId;
 import com.exactpro.th2.crawler.state.v1.RecoveryState;
 import com.exactpro.th2.crawler.state.v1.StreamKey;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
-import com.exactpro.th2.dataprovider.grpc.EventData;
 import com.exactpro.th2.dataprovider.grpc.EventSearchRequest;
-import com.exactpro.th2.dataprovider.grpc.MessageData;
 import com.exactpro.th2.dataprovider.grpc.MessageSearchRequest;
 import com.exactpro.th2.dataprovider.grpc.StreamResponse;
-import com.exactpro.th2.dataprovider.grpc.StreamsInfo;
 import com.exactpro.th2.dataprovider.grpc.StringList;
 import com.exactpro.th2.dataprovider.grpc.TimeRelation;
-import com.google.common.collect.AbstractIterator;
 import com.google.common.collect.Iterators;
 import com.google.protobuf.BoolValue;
 import com.google.protobuf.Int32Value;
@@ -211,6 +202,11 @@ public class CrawlerUtils {
             T obj = objectExtractor.apply(el);
             return obj == null || !to.equals(timeExtractor.apply(obj));
         });
+    }
+
+    public static void printGetIntervalLog(Logger logger, Instant startTime, Instant endTime, String recoveryState) {
+        logger.info("Crawler got interval from: {}, to: {} with Recovery state {}",
+                startTime, endTime, recoveryState);
     }
 
     public static class EventsSearchParameters {
