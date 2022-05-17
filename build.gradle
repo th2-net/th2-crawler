@@ -25,7 +25,7 @@ compileTestKotlin {
 }
 
 ext {
-    cradleVersion = '2.21.0'
+    cradleVersion = '3.1.1'
     grpcCrawlerVersion = '0.2.0'
     sharedDir = file("${project.rootDir}/shared")
 }
@@ -39,7 +39,7 @@ dependencies {
     implementation "com.exactpro.th2:cradle-cassandra:${cradleVersion}"
 
     // the library for interaction with infra API
-    implementation 'com.exactpro.th2:common:3.35.0'
+    implementation 'com.exactpro.th2:common:3.37.2'
 
     implementation "com.exactpro.th2:grpc-crawler-data-processor:${grpcCrawlerVersion}"
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310") {
