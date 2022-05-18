@@ -297,30 +297,18 @@ public class Crawler {
             boolean fixedAndMultiple = !floatingToTime && !workAlone && !interval.isProcessed() && lastUpdateCheck;
             boolean fixedAndAlone = !floatingToTime && workAlone && (!interval.isProcessed() || lastUpdateCheck);
 
-            if (reachedTo || floatingToTime) {
-                if (foundInterval == null && (floatingAndMultiple || floatingAndAlone || fixedAndMultiple || fixedAndAlone)) {
-                    processFromStart = interval.isProcessed();
 
-                    if (processFromStart) {
-                        interval = intervalsWorker.setIntervalProcessed(interval, false);
-                    }
+            if (foundInterval == null && (reachedTo || floatingToTime) && (floatingAndMultiple || floatingAndAlone || fixedAndMultiple || fixedAndAlone)) {
+                processFromStart = interval.isProcessed();
 
-                    CrawlerUtils.printGetIntervalLog(LOGGER, interval.getStartTime(), interval.getEndTime(), interval.getRecoveryState());
-
-                    foundInterval = interval;
+                if (interval.isProcessed()) {
+                    interval = intervalsWorker.setIntervalProcessed(interval, false);
                 }
-            } else {
-                if (fixedAndAlone || fixedAndMultiple) {
-                    processFromStart = interval.isProcessed();
 
-                    if (processFromStart) {
-                        interval = intervalsWorker.setIntervalProcessed(interval, false);
-                    }
+                LOGGER.info("Crawler got interval from: {}, to: {} with Recovery state {}",
+                        interval.getStartTime(), interval.getEndTime(), interval.getRecoveryState());
 
-                    CrawlerUtils.printGetIntervalLog(LOGGER, interval.getStartTime(), interval.getEndTime(), interval.getRecoveryState());
-
-                    foundInterval = interval;
-                }
+                foundInterval = interval;
             }
 
             lastInterval = interval;
