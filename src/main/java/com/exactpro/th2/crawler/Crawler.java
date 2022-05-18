@@ -298,17 +298,30 @@ public class Crawler {
             boolean fixedAndAlone = !floatingToTime && workAlone && (!interval.isProcessed() || lastUpdateCheck);
 
 
-            if (foundInterval == null && (reachedTo || floatingToTime) && (floatingAndMultiple || floatingAndAlone || fixedAndMultiple || fixedAndAlone)) {
-                processFromStart = interval.isProcessed();
+            if (reachedTo || floatingToTime) {
+                if (foundInterval == null && (floatingAndMultiple || floatingAndAlone || fixedAndMultiple || fixedAndAlone)) {
+                    processFromStart = interval.isProcessed();
 
-                if (interval.isProcessed()) {
-                    interval = intervalsWorker.setIntervalProcessed(interval, false);
+                    if (processFromStart) {
+                        interval = intervalsWorker.setIntervalProcessed(interval, false);
+                    }
+
+                    CrawlerUtils.printGetIntervalLog(LOGGER, interval.getStartTime(), interval.getEndTime(), interval.getRecoveryState());
+
+                    foundInterval = interval;
                 }
+            } else {
+                if (fixedAndAlone || fixedAndMultiple) {
+                    processFromStart = interval.isProcessed();
 
-                LOGGER.info("Crawler got interval from: {}, to: {} with Recovery state {}",
-                        interval.getStartTime(), interval.getEndTime(), interval.getRecoveryState());
+                    if (processFromStart) {
+                        interval = intervalsWorker.setIntervalProcessed(interval, false);
+                    }
 
-                foundInterval = interval;
+                    CrawlerUtils.printGetIntervalLog(LOGGER, interval.getStartTime(), interval.getEndTime(), interval.getRecoveryState());
+
+                    foundInterval = interval;
+                }
             }
 
             lastInterval = interval;

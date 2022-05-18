@@ -25,6 +25,7 @@ import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
+import static com.exactpro.th2.crawler.TestUtilKt.createRecoveryState;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -33,20 +34,7 @@ class TestRecoveryState {
             StateService.createFromClasspath(RecoveryState.class, Mockito.mock(DataProviderService.class), null);
     @Test
     void correctlySerializesAndDeserializes() {
-        var state = new RecoveryState(
-                new InnerEventId(
-                        Instant.now(),
-                        "event_id"
-                ),
-                Map.of(
-                        new StreamKey("test", Direction.FIRST),
-                        new InnerMessageId(Instant.now(), 42L),
-                        new StreamKey("test", Direction.SECOND),
-                        new InnerMessageId(Instant.now(), 43L)
-                ),
-                10,
-                15
-        );
+        var state = createRecoveryState();
         String json = assertDoesNotThrow(() -> stateService.serialize(state), () -> "Cannot convert state to json: " + state);
         RecoveryState actualState = assertDoesNotThrow(() -> stateService.deserialize(json), () -> "Cannot deserialize the state from: " + json);
         assertEquals(state, actualState, () -> "Deserialized state: '" + actualState + "' is not the same as the original one: " + state);

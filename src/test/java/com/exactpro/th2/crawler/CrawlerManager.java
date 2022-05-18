@@ -137,6 +137,21 @@ public class CrawlerManager {
                 lagOffsetUnit, true, sessions, maxOutgoingDataSize);
     }
 
+    public static CrawlerConfiguration createConfig(String from, String to, DataType dataType, Set<String> sessions) {
+        return createConfig(from, to, dataType, Duration.ofHours(1), sessions, 5, ChronoUnit.MINUTES);
+    }
+
+    public static CrawlerConfiguration createConfig(String from, String to, DataType dataType, Duration length, Set<String> sessions, int lagOffset, ChronoUnit lagOffsetUnit) {
+        return createConfig(from, to, dataType, length, sessions, lagOffset, lagOffsetUnit, GrpcUtil.DEFAULT_MAX_MESSAGE_SIZE);
+    }
+
+    public static CrawlerConfiguration createConfig(String from, String to, DataType dataType, Duration length, Set<String> sessions, int lagOffset, ChronoUnit lagOffsetUnit, int maxOutgoingDataSize) {
+        return new CrawlerConfiguration(from, to, NAME,
+                dataType, length.toString(), 1, ChronoUnit.NANOS, 1, 10, lagOffset,
+                lagOffsetUnit, true, sessions, maxOutgoingDataSize);
+    }
+
+
     private void prepare() throws IOException {
         intervals = new ArrayList<>();
         searchEventResponse = addEvents();
