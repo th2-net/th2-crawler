@@ -166,7 +166,7 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
                 parameters.getCrawlerId(),
                 batchSize,
                 config.getMaxOutgoingDataSize(),
-                msg -> filter == null || filter.accept(msg.getMessage().getMetadata().getMessageType())
+                msg -> filter == null || filter.accept(msg.getMessageType())
         );
     }
 
