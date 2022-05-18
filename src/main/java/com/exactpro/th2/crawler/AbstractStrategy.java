@@ -116,7 +116,7 @@ public abstract class AbstractStrategy<C extends Continuation, P extends DataPar
                             + " Last value: " + extractId(last)
                     );
                 }
-                cache.addLast(last); // put back to the cache to send next try
+                cache.addFirst(last); // put back to the cache to send next try
                 pushedBackSize += last.getSerializedSize();
             }
             currentValuesSize = pushedBackSize;

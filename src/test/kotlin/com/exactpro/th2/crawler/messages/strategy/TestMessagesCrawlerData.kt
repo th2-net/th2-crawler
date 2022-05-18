@@ -62,11 +62,12 @@ class TestMessagesCrawlerData {
             responses.iterator(), emptyMap(), CrawlerId.newBuilder()
                 .setName("test")
                 .build(),
-            oneMessageSize * 2 /*2 msg per request*/ + oneMessageSize / 2 /*for request*/
+            oneMessageSize * 2 + 10
         ) { true }
 
         val dataParts = data.asSequence().toList()
-        Assertions.assertEquals(5, dataParts.size)
+        assertInOrder(dataParts)
+        Assertions.assertEquals(10, dataParts.size)
         val continuation: MessagesCrawlerData.ResumeMessageIDs? = data.continuation
         Assertions.assertNotNull(continuation) { "continuation is null" }
         continuation!!
@@ -80,6 +81,17 @@ class TestMessagesCrawlerData {
             ),
             continuation.ids
         )
+    }
+
+    private fun assertInOrder(dataParts: List<MessagesCrawlerData.MessagePart>) {
+        var lastSeq = -1L
+        for (part in dataParts) {
+            for (msg in part.request.messageDataList) {
+                val sequence = msg.messageId.sequence
+                Assertions.assertTrue(lastSeq < sequence) { "Unordered sequences: $lastSeq and $sequence" }
+                lastSeq = sequence
+            }
+        }
     }
 
     private fun message(sequence: Long, alias: String = "test", name: String = "test_message"): MessageSearchResponse {
