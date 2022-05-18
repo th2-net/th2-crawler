@@ -99,7 +99,11 @@ public class MessagesCrawlerData extends AbstractCrawlerData<MessageSearchRespon
     @Override
     protected @Nullable MessageGroupResponse extractValue(MessageSearchResponse response) {
         if (response.hasMessage()) {
-            return response.getMessage();
+            MessageGroupResponse message = response.getMessage();
+            if (LOGGER.isTraceEnabled()) {
+                LOGGER.trace("Received message {}", MessageUtils.toJson(message.getMessageId()));
+            }
+            return message;
         }
         return null;
     }
