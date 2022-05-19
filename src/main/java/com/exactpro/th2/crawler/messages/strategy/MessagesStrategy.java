@@ -35,6 +35,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.function.BinaryOperator;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import org.jetbrains.annotations.NotNull;
@@ -166,7 +167,7 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
                 parameters.getCrawlerId(),
                 batchSize,
                 config.getMaxOutgoingDataSize(),
-                msg -> filter == null || filter.accept(msg.getMessageType())
+                msg -> filterMessageType(msg, filter)
         );
     }
 
@@ -417,5 +418,18 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
                         Entry::getKey,
                         this::toMessageId
                 ));
+    }
+
+    private boolean filterMessageType(MessageData msg, NameFilter filter) {
+        String messageType = msg.getMessageType();
+
+        if (LOGGER.isTraceEnabled()) {
+            MessageID id = msg.getMessageId();
+            String shortId = id.getConnectionId().getSessionAlias() + ":" + id.getDirection() + ":" + id.getSequence();
+
+            LOGGER.trace("Message {} with message type {} to be filtered", shortId, messageType);
+        }
+
+        return filter == null || filter.accept(messageType);
     }
 }
