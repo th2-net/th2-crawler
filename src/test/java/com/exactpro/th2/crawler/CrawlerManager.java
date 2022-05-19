@@ -78,8 +78,6 @@ public class CrawlerManager {
     private final CrawlerConfiguration configuration;
 
     public static final String[] SESSIONS = {"alias1", "alias2"};
-
-
     public CrawlerManager(CrawlerConfiguration configuration) throws IOException {
         this.configuration = configuration;
         prepare();
@@ -132,9 +130,8 @@ public class CrawlerManager {
     }
 
     public static CrawlerConfiguration createConfig(String from, DataType dataType, Duration length, Set<String> sessions, int lagOffset, ChronoUnit lagOffsetUnit, int maxOutgoingDataSize) {
-        return new CrawlerConfiguration(from, null, NAME,
-                dataType, length.toString(), 1, ChronoUnit.NANOS, 1, 10, lagOffset,
-                lagOffsetUnit, true, sessions, maxOutgoingDataSize);
+        return new CrawlerConfiguration(from, null, NAME, dataType, length.toString(), 1,
+                ChronoUnit.NANOS, 1, 10, lagOffset, lagOffsetUnit, true, sessions, maxOutgoingDataSize);
     }
 
     public static CrawlerConfiguration createConfig(String from, String to, DataType dataType, Set<String> sessions) {
@@ -146,9 +143,8 @@ public class CrawlerManager {
     }
 
     public static CrawlerConfiguration createConfig(String from, String to, DataType dataType, Duration length, Set<String> sessions, int lagOffset, ChronoUnit lagOffsetUnit, int maxOutgoingDataSize) {
-        return new CrawlerConfiguration(from, to, NAME,
-                dataType, length.toString(), 1, ChronoUnit.NANOS, 1, 10, lagOffset,
-                lagOffsetUnit, true, sessions, maxOutgoingDataSize);
+        return new CrawlerConfiguration(from, to, NAME, dataType, length.toString(), 1, ChronoUnit.NANOS,
+                1, 10, lagOffset, lagOffsetUnit, true, sessions, maxOutgoingDataSize);
     }
 
 

@@ -213,11 +213,6 @@ public class CrawlerUtils {
         });
     }
 
-    public static void printGetIntervalLog(Logger logger, Instant startTime, Instant endTime, String recoveryState) {
-        logger.info("Crawler got interval from: {}, to: {} with Recovery state {}",
-                startTime, endTime, recoveryState);
-    }
-
     public static class EventsSearchParameters {
         private final Timestamp from;
         private final Timestamp to;
