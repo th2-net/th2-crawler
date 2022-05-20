@@ -35,10 +35,7 @@ import com.exactpro.th2.common.grpc.MessageID;
 import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException;
 
 import com.exactpro.th2.crawler.state.StateService;
-import com.exactpro.th2.crawler.state.v1.InnerEventId;
-import com.exactpro.th2.crawler.state.v1.InnerMessageId;
 import com.exactpro.th2.crawler.state.v1.RecoveryState;
-import com.exactpro.th2.crawler.state.v1.StreamKey;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import com.exactpro.th2.dataprovider.grpc.EventData;
 import com.exactpro.th2.dataprovider.grpc.EventSearchRequest;
@@ -49,6 +46,7 @@ import com.exactpro.th2.dataprovider.grpc.Stream;
 import com.exactpro.th2.dataprovider.grpc.StreamResponse;
 import com.exactpro.th2.dataprovider.grpc.StreamsInfo;
 
+import io.grpc.internal.GrpcUtil;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
@@ -64,9 +62,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
-import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 import static com.exactpro.th2.crawler.TestUtilKt.createMessageID;
@@ -319,12 +315,11 @@ public class CrawlerTest {
     }
 
     @Test
-    @DisplayName("Crawler takes unprocessed interval")
-    public void unprocessedInterval() throws IOException, UnexpectedDataProcessorException {
+    @DisplayName("Single Crawler takes unprocessed interval")
+    public void unprocessedIntervalSingleMode() throws IOException, UnexpectedDataProcessorException {
         String from = "2021-06-16T12:00:00.00Z";
         String to = "2021-06-16T20:00:00.00Z";
         String intervalEnd = "2021-06-16T13:00:00.00Z";
-        String lastUpdateTime = "2021-06-16T11:00:00.00Z";
 
         CrawlerConfiguration configuration = CrawlerManager.createConfig(
                 from, to, DataType.MESSAGES, Set.of(CrawlerManager.SESSIONS));
@@ -345,7 +340,6 @@ public class CrawlerTest {
                 .startTime(Instant.parse(from))
                 .endTime(Instant.parse(intervalEnd))
                 .processed(false)
-                .lastUpdateTime(Instant.parse(lastUpdateTime))
                 .recoveryState(stateService.serialize(state))
                 .build();
 
@@ -353,6 +347,97 @@ public class CrawlerTest {
 
         Iterator<StreamResponse> iterator = new MessageSearchResponse(messages).iterator();
         when(manager.getDataProviderMock().searchMessages(any(MessageSearchRequest.class))).thenReturn(iterator);
+        when(manager.getDataServiceMock().sendMessage(any(MessageDataRequest.class))).thenReturn(MessageResponse.getDefaultInstance());
+
+        crawler.process();
+
+        Assertions.assertTrue(interval.isProcessed());
+    }
+
+    @Test
+    @DisplayName("Crawler takes unprocessed interval in MULTIPLE mode with FIXED endTime")
+    public void unprocessedIntervalMultipleModeFixedEnd() throws IOException, UnexpectedDataProcessorException {
+        String from = "2021-06-16T12:00:00.00Z";
+        String to = "2021-06-16T20:00:00.00Z";
+        String intervalEnd = "2021-06-16T13:00:00.00Z";
+        String lastUpdateTime = "2021-06-16T10:00:00.00Z";
+
+        CrawlerConfiguration configuration = new CrawlerConfiguration(
+                from, to, "test_crawler", DataType.MESSAGES, "PT1H", 1, ChronoUnit.NANOS,
+                1, 10, 5, ChronoUnit.MINUTES, false,
+                Set.of(CrawlerManager.SESSIONS), GrpcUtil.DEFAULT_MAX_MESSAGE_SIZE);
+
+        CrawlerManager manager = new CrawlerManager(configuration);
+
+
+        Crawler crawler = manager.createCrawler();
+
+        StateService<RecoveryState> stateService =
+                StateService.createFromClasspath(RecoveryState.class, Mockito.mock(DataProviderService.class), null);
+
+        var state = createRecoveryState();
+
+        Collection<Message> messages = MessageReaderKt.readMessages(Paths.get("src/test/resources/messages.txt"));
+        Interval interval = new IntervalBuilder()
+                .crawlerName("name")
+                .crawlerVersion("v1")
+                .crawlerType("MESSAGES")
+                .startTime(Instant.parse(from))
+                .endTime(Instant.parse(intervalEnd))
+                .processed(false)
+                .recoveryState(stateService.serialize(state))
+                .build();
+
+        manager.getIntervalsWorkerMock().storeInterval(interval);
+
+        interval.setLastUpdateDateTime(Instant.parse(lastUpdateTime));
+
+        when(manager.getDataProviderMock().searchMessages(any(MessageSearchRequest.class))).thenReturn(new MessageSearchResponse(messages).iterator());
+        when(manager.getDataServiceMock().sendMessage(any(MessageDataRequest.class))).thenReturn(MessageResponse.getDefaultInstance());
+
+        crawler.process();
+
+        Assertions.assertTrue(interval.isProcessed());
+    }
+
+    @Test
+    @DisplayName("Crawler takes unprocessed interval in MULTIPLE mode with FLOATING endTime")
+    public void unprocessedIntervalMultipleModeFloatingEnd() throws IOException, UnexpectedDataProcessorException {
+        String from = "2021-06-16T12:00:00.00Z";
+        String intervalEnd = "2021-06-16T13:00:00.00Z";
+        String lastUpdateTime = "2021-06-16T10:00:00.00Z";
+
+        CrawlerConfiguration configuration = new CrawlerConfiguration(
+                from, null, "test_crawler", DataType.MESSAGES, "PT1H", 1, ChronoUnit.NANOS,
+                1, 10, 5, ChronoUnit.MINUTES, false,
+                Set.of(CrawlerManager.SESSIONS), GrpcUtil.DEFAULT_MAX_MESSAGE_SIZE);
+
+        CrawlerManager manager = new CrawlerManager(configuration);
+
+
+        Crawler crawler = manager.createCrawler();
+
+        StateService<RecoveryState> stateService =
+                StateService.createFromClasspath(RecoveryState.class, Mockito.mock(DataProviderService.class), null);
+
+        var state = createRecoveryState();
+
+        Collection<Message> messages = MessageReaderKt.readMessages(Paths.get("src/test/resources/messages.txt"));
+        Interval interval = new IntervalBuilder()
+                .crawlerName("name")
+                .crawlerVersion("v1")
+                .crawlerType("MESSAGES")
+                .startTime(Instant.parse(from))
+                .endTime(Instant.parse(intervalEnd))
+                .processed(false)
+                .recoveryState(stateService.serialize(state))
+                .build();
+
+        manager.getIntervalsWorkerMock().storeInterval(interval);
+
+        interval.setLastUpdateDateTime(Instant.parse(lastUpdateTime));
+
+        when(manager.getDataProviderMock().searchMessages(any(MessageSearchRequest.class))).thenReturn(new MessageSearchResponse(messages).iterator());
         when(manager.getDataServiceMock().sendMessage(any(MessageDataRequest.class))).thenReturn(MessageResponse.getDefaultInstance());
 
         crawler.process();
