@@ -427,10 +427,13 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
     private static void fillUnpairedStreams(Map<StreamKey, MessageID> transferFrom, Map<StreamKey, MessageID> transferTo) {
         for (StreamKey key : transferFrom.keySet()) {
             String alias = key.getSessionAlias();
-            Direction oppositeDirection = key.getDirection() == FIRST ? SECOND : FIRST;
+            Direction direction = key.getDirection();
+            Direction oppositeDirection = direction == FIRST ? SECOND : FIRST;
             StreamKey oppositeStreamKey = new StreamKey(alias, oppositeDirection);
 
             if (!transferFrom.containsKey(oppositeStreamKey)) {
+
+                LOGGER.trace("Continuation does not contain a pair for {}:{}. Filling it.", alias, direction);
 
                 long sequence = transferTo.containsKey(oppositeStreamKey) ? transferTo.get(oppositeStreamKey).getSequence() : -1L;
 
@@ -439,6 +442,8 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
                         .setDirection(oppositeDirection)
                         .setSequence(sequence)
                         .build();
+
+                LOGGER.trace("Stream key {}:{} in continuation was assigned with sequence {}", alias, oppositeDirection, sequence);
 
                 transferFrom.put(oppositeStreamKey, messageID);
             }
