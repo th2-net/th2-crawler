@@ -16,6 +16,8 @@
 
 package com.exactpro.th2.crawler.messages.strategy;
 
+import static com.exactpro.th2.common.grpc.Direction.FIRST;
+import static com.exactpro.th2.common.grpc.Direction.SECOND;
 import static java.util.Objects.requireNonNull;
 import static java.util.Objects.requireNonNullElse;
 import static java.util.stream.Collectors.toMap;
@@ -37,6 +39,7 @@ import java.util.function.BinaryOperator;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import com.exactpro.th2.common.grpc.Direction;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -134,6 +137,8 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
         }
         Map<StreamKey, InnerMessageId> old = current.getLastProcessedMessages();
         Map<StreamKey, MessageID> lastProcessedMessages = new HashMap<>(old == null ? continuation.getIds() : toMessageIDs(old));
+
+        fillUnpairedStreams(continuation.getIds(), lastProcessedMessages);
         putAndCheck(continuation.getIds(), lastProcessedMessages, "creating state from current state and continuation");
 
         return new RecoveryState(current.getLastProcessedEvent(), toInnerMessageIDs(lastProcessedMessages),
@@ -417,5 +422,26 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
                         Entry::getKey,
                         this::toMessageId
                 ));
+    }
+
+    private static void fillUnpairedStreams(Map<StreamKey, MessageID> transferFrom, Map<StreamKey, MessageID> transferTo) {
+        for (StreamKey key : transferFrom.keySet()) {
+            String alias = key.getSessionAlias();
+            Direction oppositeDirection = key.getDirection() == FIRST ? SECOND : FIRST;
+            StreamKey oppositeStreamKey = new StreamKey(alias, oppositeDirection);
+
+            if (!transferFrom.containsKey(oppositeStreamKey)) {
+
+                long sequence = transferTo.containsKey(oppositeStreamKey) ? transferTo.get(oppositeStreamKey).getSequence() : -1L;
+
+                MessageID messageID = MessageID.newBuilder()
+                        .setConnectionId(ConnectionID.newBuilder().setSessionAlias(alias).build())
+                        .setDirection(oppositeDirection)
+                        .setSequence(sequence)
+                        .build();
+
+                transferFrom.put(oppositeStreamKey, messageID);
+            }
+        }
     }
 }
