@@ -268,7 +268,6 @@ public class Crawler {
         Interval lastInterval = null;
         Interval foundInterval = null;
         long intervalsNumber = 0;
-        boolean processFromStart = true;
 
         for (Interval interval : intervals) {
             boolean lastUpdateCheck = interval.getLastUpdateDateTime()
@@ -297,18 +296,16 @@ public class Crawler {
             boolean fixedAndMultiple = !floatingToTime && !workAlone && !interval.isProcessed() && lastUpdateCheck;
             boolean fixedAndAlone = !floatingToTime && workAlone && (!interval.isProcessed() || lastUpdateCheck);
 
-
-            if (foundInterval == null && (reachedTo || floatingToTime) && (floatingAndMultiple || floatingAndAlone || fixedAndMultiple || fixedAndAlone)) {
-                processFromStart = interval.isProcessed();
-
-                if (interval.isProcessed()) {
-                    interval = intervalsWorker.setIntervalProcessed(interval, false);
+            if (reachedTo || floatingToTime) {
+                if (foundInterval == null && (floatingAndMultiple || floatingAndAlone || fixedAndMultiple || fixedAndAlone)) {
+                    captureInterval(interval);
+                    foundInterval = interval;
                 }
-
-                LOGGER.info("Crawler got interval from: {}, to: {} with Recovery state {}",
-                        interval.getStartTime(), interval.getEndTime(), interval.getRecoveryState());
-
-                foundInterval = interval;
+            } else {
+                if (foundInterval == null && (fixedAndAlone || fixedAndMultiple)) {
+                    captureInterval(interval);
+                    foundInterval = interval;
+                }
             }
 
             lastInterval = interval;
@@ -319,7 +316,7 @@ public class Crawler {
             LOGGER.info("Last interval: {} - {}; state={}", lastInterval.getStartTime(), lastInterval.getEndTime(), lastInterval.getRecoveryState());
         }
 
-        return new GetIntervalReport(foundInterval, lastInterval, processFromStart);
+        return new GetIntervalReport(foundInterval, lastInterval);
     }
 
     private boolean compatibilityCheckRequired(Interval interval) {
@@ -341,7 +338,7 @@ public class Crawler {
 
         if (lagNow.isBefore(from)) {
             LOGGER.info("Waiting for start of work. Current time with lag: {} is before \"from\" time of Crawler: {}", lagNow, from);
-            return new FetchIntervalReport(null, getSleepTime(lagNow, from), true);
+            return new FetchIntervalReport(null, getSleepTime(lagNow, from));
         }
 
         LOGGER.trace("Requesting intervals from {} to {} for name {} and version {}", from, to, name, version);
@@ -353,7 +350,7 @@ public class Crawler {
         GetIntervalReport getReport = getInterval(intervals);
 
         if (getReport.foundInterval != null) {
-            return new FetchIntervalReport(getReport.foundInterval, defaultSleepTime, getReport.processFromStart);
+            return new FetchIntervalReport(getReport.foundInterval, defaultSleepTime);
         }
 
         Interval lastInterval = getReport.lastInterval;
@@ -388,7 +385,7 @@ public class Crawler {
                                 Duration.ofMillis(sleepTime));
                     }
 
-                    return new FetchIntervalReport(null, sleepTime, true);
+                    return new FetchIntervalReport(null, sleepTime);
                 }
             }
 
@@ -401,15 +398,14 @@ public class Crawler {
 
             metrics.currentInterval(CrawlerUtils.EMPTY);
 
-            return new FetchIntervalReport(null, defaultSleepTime, true);
+            return new FetchIntervalReport(null, defaultSleepTime);
         }
 
         LOGGER.info("Failed to create new interval from: {}, to: {} as the end of the last interval is after " +
                         "end time of Crawler: {}",
                 lastIntervalEnd, expectedEnd, to);
 
-        return new FetchIntervalReport(null, getSleepTime(expectedEnd, lagNow),
-                true); // TODO: we need to start from the beginning I guess
+        return new FetchIntervalReport(null, getSleepTime(expectedEnd, lagNow));
     }
 
     private FetchIntervalReport createAndStoreInterval(Instant from, Instant to, String name, String version, DataType type, Instant lagTime) throws IOException {
@@ -422,7 +418,7 @@ public class Crawler {
             LOGGER.info("It is too early now to create new interval from: {}, to: {}. " +
                     "Falling asleep for {} millis", from, to, sleepTime);
 
-            return new FetchIntervalReport(null, sleepTime, true);
+            return new FetchIntervalReport(null, sleepTime);
         }
 
         Interval newInterval = Interval.builder()
@@ -444,39 +440,44 @@ public class Crawler {
             LOGGER.info("Failed to store new interval from {} to {}. Trying to get or create an interval again.",
                     from, to);
 
-            return new FetchIntervalReport(null, 0L, true); // setting sleepTime to 0 in order to try again immediately
+            return new FetchIntervalReport(null, 0L); // setting sleepTime to 0 in order to try again immediately
         }
 
         LOGGER.info("Crawler created interval from: {}, to: {}", newInterval.getStartTime(), newInterval.getEndTime());
 
-        return new FetchIntervalReport(newInterval, sleepTime, true);
+        return new FetchIntervalReport(newInterval, sleepTime);
     }
 
     private long getSleepTime(Instant from, Instant to) {
         return Duration.between(from, to).abs().toMillis();
     }
 
+    private void captureInterval(Interval interval) throws IOException {
+        if (interval.isProcessed()) {
+            interval = intervalsWorker.setIntervalProcessed(interval, false);
+        }
+
+        LOGGER.info("Crawler is starting processing interval from: {}, to: {} with Recovery state {}",
+                interval.getStartTime(), interval.getEndTime(), interval.getRecoveryState());
+    }
+
     private static class GetIntervalReport {
         private final Interval foundInterval;
         private final Interval lastInterval;
-        private final boolean processFromStart;
 
-        private GetIntervalReport(Interval foundInterval, Interval lastInterval, boolean processFromStart) {
+        private GetIntervalReport(Interval foundInterval, Interval lastInterval) {
             this.foundInterval = foundInterval;
             this.lastInterval = lastInterval;
-            this.processFromStart = processFromStart;
         }
     }
 
     private static class FetchIntervalReport {
         private final Interval interval;
         private final long sleepTime;
-        private final boolean processFromStart;
 
-        private FetchIntervalReport(Interval interval, long sleepTime, boolean processFromStart) {
+        private FetchIntervalReport(Interval interval, long sleepTime) {
             this.interval = interval;
             this.sleepTime = sleepTime;
-            this.processFromStart = processFromStart;
         }
     }
 }
