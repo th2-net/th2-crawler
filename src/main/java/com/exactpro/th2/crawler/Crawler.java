@@ -223,10 +223,13 @@ public class Crawler {
                 LOGGER.info("Got the same name ({}) and version ({}) from repeated crawlerConnect", dataProcessorName, dataProcessorVersion);
                 break;
             case CONTINUE:
+                boolean messages = crawlerType == DataType.MESSAGES;
                 currentInt.processed(true, intervalsWorker);
+                long lastNumberOfEvents = messages ? 0 : processedElements;
+                long lastNumberOfMessages = messages ? processedElements : 0;
                 currentInt.updateState(state == null
-                                ? new RecoveryState(null, null, processedElements, 0)
-                                : new RecoveryState(state.getLastProcessedEvent(), state.getLastProcessedMessages(), processedElements, 0),
+                                ? new RecoveryState(null, null, lastNumberOfEvents, lastNumberOfMessages)
+                                : new RecoveryState(state.getLastProcessedEvent(), state.getLastProcessedMessages(), lastNumberOfEvents, lastNumberOfMessages),
                         intervalsWorker
                 );
                 LOGGER.info("Interval from {}, to {} was processed successfully", interval.getStartTime(), interval.getEndTime());
