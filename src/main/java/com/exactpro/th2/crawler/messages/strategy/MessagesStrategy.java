@@ -138,8 +138,8 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
         Map<StreamKey, InnerMessageId> old = current.getLastProcessedMessages();
         Map<StreamKey, MessageID> lastProcessedMessages = new HashMap<>(old == null ? continuation.getIds() : toMessageIDs(old));
 
-        fillUnpairedStreams(continuation.getIds(), lastProcessedMessages);
-        putAndCheck(continuation.getIds(), lastProcessedMessages, "creating state from current state and continuation");
+        var filledContinuation = fillUnpairedStreams(continuation.getIds(), lastProcessedMessages);
+        putAndCheck(filledContinuation, lastProcessedMessages, "creating state from current state and continuation");
 
         return new RecoveryState(current.getLastProcessedEvent(), toInnerMessageIDs(lastProcessedMessages),
                 current.getLastNumberOfEvents(),
@@ -424,16 +424,16 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
                 ));
     }
 
-    private static void fillUnpairedStreams(Map<StreamKey, MessageID> transferFrom, Map<StreamKey, MessageID> transferTo) {
-        for (var it = transferFrom.entrySet().iterator(); it.hasNext();) {
-            StreamKey key = it.next().getKey();
+    private static Map<StreamKey, MessageID> fillUnpairedStreams(Map<StreamKey, MessageID> transferFrom, Map<StreamKey, MessageID> transferTo) {
+        Map<StreamKey, MessageID> res = new HashMap<>(transferFrom);
 
+        for (StreamKey key : res.keySet()) {
             String alias = key.getSessionAlias();
             Direction direction = key.getDirection();
             Direction oppositeDirection = direction == FIRST ? SECOND : FIRST;
             StreamKey oppositeStreamKey = new StreamKey(alias, oppositeDirection);
 
-            if (!transferFrom.containsKey(oppositeStreamKey)) {
+            if (!res.containsKey(oppositeStreamKey)) {
 
                 LOGGER.trace("Continuation does not contain a pair for {}:{}. Filling it.", alias, direction);
 
@@ -447,8 +447,10 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
 
                 LOGGER.trace("Stream key {}:{} in continuation was assigned with sequence {}", alias, oppositeDirection, sequence);
 
-                transferFrom.put(oppositeStreamKey, messageID);
+                res.put(oppositeStreamKey, messageID);
             }
         }
+
+        return res;
     }
 }
