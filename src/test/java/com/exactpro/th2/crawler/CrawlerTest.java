@@ -359,8 +359,10 @@ public class CrawlerTest {
     public void unprocessedIntervalMultipleModeFixedEnd() throws IOException, UnexpectedDataProcessorException {
         String from = "2021-06-16T12:00:00.00Z";
         String to = "2021-06-16T20:00:00.00Z";
-        String intervalEnd = "2021-06-16T13:00:00.00Z";
-        String lastUpdateTime = "2021-06-16T10:00:00.00Z";
+        String intervalEnd1 = "2021-06-16T13:00:00.00Z";
+        String intervalEnd2 = "2021-06-16T14:00:00.00Z";
+        String lastUpdateTime1 = "2021-06-16T11:59:59.00Z";
+        String lastUpdateTime2 = "2021-06-16T10:00:00.00Z";
 
         CrawlerConfiguration configuration = new CrawlerConfiguration(
                 from, to, "test_crawler", DataType.MESSAGES, "PT1H", 1, ChronoUnit.NANOS,
@@ -378,34 +380,51 @@ public class CrawlerTest {
         var state = createRecoveryState();
 
         Collection<Message> messages = MessageReaderKt.readMessages(Paths.get("src/test/resources/messages.txt"));
-        Interval interval = new IntervalBuilder()
+        Interval interval1 = new IntervalBuilder()
                 .crawlerName("name")
                 .crawlerVersion("v1")
                 .crawlerType("MESSAGES")
                 .startTime(Instant.parse(from))
-                .endTime(Instant.parse(intervalEnd))
+                .endTime(Instant.parse(intervalEnd1))
                 .processed(false)
                 .recoveryState(stateService.serialize(state))
                 .build();
 
-        manager.getIntervalsWorkerMock().storeInterval(interval);
+        Interval interval2 = new IntervalBuilder()
+                .crawlerName("name")
+                .crawlerVersion("v1")
+                .crawlerType("MESSAGES")
+                .startTime(Instant.parse(intervalEnd1))
+                .endTime(Instant.parse(intervalEnd2))
+                .processed(false)
+                .recoveryState(stateService.serialize(state))
+                .build();
 
-        interval.setLastUpdateDateTime(Instant.parse(lastUpdateTime));
+        manager.getIntervalsWorkerMock().storeInterval(interval1);
+        manager.getIntervalsWorkerMock().storeInterval(interval2);
+
+        interval1.setLastUpdateDateTime(Instant.parse(lastUpdateTime1));
+        interval2.setLastUpdateDateTime(Instant.parse(lastUpdateTime2));
 
         when(manager.getDataProviderMock().searchMessages(any(MessageSearchRequest.class))).thenReturn(new MessageSearchResponse(messages).iterator());
         when(manager.getDataServiceMock().sendMessage(any(MessageDataRequest.class))).thenReturn(MessageResponse.getDefaultInstance());
 
         crawler.process();
 
-        Assertions.assertTrue(interval.isProcessed());
+        Assertions.assertTrue(interval1.isProcessed());
+
+        // verify that no new intervals were created
+        verify(manager.getIntervalsWorkerMock(), times(2)).storeInterval(any(Interval.class));
     }
 
     @Test
     @DisplayName("Crawler takes unprocessed interval in MULTIPLE mode with FLOATING endTime")
     public void unprocessedIntervalMultipleModeFloatingEnd() throws IOException, UnexpectedDataProcessorException {
         String from = "2021-06-16T12:00:00.00Z";
-        String intervalEnd = "2021-06-16T13:00:00.00Z";
-        String lastUpdateTime = "2021-06-16T10:00:00.00Z";
+        String intervalEnd1 = "2021-06-16T13:00:00.00Z";
+        String intervalEnd2 = "2021-06-16T14:00:00.00Z";
+        String lastUpdateTime1 = "2021-06-16T11:59:59.00Z";
+        String lastUpdateTime2 = "2021-06-16T10:00:00.00Z";
 
         CrawlerConfiguration configuration = new CrawlerConfiguration(
                 from, null, "test_crawler", DataType.MESSAGES, "PT1H", 1, ChronoUnit.NANOS,
@@ -423,25 +442,40 @@ public class CrawlerTest {
         var state = createRecoveryState();
 
         Collection<Message> messages = MessageReaderKt.readMessages(Paths.get("src/test/resources/messages.txt"));
-        Interval interval = new IntervalBuilder()
+        Interval interval1 = new IntervalBuilder()
                 .crawlerName("name")
                 .crawlerVersion("v1")
                 .crawlerType("MESSAGES")
                 .startTime(Instant.parse(from))
-                .endTime(Instant.parse(intervalEnd))
+                .endTime(Instant.parse(intervalEnd1))
                 .processed(false)
                 .recoveryState(stateService.serialize(state))
                 .build();
 
-        manager.getIntervalsWorkerMock().storeInterval(interval);
+        Interval interval2 = new IntervalBuilder()
+                .crawlerName("name")
+                .crawlerVersion("v1")
+                .crawlerType("MESSAGES")
+                .startTime(Instant.parse(intervalEnd1))
+                .endTime(Instant.parse(intervalEnd2))
+                .processed(false)
+                .recoveryState(stateService.serialize(state))
+                .build();
 
-        interval.setLastUpdateDateTime(Instant.parse(lastUpdateTime));
+        manager.getIntervalsWorkerMock().storeInterval(interval1);
+        manager.getIntervalsWorkerMock().storeInterval(interval2);
+
+        interval1.setLastUpdateDateTime(Instant.parse(lastUpdateTime1));
+        interval2.setLastUpdateDateTime(Instant.parse(lastUpdateTime2));
 
         when(manager.getDataProviderMock().searchMessages(any(MessageSearchRequest.class))).thenReturn(new MessageSearchResponse(messages).iterator());
         when(manager.getDataServiceMock().sendMessage(any(MessageDataRequest.class))).thenReturn(MessageResponse.getDefaultInstance());
 
         crawler.process();
 
-        Assertions.assertTrue(interval.isProcessed());
+        Assertions.assertTrue(interval1.isProcessed());
+
+        // verify that no new intervals were created
+        verify(manager.getIntervalsWorkerMock(), times(2)).storeInterval(any(Interval.class));
     }
 }
