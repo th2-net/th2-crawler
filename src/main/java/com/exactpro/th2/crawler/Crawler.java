@@ -289,6 +289,10 @@ public class Crawler {
             boolean fixedAndMultiple = !floatingToTime && !workAlone && !interval.isProcessed() && lastUpdateCheck;
             boolean fixedAndAlone = !floatingToTime && workAlone && (!interval.isProcessed() || lastUpdateCheck);
 
+            if (!reachedTo && !floatingToTime) {
+                LOGGER.info("Reached the end of specified time interval: {}", interval.getEndTime());
+                reachedTo = interval.getEndTime().equals(to);
+            }
 
             if (foundInterval == null && (reachedTo || floatingToTime) && (floatingAndMultiple || floatingAndAlone || fixedAndMultiple || fixedAndAlone)) {
                 processFromStart = interval.isProcessed();
