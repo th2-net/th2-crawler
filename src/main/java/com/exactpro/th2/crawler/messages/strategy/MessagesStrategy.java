@@ -425,7 +425,12 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
     }
 
     private static void fillUnpairedStreams(Map<StreamKey, MessageID> transferFrom, Map<StreamKey, MessageID> transferTo) {
-        for (StreamKey key : transferFrom.keySet()) {
+
+        var fromKeysIterator = transferFrom.keySet().iterator();
+
+        while (fromKeysIterator.hasNext()) {
+            var key = fromKeysIterator.next();
+
             String alias = key.getSessionAlias();
             Direction direction = key.getDirection();
             Direction oppositeDirection = direction == FIRST ? SECOND : FIRST;
