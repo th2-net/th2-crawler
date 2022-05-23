@@ -427,7 +427,7 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
     private static Map<StreamKey, MessageID> fillUnpairedStreams(Map<StreamKey, MessageID> transferFrom, Map<StreamKey, MessageID> transferTo) {
         Map<StreamKey, MessageID> res = new HashMap<>(transferFrom);
 
-        for (StreamKey key : res.keySet()) {
+        for (StreamKey key : transferFrom.keySet()) {
             String alias = key.getSessionAlias();
             Direction direction = key.getDirection();
             Direction oppositeDirection = direction == FIRST ? SECOND : FIRST;
