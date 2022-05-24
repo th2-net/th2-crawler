@@ -17,6 +17,11 @@ package com.exactpro.th2.crawler
 
 import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.MessageID
+import com.exactpro.th2.crawler.state.v1.InnerEventId
+import com.exactpro.th2.crawler.state.v1.InnerMessageId
+import com.exactpro.th2.crawler.state.v1.RecoveryState
+import com.exactpro.th2.crawler.state.v1.StreamKey
+import java.time.Instant
 
 @JvmOverloads
 fun createMessageID(sessionAlias: String, direction: Direction, sequence: Long, subSequence: List<Int> = emptyList()): MessageID = MessageID.newBuilder().apply {
@@ -27,3 +32,16 @@ fun createMessageID(sessionAlias: String, direction: Direction, sequence: Long, 
     this.sequence = sequence
     addAllSubsequence(subSequence)
 }.build()
+
+fun createRecoveryState() = RecoveryState(
+    InnerEventId(
+        Instant.now(),
+        "event_id"
+    ),
+    mapOf(
+        StreamKey("test", Direction.FIRST) to InnerMessageId(Instant.now(), 42L),
+        StreamKey("test", Direction.SECOND) to InnerMessageId(Instant.now(), 43L)
+    ),
+    10,
+    15
+)
