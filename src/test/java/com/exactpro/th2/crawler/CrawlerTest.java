@@ -125,7 +125,7 @@ public class CrawlerTest {
                 "2021-06-16T12:00:00.00Z", DataType.EVENTS, Collections.emptySet());
         CrawlerManager manager = new CrawlerManager(configuration);
 
-        Crawler crawler = manager.createCrawler();
+        Crawler crawler = manager.createCrawler(Instant.parse("2021-07-11T18:00:00.00Z"));
         crawler.process();
 
         verify(manager.getIntervalsWorkerMock()).getIntervals(any(Instant.class), any(Instant.class), anyString(), anyString(), anyString());
@@ -139,7 +139,7 @@ public class CrawlerTest {
                 "2021-06-16T12:00:00.00Z", DataType.MESSAGES, Set.of(CrawlerManager.SESSIONS));
 
         CrawlerManager manager = new CrawlerManager(configuration);
-        Crawler crawler = manager.createCrawler();
+        Crawler crawler = manager.createCrawler(Instant.parse("2021-07-11T18:00:00.00Z"));
 
         Collection<Message> messages = MessageReaderKt.readMessages(Paths.get("src/test/resources/messages.txt"));
         Iterator<StreamResponse> iterator = new MessageSearchResponse(messages).iterator();
@@ -165,7 +165,7 @@ public class CrawlerTest {
                 "2021-06-16T12:00:00.00Z", DataType.MESSAGES, Duration.ofHours(1), Set.of(CrawlerManager.SESSIONS), 5, ChronoUnit.MINUTES, prototype.getSerializedSize() * 3);
 
         CrawlerManager manager = new CrawlerManager(configuration);
-        Crawler crawler = manager.createCrawler();
+        Crawler crawler = manager.createCrawler(Instant.parse("2021-07-11T18:00:00.00Z"));
 
         List<Message> messages = List.of(
                 modifyMessage(prototype,1, ""),
@@ -208,7 +208,7 @@ public class CrawlerTest {
                 "2021-06-16T12:00:00.00Z", DataType.MESSAGES, Duration.ofHours(1), Set.of(CrawlerManager.SESSIONS), 5, ChronoUnit.MINUTES, prototype.getSerializedSize() * 2);
 
         CrawlerManager manager = new CrawlerManager(configuration);
-        Crawler crawler = manager.createCrawler();
+        Crawler crawler = manager.createCrawler(Instant.parse("2021-07-11T18:00:00.00Z"));
 
         List<Message> messages = List.of(
                 modifyMessage(prototype,1, StringUtils.repeat("a", prototype.getSerializedSize() * 2))
@@ -241,7 +241,7 @@ public class CrawlerTest {
                 "2021-06-16T12:00:00.00Z", DataType.EVENTS, Collections.emptySet());
 
         CrawlerManager manager = new CrawlerManager(configuration);
-        Crawler crawler = manager.createCrawler();
+        Crawler crawler = manager.createCrawler(Instant.parse("2021-07-11T18:00:00.00Z"));
 
         when(manager.getDataServiceMock().crawlerConnect(any(CrawlerInfo.class)))
                 .thenReturn(DataProcessorInfo.newBuilder().setName("another_crawler").setVersion(CrawlerManager.VERSION).build());
@@ -266,7 +266,7 @@ public class CrawlerTest {
                 "2021-06-16T12:00:00.00Z", DataType.MESSAGES, Set.of(CrawlerManager.SESSIONS));
 
         CrawlerManager manager = new CrawlerManager(configuration);
-        Crawler crawler = manager.createCrawler();
+        Crawler crawler = manager.createCrawler(Instant.parse("2021-07-11T18:00:00.00Z"));
 
         String exceptionMessage = "Test exception";
 
@@ -325,7 +325,7 @@ public class CrawlerTest {
                 from, to, DataType.MESSAGES, Set.of(CrawlerManager.SESSIONS));
 
         CrawlerManager manager = new CrawlerManager(configuration);
-        Crawler crawler = manager.createCrawler();
+        Crawler crawler = manager.createCrawler(Instant.parse("2021-07-11T18:00:00.00Z"));
 
         StateService<RecoveryState> stateService =
                 StateService.createFromClasspath(RecoveryState.class, Mockito.mock(DataProviderService.class), null);
@@ -369,8 +369,7 @@ public class CrawlerTest {
 
         CrawlerManager manager = new CrawlerManager(configuration);
 
-
-        Crawler crawler = manager.createCrawler();
+        Crawler crawler = manager.createCrawler(Instant.parse("2021-07-11T18:00:00.00Z"));
 
         StateService<RecoveryState> stateService =
                 StateService.createFromClasspath(RecoveryState.class, Mockito.mock(DataProviderService.class), null);
@@ -418,8 +417,7 @@ public class CrawlerTest {
 
         CrawlerManager manager = new CrawlerManager(configuration);
 
-
-        Crawler crawler = manager.createCrawler();
+        Crawler crawler = manager.createCrawler(Instant.parse("2021-07-11T18:00:00.00Z"));
 
         StateService<RecoveryState> stateService =
                 StateService.createFromClasspath(RecoveryState.class, Mockito.mock(DataProviderService.class), null);
