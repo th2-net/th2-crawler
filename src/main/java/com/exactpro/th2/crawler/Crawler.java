@@ -142,7 +142,12 @@ public class Crawler {
     }
 
     public Duration process() throws IOException, UnexpectedDataProcessorException {
-        return metrics.measureTimeWithException(crawlerType, Method.HANDLE_INTERVAL, this::internalProcess);
+        long start = System.currentTimeMillis();
+        try {
+            return metrics.measureTimeWithException(crawlerType, Method.HANDLE_INTERVAL, this::internalProcess);
+        } finally {
+            LOGGER.info("Time spent to process interval: {} mls", System.currentTimeMillis() - start);
+        }
     }
 
     private Duration internalProcess() throws IOException, UnexpectedDataProcessorException {
