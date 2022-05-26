@@ -241,7 +241,16 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
     }
 
     private MessageResponse sendMessagesToProcessor(DataProcessorService dataProcessor, MessageDataRequest messageRequest) {
-        MessageResponse response = metrics.measureTime(DataType.MESSAGES, Method.PROCESS_DATA, () -> dataProcessor.sendMessage(messageRequest));
+        long start = System.currentTimeMillis();
+        LOGGER.info("Sending request to processor");
+        MessageResponse response;
+        try {
+            response = metrics.measureTime(DataType.MESSAGES, Method.PROCESS_DATA, () -> dataProcessor.sendMessage(messageRequest));
+        } finally {
+            if (LOGGER.isInfoEnabled()) {
+                LOGGER.info("Received response from processor in {} mls", System.currentTimeMillis() - start);
+            }
+        }
         metrics.processorMethodInvoked(ProcessorMethod.SEND_MESSAGE);
         if (LOGGER.isDebugEnabled()) {
             LOGGER.debug("Response from processor: " + MessageUtils.toJson(response));
