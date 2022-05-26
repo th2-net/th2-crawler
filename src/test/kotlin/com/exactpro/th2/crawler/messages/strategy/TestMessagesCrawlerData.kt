@@ -30,9 +30,11 @@ import com.exactpro.th2.dataprovider.grpc.MessageStream
 import com.exactpro.th2.dataprovider.grpc.MessageStreamPointer
 import com.exactpro.th2.dataprovider.grpc.MessageStreamPointers
 import org.junit.jupiter.api.Assertions
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import java.time.Instant
 
+@Disabled
 class TestMessagesCrawlerData {
     private val responses: Collection<MessageSearchResponse> =
         ArrayList<MessageSearchResponse>().apply {

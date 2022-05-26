@@ -82,8 +82,8 @@ public abstract class AbstractStrategy<C extends Continuation, P extends DataPar
                         continue;
                     }
                     cache.addLast(filtered);
-                    currentValuesSize += filtered.getSerializedSize();
-                    if (currentValuesSize >= maxSize) {
+//                    currentValuesSize += filtered.getSerializedSize();
+                    if (cache.size() >= maxSize) {
                         return createDataPart(cache);
                     }
                 }
@@ -107,19 +107,19 @@ public abstract class AbstractStrategy<C extends Continuation, P extends DataPar
         private DATA createDataPart(Deque<VALUE> cache) {
             DATA dataPart = buildDataPart(crawlerId, Collections.unmodifiableCollection(cache));
             cache.clear();
-            int pushedBackSize = 0;
-            while (dataPart.serializedSize() > maxSize) {
-                VALUE last = Objects.requireNonNull(dataPart.pullLast(), "at least one value must be in the data part");
-                if (dataPart.getSize() == 0) {
-                    throw new IllegalStateException(
-                            "Data part cannot be constructed because max size in " + maxSize + " is exceeded and no data fits that size."
-                            + " Last value: " + extractId(last)
-                    );
-                }
-                cache.addFirst(last); // put back to the cache to send next try
-                pushedBackSize += last.getSerializedSize();
-            }
-            currentValuesSize = pushedBackSize;
+//            int pushedBackSize = 0;
+//            while (dataPart.serializedSize() > maxSize) {
+//                VALUE last = Objects.requireNonNull(dataPart.pullLast(), "at least one value must be in the data part");
+//                if (dataPart.getSize() == 0) {
+//                    throw new IllegalStateException(
+//                            "Data part cannot be constructed because max size in " + maxSize + " is exceeded and no data fits that size."
+//                            + " Last value: " + extractId(last)
+//                    );
+//                }
+//                cache.addFirst(last); // put back to the cache to send next try
+//                pushedBackSize += last.getSerializedSize();
+//            }
+//            currentValuesSize = pushedBackSize;
             return dataPart;
         }
 
