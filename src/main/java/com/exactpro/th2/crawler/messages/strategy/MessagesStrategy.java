@@ -38,7 +38,6 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.function.BinaryOperator;
 import java.util.function.Function;
-import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import com.exactpro.th2.common.grpc.Direction;
@@ -129,17 +128,18 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
 
     @NotNull
     @Override
-    public RecoveryState continuationToState(@Nullable RecoveryState current, @NotNull ResumeMessageIDs continuation, long processedData) {
+    public RecoveryState continuationToState(@Nullable RecoveryState current, @NotNull ResumeMessageIDs continuation,
+                                             long processedData, DataParameters parameters) {
         requireNonNull(continuation, "'continuation' parameter");
         if (current == null) {
             Map<StreamKey, MessageID> startIntervalIDs = new HashMap<>(continuation.getStartIDs());
-            putAndCheck(continuation.getIds(), startIntervalIDs, "creating state from continuation");
+            putAndCheck(continuation.getIds(), startIntervalIDs, parameters, "creating state from continuation");
 
             return new RecoveryState(null, toInnerMessageIDs(startIntervalIDs), 0, processedData);
         }
         Map<StreamKey, InnerMessageId> old = current.getLastProcessedMessages();
         Map<StreamKey, MessageID> lastProcessedMessages = new HashMap<>(old == null ? continuation.getIds() : toMessageIDs(old));
-        putAndCheck(continuation.getIds(), lastProcessedMessages, "creating state from current state and continuation");
+        putAndCheck(continuation.getIds(), lastProcessedMessages, parameters, "creating state from current state and continuation");
 
         return new RecoveryState(current.getLastProcessedEvent(), toInnerMessageIDs(lastProcessedMessages),
                 current.getLastNumberOfEvents(),
@@ -171,6 +171,7 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
                 parameters.getCrawlerId(),
                 batchSize,
                 config.getMaxOutgoingDataSize(),
+                parameters,
                 msg -> filterMessageType(msg, filter)
         );
     }
@@ -223,7 +224,7 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
             if (!checkpoints.isEmpty()) {
 
                 Map<StreamKey, MessageID> grouped = new HashMap<>(prevCheckpoint == null ? data.getStartIDs() : prevCheckpoint.getIds());
-                putAndCheck(checkpoints, grouped, "creating continuation from processor response");
+                putAndCheck(checkpoints, grouped, parameters, "creating continuation from processor response");
                 continuation = new ResumeMessageIDs(data.getStartIDs(), grouped);
             }
         }
@@ -264,6 +265,7 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
     static void putAndCheck(
             Map<StreamKey, MessageID> transferFrom,
             Map<StreamKey, MessageID> transferTo,
+            DataParameters parameters,
             String action,
             Logger logger
     ) {
@@ -284,12 +286,17 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
             });
         }
 
-        LOGGER.debug("AbsentKeys: {}", getAbsentStreamKeys(transferTo).stream().map(streamKey ->
-                streamKey.getSessionAlias() + ":" + streamKey.getDirection()).collect(Collectors.joining(", ")));
         LOGGER.debug("TransferTo before: {}", transferTo.keySet().stream().map(streamKey ->
                 streamKey.getSessionAlias() + ":" + streamKey.getDirection()).collect(Collectors.joining(", ")));
 
-        getAbsentStreamKeys(transferTo).forEach(absentKey ->
+        getAbsentPairedStreamKeys(transferTo).forEach(absentKey ->
+                transferTo.computeIfAbsent(absentKey, streamKey -> MessageID.newBuilder()
+                        .setConnectionId(ConnectionID.newBuilder().setSessionAlias(absentKey.getSessionAlias()).build())
+                        .setDirection(absentKey.getDirection())
+                        .setSequence(-1L)
+                        .build()));
+
+        getAbsentStreamKeys(transferTo, parameters.getSessionAliases()).forEach(absentKey ->
                 transferTo.computeIfAbsent(absentKey, streamKey -> MessageID.newBuilder()
                         .setConnectionId(ConnectionID.newBuilder().setSessionAlias(absentKey.getSessionAlias()).build())
                         .setDirection(absentKey.getDirection())
@@ -298,18 +305,18 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
 
         LOGGER.debug("TransferTo after: {}", transferTo.keySet().stream().map(streamKey ->
                 streamKey.getSessionAlias() + ":" + streamKey.getDirection()).collect(Collectors.joining(", ")));
-
     }
 
     private static void putAndCheck(
             Map<StreamKey, MessageID> transferFrom,
             Map<StreamKey, MessageID> transferTo,
+            DataParameters parameters,
             String action
     ) {
-        putAndCheck(transferFrom, transferTo, action, LOGGER);
+        putAndCheck(transferFrom, transferTo, parameters, action, LOGGER);
     }
 
-    private static Set<StreamKey> getAbsentStreamKeys(Map<StreamKey, MessageID> map) {
+    private static Set<StreamKey> getAbsentPairedStreamKeys(Map<StreamKey, MessageID> map) {
         Set<StreamKey> absentKeys = new HashSet<>();
 
         for (StreamKey key : map.keySet()) {
@@ -324,6 +331,22 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
         }
 
         return absentKeys;
+    }
+
+    private static Set<StreamKey> getAbsentStreamKeys(Map<StreamKey, MessageID> map, Collection<String> aliases) {
+        Set<StreamKey> streamKeys = new HashSet<>();
+
+        Set<String> set1 = map.keySet().stream().map(StreamKey::getSessionAlias).collect(Collectors.toSet());
+        Set<String> set2 = new HashSet<>(aliases);
+
+        set2.removeAll(set1);
+
+        for (String s: set2) {
+            streamKeys.add(new StreamKey(s, FIRST));
+            streamKeys.add(new StreamKey(s, SECOND));
+        }
+
+        return streamKeys;
     }
 
     private Map<StreamKey, MessageID> initialStartIds(Timestamp fromTimestamp, Collection<String> aliases) {

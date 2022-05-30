@@ -19,6 +19,7 @@ import com.exactpro.th2.common.grpc.ConnectionID
 import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.Message
 import com.exactpro.th2.common.grpc.MessageID
+import com.exactpro.th2.crawler.DataParameters
 import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId
 import com.exactpro.th2.crawler.state.v1.StreamKey
 import com.exactpro.th2.dataprovider.grpc.MessageData
@@ -59,7 +60,8 @@ class TestMessagesCrawlerData {
                 .setName("test")
                 .build(),
             100,
-            oneMessageSize * 2 /*2 msg per request*/ + oneMessageSize / 2 /*for request*/
+            oneMessageSize * 2 /*2 msg per request*/ + oneMessageSize / 2 /*for request*/,
+            DataParameters(CrawlerId.getDefaultInstance())
         ) { true }
 
         val dataParts = data.asSequence().toList()
