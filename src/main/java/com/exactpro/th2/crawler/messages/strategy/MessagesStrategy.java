@@ -129,7 +129,7 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
     @NotNull
     @Override
     public RecoveryState continuationToState(@Nullable RecoveryState current, @NotNull ResumeMessageIDs continuation,
-                                             long processedData, DataParameters parameters) {
+                                             long processedData, @NotNull DataParameters parameters) {
         requireNonNull(continuation, "'continuation' parameter");
         if (current == null) {
             Map<StreamKey, MessageID> startIntervalIDs = new HashMap<>(continuation.getStartIDs());
@@ -286,9 +286,6 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
             });
         }
 
-        LOGGER.debug("TransferTo before: {}", transferTo.keySet().stream().map(streamKey ->
-                streamKey.getSessionAlias() + ":" + streamKey.getDirection()).collect(Collectors.joining(", ")));
-
         getAbsentPairedStreamKeys(transferTo).forEach(absentKey ->
                 transferTo.computeIfAbsent(absentKey, streamKey -> MessageID.newBuilder()
                         .setConnectionId(ConnectionID.newBuilder().setSessionAlias(absentKey.getSessionAlias()).build())
@@ -302,9 +299,6 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
                         .setDirection(absentKey.getDirection())
                         .setSequence(-1L)
                         .build()));
-
-        LOGGER.debug("TransferTo after: {}", transferTo.keySet().stream().map(streamKey ->
-                streamKey.getSessionAlias() + ":" + streamKey.getDirection()).collect(Collectors.joining(", ")));
     }
 
     private static void putAndCheck(

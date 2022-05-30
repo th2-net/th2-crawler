@@ -167,7 +167,7 @@ public class EventsStrategy extends AbstractStrategy<ResumeEventId, EventPart> {
     @NotNull
     @Override
     public RecoveryState continuationToState(@Nullable RecoveryState current, @NotNull EventsCrawlerData.ResumeEventId continuation,
-                                             long processedData, DataParameters parameters) {
+                                             long processedData, @NotNull DataParameters parameters) {
         requireNonNull(continuation, "'continuation' parameter");
         Function<ResumeEventId, InnerEventId> toInnerId = cont ->
                 new InnerEventId(cont.getTimestamp(), cont.getResumeId().getId());
