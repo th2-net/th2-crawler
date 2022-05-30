@@ -312,7 +312,7 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
                 MessageID messageID = MessageID.newBuilder()
                         .setConnectionId(ConnectionID.newBuilder().setSessionAlias(alias).build())
                         .setDirection(oppositeDirection)
-                        .setSequence(-1)
+                        .setSequence(-1L)
                         .build();
 
                 map.put(oppositeStreamKey, messageID);
