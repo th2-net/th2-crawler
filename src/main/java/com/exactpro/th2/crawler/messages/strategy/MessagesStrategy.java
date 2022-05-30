@@ -441,6 +441,9 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
     private static Map<StreamKey, MessageID> fillUnpairedStreams(Map<StreamKey, MessageID> transferFrom, Map<StreamKey, MessageID> transferTo) {
         Map<StreamKey, MessageID> res = new HashMap<>(transferFrom);
 
+        LOGGER.trace("transferFrom: {}", transferFrom.entrySet().stream().map(e -> e.getKey() + ": " + e.getValue()).collect(Collectors.joining(", ")));
+        LOGGER.trace("transferTo: {}", transferTo.entrySet().stream().map(e -> e.getKey() + ": " + e.getValue()).collect(Collectors.joining(", ")));
+
         for (StreamKey key : transferFrom.keySet()) {
             String alias = key.getSessionAlias();
             Direction direction = key.getDirection();
