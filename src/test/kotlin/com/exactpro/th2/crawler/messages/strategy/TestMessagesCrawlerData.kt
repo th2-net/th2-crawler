@@ -73,6 +73,11 @@ class TestMessagesCrawlerData {
                     .setDirection(Direction.FIRST)
                     .setSequence(9)
                     .setConnectionId(ConnectionID.newBuilder().setSessionAlias("test"))
+                    .build(),
+                StreamKey("test", Direction.SECOND) to MessageID.newBuilder()
+                    .setDirection(Direction.SECOND)
+                    .setSequence(-1)
+                    .setConnectionId(ConnectionID.newBuilder().setSessionAlias("test"))
                     .build()
             ),
             continuation.ids
