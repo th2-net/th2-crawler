@@ -292,7 +292,7 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
         getAbsentStreamKeys(transferTo).forEach(absentKey ->
                 transferTo.computeIfAbsent(absentKey, streamKey -> MessageID.newBuilder()
                         .setConnectionId(ConnectionID.newBuilder().setSessionAlias(absentKey.getSessionAlias()).build())
-                        .setDirection(absentKey.getDirection() == FIRST ? SECOND : FIRST)
+                        .setDirection(absentKey.getDirection())
                         .setSequence(-1L)
                         .build()));
 
@@ -319,7 +319,7 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
             StreamKey oppositeStreamKey = new StreamKey(alias, oppositeDirection);
 
             if (!map.containsKey(oppositeStreamKey)) {
-                absentKeys.add(key);
+                absentKeys.add(oppositeStreamKey);
             }
         }
 
