@@ -138,9 +138,7 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
         }
         Map<StreamKey, InnerMessageId> old = current.getLastProcessedMessages();
         Map<StreamKey, MessageID> lastProcessedMessages = new HashMap<>(old == null ? continuation.getIds() : toMessageIDs(old));
-
-        var filledContinuation = fillUnpairedStreams(continuation.getIds(), lastProcessedMessages);
-        putAndCheck(filledContinuation, lastProcessedMessages, "creating state from current state and continuation");
+        putAndCheck(continuation.getIds(), lastProcessedMessages, "creating state from current state and continuation");
 
         return new RecoveryState(current.getLastProcessedEvent(), toInnerMessageIDs(lastProcessedMessages),
                 current.getLastNumberOfEvents(),
@@ -268,6 +266,9 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
             String action,
             Logger logger
     ) {
+        LOGGER.trace("transferFrom: {}", transferFrom.keySet().stream().map(messageID -> messageID.getSessionAlias() + ":" + messageID.getDirection()).collect(Collectors.joining(", ")));
+        LOGGER.trace("transferTo: {}", transferTo.keySet().stream().map(messageID -> messageID.getSessionAlias() + ":" + messageID.getDirection()).collect(Collectors.joining(", ")));
+
         for (Entry<StreamKey, MessageID> entry : transferFrom.entrySet()) {
             var streamKey = entry.getKey();
             var innerMessageId = entry.getValue();
@@ -436,38 +437,5 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
         }
 
         return filter == null || filter.accept(messageType);
-    }
-
-    private static Map<StreamKey, MessageID> fillUnpairedStreams(Map<StreamKey, MessageID> transferFrom, Map<StreamKey, MessageID> transferTo) {
-        Map<StreamKey, MessageID> res = new HashMap<>(transferFrom);
-
-        LOGGER.trace("transferFrom: {}", transferFrom.keySet().stream().map(messageID -> messageID.getSessionAlias() + ":" + messageID.getDirection()).collect(Collectors.joining(", ")));
-        LOGGER.trace("transferTo: {}", transferTo.keySet().stream().map(messageID -> messageID.getSessionAlias() + ":" + messageID.getDirection()).collect(Collectors.joining(", ")));
-
-        for (StreamKey key : transferFrom.keySet()) {
-            String alias = key.getSessionAlias();
-            Direction direction = key.getDirection();
-            Direction oppositeDirection = direction == FIRST ? SECOND : FIRST;
-            StreamKey oppositeStreamKey = new StreamKey(alias, oppositeDirection);
-
-            if (!res.containsKey(oppositeStreamKey)) {
-
-                LOGGER.trace("Continuation does not contain a pair for {}:{}. Filling it.", alias, direction);
-
-                long sequence = transferTo.containsKey(oppositeStreamKey) ? transferTo.get(oppositeStreamKey).getSequence() : -1L;
-
-                MessageID messageID = MessageID.newBuilder()
-                        .setConnectionId(ConnectionID.newBuilder().setSessionAlias(alias).build())
-                        .setDirection(oppositeDirection)
-                        .setSequence(sequence)
-                        .build();
-
-                LOGGER.trace("Stream key {}:{} in continuation was assigned with sequence {}", alias, oppositeDirection, sequence);
-
-                res.put(oppositeStreamKey, messageID);
-            }
-        }
-
-        return res;
     }
 }
