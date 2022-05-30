@@ -284,12 +284,20 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
             });
         }
 
+        LOGGER.debug("AbsentKeys: {}", getAbsentStreamKeys(transferTo).stream().map(streamKey -> streamKey.getSessionAlias() + ":" + streamKey.getDirection()));
+        LOGGER.debug("TransferTo before: {}", transferTo.keySet().stream().map(streamKey -> streamKey.getSessionAlias() + ":" + streamKey.getDirection()));
+
+        LOGGER.debug("");
+
         getAbsentStreamKeys(transferTo).forEach(absentKey ->
                 transferTo.computeIfAbsent(absentKey, streamKey -> MessageID.newBuilder()
                         .setConnectionId(ConnectionID.newBuilder().setSessionAlias(absentKey.getSessionAlias()).build())
                         .setDirection(absentKey.getDirection() == FIRST ? SECOND : FIRST)
                         .setSequence(-1L)
                         .build()));
+
+        LOGGER.debug("TransferTo after: {}", transferTo.keySet().stream().map(streamKey -> streamKey.getSessionAlias() + ":" + streamKey.getDirection()));
+
     }
 
     private static void putAndCheck(
