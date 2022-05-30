@@ -104,8 +104,8 @@ public class CrawlerManager {
     }
 
     @NotNull
-    public Crawler createCrawler() throws IOException, UnexpectedDataProcessorException {
-        return createCrawler(new CrawlerTimeTestImpl());
+    public Crawler createCrawler(Instant currentTestTime) throws IOException, UnexpectedDataProcessorException {
+        return createCrawler(new CrawlerTimeTestImpl(currentTestTime));
     }
 
     @NotNull
