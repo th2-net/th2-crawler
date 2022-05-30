@@ -24,6 +24,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
 
+import com.exactpro.th2.crawler.DataParameters;
 import org.jetbrains.annotations.Nullable;
 
 import com.exactpro.th2.common.grpc.EventID;
@@ -42,8 +43,8 @@ import com.exactpro.th2.dataprovider.grpc.StreamResponse;
 public class EventsCrawlerData extends AbstractCrawlerData<ResumeEventId, EventPart, EventData> {
     private EventData lastEvent;
 
-    public EventsCrawlerData(Iterator<StreamResponse> data, CrawlerId id, int limit, int maxSize) {
-        super(data, id, limit, maxSize);
+    public EventsCrawlerData(Iterator<StreamResponse> data, CrawlerId id, int limit, int maxSize, DataParameters parameters) {
+        super(data, id, limit, maxSize, parameters);
     }
 
     @Nullable
@@ -59,7 +60,7 @@ public class EventsCrawlerData extends AbstractCrawlerData<ResumeEventId, EventP
     }
 
     @Override
-    protected void updateState(StreamResponse response) {
+    protected void updateState(StreamResponse response, DataParameters parameters) {
         if (response.hasEvent()) {
             lastEvent = response.getEvent();
         }

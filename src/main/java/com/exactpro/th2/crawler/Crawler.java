@@ -198,7 +198,7 @@ public class Crawler {
                     Continuation checkpoint = sendingReport.getCheckpoint();
                     processedElements += sendingReport.getProcessedData() + remaining;
                     if (checkpoint != null) {
-                        state = typeStrategy.continuationToState(state, checkpoint, processedElements);
+                        state = typeStrategy.continuationToState(state, checkpoint, processedElements, parameters);
                         currentInt.updateState(state, intervalsWorker);
                     }
                 }

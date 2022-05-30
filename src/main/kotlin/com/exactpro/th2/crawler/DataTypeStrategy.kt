@@ -43,7 +43,7 @@ interface DataTypeStrategy<C : Continuation, D : DataPart> {
      * @param processedData the total amount of the processed data for current interval
      * @return a recovery state that aggregates information from [current] state and [continuation]
      */
-    fun continuationToState(current: RecoveryState?, continuation: C, processedData: Long): RecoveryState
+    fun continuationToState(current: RecoveryState?, continuation: C, processedData: Long, parameters: DataParameters): RecoveryState
 
     /**
      * @param start the lower boundary for requested data

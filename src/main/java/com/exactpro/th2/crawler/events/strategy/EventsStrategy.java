@@ -19,6 +19,7 @@ package com.exactpro.th2.crawler.events.strategy;
 import static java.util.Objects.requireNonNull;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Function;
@@ -98,7 +99,8 @@ public class EventsStrategy extends AbstractStrategy<ResumeEventId, EventPart> {
                         new EventsSearchParameters(start, end, batchSize, resumeId), metrics),
                 parameters.getCrawlerId(),
                 batchSize,
-                config.getMaxOutgoingDataSize()
+                config.getMaxOutgoingDataSize(),
+                parameters
         );
     }
 
@@ -164,7 +166,8 @@ public class EventsStrategy extends AbstractStrategy<ResumeEventId, EventPart> {
 
     @NotNull
     @Override
-    public RecoveryState continuationToState(@Nullable RecoveryState current, @NotNull EventsCrawlerData.ResumeEventId continuation, long processedData) {
+    public RecoveryState continuationToState(@Nullable RecoveryState current, @NotNull EventsCrawlerData.ResumeEventId continuation,
+                                             long processedData, @NotNull DataParameters parameters) {
         requireNonNull(continuation, "'continuation' parameter");
         Function<ResumeEventId, InnerEventId> toInnerId = cont ->
                 new InnerEventId(cont.getTimestamp(), cont.getResumeId().getId());

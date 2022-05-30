@@ -369,6 +369,7 @@ public class CrawlerTest {
 
         CrawlerManager manager = new CrawlerManager(configuration);
 
+
         Crawler crawler = manager.createCrawler(Instant.parse("2021-07-11T18:00:00.00Z"));
 
         StateService<RecoveryState> stateService =
@@ -416,6 +417,7 @@ public class CrawlerTest {
                 Set.of(CrawlerManager.SESSIONS), GrpcUtil.DEFAULT_MAX_MESSAGE_SIZE);
 
         CrawlerManager manager = new CrawlerManager(configuration);
+
 
         Crawler crawler = manager.createCrawler(Instant.parse("2021-07-11T18:00:00.00Z"));
 
