@@ -284,10 +284,10 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
             });
         }
 
-        LOGGER.debug("AbsentKeys: {}", getAbsentStreamKeys(transferTo).stream().map(streamKey -> streamKey.getSessionAlias() + ":" + streamKey.getDirection()));
-        LOGGER.debug("TransferTo before: {}", transferTo.keySet().stream().map(streamKey -> streamKey.getSessionAlias() + ":" + streamKey.getDirection()));
-
-        LOGGER.debug("");
+        LOGGER.debug("AbsentKeys: {}", getAbsentStreamKeys(transferTo).stream().map(streamKey ->
+                streamKey.getSessionAlias() + ":" + streamKey.getDirection()).collect(Collectors.joining(", ")));
+        LOGGER.debug("TransferTo before: {}", transferTo.keySet().stream().map(streamKey ->
+                streamKey.getSessionAlias() + ":" + streamKey.getDirection()).collect(Collectors.joining(", ")));
 
         getAbsentStreamKeys(transferTo).forEach(absentKey ->
                 transferTo.computeIfAbsent(absentKey, streamKey -> MessageID.newBuilder()
@@ -296,7 +296,8 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
                         .setSequence(-1L)
                         .build()));
 
-        LOGGER.debug("TransferTo after: {}", transferTo.keySet().stream().map(streamKey -> streamKey.getSessionAlias() + ":" + streamKey.getDirection()));
+        LOGGER.debug("TransferTo after: {}", transferTo.keySet().stream().map(streamKey ->
+                streamKey.getSessionAlias() + ":" + streamKey.getDirection()).collect(Collectors.joining(", ")));
 
     }
 
