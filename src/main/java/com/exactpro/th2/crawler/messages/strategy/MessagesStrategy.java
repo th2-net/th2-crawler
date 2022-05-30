@@ -266,9 +266,6 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
             String action,
             Logger logger
     ) {
-        LOGGER.trace("transferFrom: {}", transferFrom.keySet().stream().map(messageID -> messageID.getSessionAlias() + ":" + messageID.getDirection()).collect(Collectors.joining(", ")));
-
-        LOGGER.trace("transferTo: {}", transferTo.keySet().stream().map(messageID -> messageID.getSessionAlias() + ":" + messageID.getDirection()).collect(Collectors.joining(", ")));
         for (Entry<StreamKey, MessageID> entry : transferFrom.entrySet()) {
             var streamKey = entry.getKey();
             var innerMessageId = entry.getValue();
