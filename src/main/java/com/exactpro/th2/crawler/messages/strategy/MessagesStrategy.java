@@ -267,8 +267,8 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
             Logger logger
     ) {
         LOGGER.trace("transferFrom: {}", transferFrom.keySet().stream().map(messageID -> messageID.getSessionAlias() + ":" + messageID.getDirection()).collect(Collectors.joining(", ")));
-        LOGGER.trace("transferTo: {}", transferTo.keySet().stream().map(messageID -> messageID.getSessionAlias() + ":" + messageID.getDirection()).collect(Collectors.joining(", ")));
 
+        LOGGER.trace("transferTo: {}", transferTo.keySet().stream().map(messageID -> messageID.getSessionAlias() + ":" + messageID.getDirection()).collect(Collectors.joining(", ")));
         for (Entry<StreamKey, MessageID> entry : transferFrom.entrySet()) {
             var streamKey = entry.getKey();
             var innerMessageId = entry.getValue();
@@ -285,6 +285,7 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
                 return innerMessageId;
             });
         }
+        fillUnpairedStreams(transferTo);
     }
 
     private static void putAndCheck(
@@ -293,6 +294,30 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
             String action
     ) {
         putAndCheck(transferFrom, transferTo, action, LOGGER);
+    }
+
+    private static void fillUnpairedStreams(Map<StreamKey, MessageID> map) {
+        for (var it = map.keySet().iterator(); it.hasNext();) {
+            StreamKey key = it.next();
+
+            String alias = key.getSessionAlias();
+            Direction direction = key.getDirection();
+            Direction oppositeDirection = direction == FIRST ? SECOND : FIRST;
+            StreamKey oppositeStreamKey = new StreamKey(alias, oppositeDirection);
+
+            if (!map.containsKey(oppositeStreamKey)) {
+
+                LOGGER.trace("Continuation does not contain a pair for {}:{}. Filling it with -1.", alias, direction);
+
+                MessageID messageID = MessageID.newBuilder()
+                        .setConnectionId(ConnectionID.newBuilder().setSessionAlias(alias).build())
+                        .setDirection(oppositeDirection)
+                        .setSequence(-1)
+                        .build();
+
+                map.put(oppositeStreamKey, messageID);
+            }
+        }
     }
 
     private Map<StreamKey, MessageID> initialStartIds(Timestamp fromTimestamp, Collection<String> aliases) {
