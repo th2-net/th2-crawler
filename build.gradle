@@ -40,6 +40,7 @@ dependencies {
 
     // the library for interaction with infra API
     implementation 'com.exactpro.th2:common:3.37.2'
+    implementation 'com.exactpro.th2:grpc-service-generator:3.2.2'
 
     implementation "com.exactpro.th2:grpc-crawler-data-processor:${grpcCrawlerVersion}"
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310") {
