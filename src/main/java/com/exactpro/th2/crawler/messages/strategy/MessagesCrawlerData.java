@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
+import com.exactpro.th2.crawler.DataParameters;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -50,8 +51,8 @@ public class MessagesCrawlerData extends AbstractCrawlerData<ResumeMessageIDs, M
     private ResumeMessageIDs resumeMessageIDs;
 
     public MessagesCrawlerData(Iterator<StreamResponse> data, Map<StreamKey, MessageID> startIDs, CrawlerId id, int limit, int maxSize,
-                               Predicate<MessageData> acceptMessages) {
-        super(data, id, limit, maxSize);
+                               DataParameters parameters, Predicate<MessageData> acceptMessages) {
+        super(data, id, limit, maxSize, parameters);
         this.startIDs = requireNonNull(startIDs, "'Start ids' parameter");
         this.acceptMessages = requireNonNull(acceptMessages, "'Accept messages' parameter");
     }
@@ -67,11 +68,11 @@ public class MessagesCrawlerData extends AbstractCrawlerData<ResumeMessageIDs, M
     }
 
     @Override
-    protected void updateState(StreamResponse response) {
+    protected void updateState(StreamResponse response, DataParameters parameters) {
         if (response.hasStreamInfo()) {
             Map<StreamKey, MessageID> resumeMessageIDs = MessagesStrategy.collectResumeIDs(response.getStreamInfo());
             Map<StreamKey, MessageID> resumeIds = new HashMap<>(startIDs);
-            MessagesStrategy.putAndCheck(resumeMessageIDs, resumeIds, "collect next resume IDs from crawler data", LOGGER);
+            MessagesStrategy.putAndCheck(resumeMessageIDs, resumeIds, parameters, "collect next resume IDs from crawler data", LOGGER);
             if (LOGGER.isDebugEnabled()) {
                 LOGGER.debug("New resume ids: {}", resumeIds.entrySet().stream()
                         .map(entry -> entry.getKey() + "=" + MessageUtils.toJson(entry.getValue()))
