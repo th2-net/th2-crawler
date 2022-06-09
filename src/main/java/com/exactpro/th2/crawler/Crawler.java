@@ -235,9 +235,7 @@ public class Crawler {
                 break;
             case CONTINUE:
                 currentInt.processed(true, intervalsWorker);
-                currentInt.updateState(state == null
-                                ? new RecoveryState(null, null, processedElements, 0)
-                                : new RecoveryState(state.getLastProcessedEvent(), state.getLastProcessedMessages(), processedElements, 0),
+                currentInt.updateState(CrawlerUtils.createRecoveryState(state, crawlerType, processedElements),
                         intervalsWorker
                 );
                 LOGGER.info("Interval from {}, to {} was processed successfully", interval.getStartTime(), interval.getEndTime());
@@ -347,7 +345,6 @@ public class Crawler {
         Iterable<Interval> intervals = intervalsWorker.getIntervals(from, to, name, version, type.getTypeName());
 
         Duration defaultLength = defaultIntervalLength;
-        Duration shortLength = shortIntervalLength;
 
         LOGGER.trace("Looking for suitable interval...");
         GetIntervalReport getReport = getInterval(intervals);
@@ -366,7 +363,7 @@ public class Crawler {
         Instant lastIntervalEnd = lastInterval.getEndTime();
 
         Instant expectedEnd = lastIntervalEnd.plus(defaultLength);
-        Instant shortIntervalEnd = lastIntervalEnd.plus(defaultLength);
+        Instant shortIntervalEnd = lastIntervalEnd.plus(shortIntervalLength);
 
         if (lastIntervalEnd.isBefore(to)) {
 
