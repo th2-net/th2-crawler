@@ -18,16 +18,10 @@ package com.exactpro.th2.crawler.state.v1;
 
 import com.exactpro.cradle.utils.CompressionUtils;
 import com.exactpro.th2.crawler.state.BaseState;
-import com.exactpro.th2.crawler.state.Version;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import org.jetbrains.annotations.NotNull;
 
 import java.util.Map;
 import java.util.Objects;
