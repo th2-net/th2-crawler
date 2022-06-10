@@ -23,6 +23,10 @@ The Crawler does not process the data after this point in time. **If it is not s
 It uses the Java Duration format. You can read more about it [here](https://docs.oracle.com/javase/8/docs/api/java/time/Duration.html#parse-java.lang.CharSequence-).
 The default value is **PT1H**.
 
+**shortLength: _PT5M_** - the step that the Crawler will use to create intervals if the Crawler is close
+to the current time. If it's too early to create an interval with **defaultLength**, the Crawler can
+try to create a shorter interval with **shortLength** length. 
+
 **lastUpdateOffset: _10_** - the timeout to check previously processed intervals.
 Works only if the higher boundary (**to** parameter is set). The default value is **1**
 
@@ -90,6 +94,7 @@ spec:
         name: test-crawler
         type: EVENTS
         defaultLength: PT1H
+        shortLength: P10M
         lastUpdateOffset: 2
         lastUpdateOffsetUnit: HOURS
         delay: 10
