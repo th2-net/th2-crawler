@@ -86,6 +86,8 @@ test {
     }
 }
 
+kapt.includeCompileClasspath = false
+
 jar {
     manifest {
         attributes(
