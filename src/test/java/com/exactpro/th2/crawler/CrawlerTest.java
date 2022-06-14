@@ -123,7 +123,8 @@ public class CrawlerTest {
     public void returnsCorrectSleepTimeWhenHasIntervalsAndShortIntervalLength() throws IOException, UnexpectedDataProcessorException {
         Instant time = Instant.now();
         CrawlerConfiguration configuration = CrawlerManager.createConfig(
-                time.toString(), DataType.EVENTS, Duration.ofHours(1), Duration.ofMinutes(30), Collections.emptySet(), 0, ChronoUnit.MINUTES);
+                time.toString(), DataType.EVENTS, Duration.ofHours(1), Duration.ofMinutes(30), Collections.emptySet(), 0, ChronoUnit.MINUTES
+        );
         CrawlerManager manager = new CrawlerManager(configuration);
         Instant end = time.plus(1, ChronoUnit.HOURS);
         manager.getIntervalsWorkerMock().storeInterval(Interval.builder()
@@ -142,6 +143,47 @@ public class CrawlerTest {
         Assertions.assertEquals(Duration.ofMinutes(5), sleep); // going to create a short term interval and wait for only 5 minutes instead of 35
 
         verify(manager.getIntervalsWorkerMock()).getIntervals(any(Instant.class), any(Instant.class), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("Returns correct value as a sleep timeout with current time is less than startTime + shortLengthInterval")
+    public void returnsCorrectSleepTimeWithCurrentTimeLessThanStartTimePlusShortLengthInterval() throws IOException, UnexpectedDataProcessorException {
+        Instant time = Instant.now();
+        CrawlerConfiguration configuration = CrawlerManager.createConfig(
+                time.toString(), DataType.EVENTS, Duration.ofHours(1), Duration.ofMinutes(30), Collections.emptySet(), 0, ChronoUnit.MINUTES
+        );
+        CrawlerManager manager = new CrawlerManager(configuration);
+
+        Crawler crawler = manager.createCrawler(() -> time.plus(10, ChronoUnit.MINUTES));
+        Duration sleep = crawler.process();
+
+        Assertions.assertEquals(Duration.ofMinutes(20), sleep); // going to create a short term interval and wait for only 20 minutes instead
+
+        verify(manager.getIntervalsWorkerMock()).getIntervals(any(Instant.class), any(Instant.class), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("Creates a short interval with current time is more than startTime + shortLenInterval and less than startTime + defaultLenInterval")
+    public void createShortIntervalWithCurrentTimeLessThanStartTimePlusShortLengthInterval() throws IOException, UnexpectedDataProcessorException {
+        Instant time = Instant.now();
+        CrawlerConfiguration configuration = CrawlerManager.createConfig(
+                time.toString(), DataType.EVENTS, Duration.ofHours(1), Duration.ofMinutes(30), Collections.emptySet(), 0, ChronoUnit.MINUTES
+        );
+        CrawlerManager manager = new CrawlerManager(configuration);
+
+        Crawler crawler = manager.createCrawler(() -> time.plus(40, ChronoUnit.MINUTES));
+
+        Duration sleep = crawler.process();
+
+        verify(manager.getIntervalsWorkerMock()).getIntervals(any(Instant.class), any(Instant.class), anyString(), anyString(), anyString());
+
+        Interval interval = manager.getIntervalsWorkerMock().getIntervals(time, time.plus(3, ChronoUnit.HOURS),
+                configuration.getName(), CrawlerManager.VERSION, configuration.getType().getTypeName()).iterator().next();
+
+        Instant intervalStart = interval.getStartTime();
+        Instant intervalEnd = interval.getEndTime();
+
+        Assertions.assertEquals(Duration.ofMinutes(30), Duration.between(intervalStart, intervalEnd));
     }
 
     @Test

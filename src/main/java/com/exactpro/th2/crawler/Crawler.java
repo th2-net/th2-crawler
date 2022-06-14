@@ -358,8 +358,23 @@ public class Crawler {
         LOGGER.info("Crawler did not find suitable interval. Creating new one if necessary.");
 
         if (lastInterval == null) {
-            return createAndStoreInterval(from, from.plus(defaultLength), name, version, type, lagNow);
+            Instant now = crawlerTime.now();
+            Instant shortEnd = from.plus(shortIntervalLength);
+
+            boolean createDefault = from.plus(defaultLength).isBefore(now);
+            boolean createShort = from.plus(shortIntervalLength).isBefore(now);
+
+            if (createDefault) {
+                return createAndStoreInterval(from, from.plus(defaultLength), name, version, type, lagNow);
+            } else if (createShort) {
+                return createAndStoreInterval(from, from.plus(shortIntervalLength), name, version, type, lagNow);
+            } else {
+                long sleepTime = getSleepTime(now, shortEnd);
+                logEarlyForCreation(now, shortEnd, sleepTime);
+                return new FetchIntervalReport(null, sleepTime); // waiting till it's possible to create a short interval
+            }
         }
+
         Instant lastIntervalEnd = lastInterval.getEndTime();
 
         Instant expectedEnd = lastIntervalEnd.plus(defaultLength);
@@ -384,12 +399,7 @@ public class Crawler {
 
                     long sleepTime = getSleepTime(shortIntervalEnd, to);
 
-                    if (LOGGER.isInfoEnabled()) {
-                        LOGGER.info("Failed to create new interval from: {}, to: {} as it is too early now. Wait for {}",
-                                lastIntervalEnd,
-                                expectedEnd,
-                                Duration.ofMillis(sleepTime));
-                    }
+                    logEarlyForCreation(lastIntervalEnd, expectedEnd, sleepTime);
 
                     return new FetchIntervalReport(null, sleepTime);
                 }
@@ -412,6 +422,15 @@ public class Crawler {
                 lastIntervalEnd, expectedEnd, to);
 
         return new FetchIntervalReport(null, getSleepTime(expectedEnd, lagNow));
+    }
+
+    private void logEarlyForCreation(Instant from, Instant to, long sleepTime) {
+        if (LOGGER.isInfoEnabled()) {
+            LOGGER.info("Failed to create new interval from: {}, to: {} as it is too early now. Wait for {}",
+                    from,
+                    to,
+                    Duration.ofMillis(sleepTime));
+        }
     }
 
     private FetchIntervalReport createAndStoreInterval(Instant from, Instant to, String name, String version, DataType type, Instant lagTime) throws IOException {
