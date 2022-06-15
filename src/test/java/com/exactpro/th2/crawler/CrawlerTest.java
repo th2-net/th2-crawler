@@ -173,17 +173,14 @@ public class CrawlerTest {
 
         Crawler crawler = manager.createCrawler(() -> time.plus(40, ChronoUnit.MINUTES));
 
-        Duration sleep = crawler.process();
+        crawler.process();
 
         verify(manager.getIntervalsWorkerMock()).getIntervals(any(Instant.class), any(Instant.class), anyString(), anyString(), anyString());
 
         Interval interval = manager.getIntervalsWorkerMock().getIntervals(time, time.plus(3, ChronoUnit.HOURS),
                 configuration.getName(), CrawlerManager.VERSION, configuration.getType().getTypeName()).iterator().next();
 
-        Instant intervalStart = interval.getStartTime();
-        Instant intervalEnd = interval.getEndTime();
-
-        Assertions.assertEquals(Duration.ofMinutes(30), Duration.between(intervalStart, intervalEnd));
+        Assertions.assertEquals(Duration.ofMinutes(30), Duration.between(interval.getStartTime(), interval.getEndTime()));
     }
 
     @Test

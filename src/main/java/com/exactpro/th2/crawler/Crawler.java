@@ -361,12 +361,9 @@ public class Crawler {
             Instant now = crawlerTime.now();
             Instant shortEnd = from.plus(shortIntervalLength);
 
-            boolean createDefault = from.plus(defaultLength).isBefore(now);
-            boolean createShort = from.plus(shortIntervalLength).isBefore(now);
-
-            if (createDefault) {
+            if (from.plus(defaultLength).isBefore(now)) {
                 return createAndStoreInterval(from, from.plus(defaultLength), name, version, type, lagNow);
-            } else if (createShort) {
+            } else if (from.plus(shortIntervalLength).isBefore(now)) {
                 return createAndStoreInterval(from, from.plus(shortIntervalLength), name, version, type, lagNow);
             } else {
                 long sleepTime = getSleepTime(now, shortEnd);
