@@ -81,7 +81,7 @@ public class CrawlerTest {
     public void returnsCorrectSleepTime() throws IOException, UnexpectedDataProcessorException {
         Instant time = Instant.now();
         CrawlerConfiguration configuration = CrawlerManager.createConfig(
-                time.toString(), DataType.EVENTS, Duration.ofHours(1), Duration.ofMinutes(30), Collections.emptySet(), 0, ChronoUnit.MINUTES);
+                time.toString(), DataType.EVENTS, Duration.ofHours(1), Duration.ofHours(1), Collections.emptySet(), 0, ChronoUnit.MINUTES);
         CrawlerManager manager = new CrawlerManager(configuration);
 
         Crawler crawler = manager.createCrawler(() -> time.plus(35, ChronoUnit.MINUTES)); // 25 minutes to the interval
