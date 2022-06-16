@@ -81,7 +81,7 @@ public class CrawlerTest {
     public void returnsCorrectSleepTime() throws IOException, UnexpectedDataProcessorException {
         Instant time = Instant.now();
         CrawlerConfiguration configuration = CrawlerManager.createConfig(
-                time.toString(), DataType.EVENTS, Duration.ofHours(1), Collections.emptySet(), 0, ChronoUnit.MINUTES);
+                time.toString(), DataType.EVENTS, Duration.ofHours(1), Duration.ofHours(1), Collections.emptySet(), 0, ChronoUnit.MINUTES);
         CrawlerManager manager = new CrawlerManager(configuration);
 
         Crawler crawler = manager.createCrawler(() -> time.plus(35, ChronoUnit.MINUTES)); // 25 minutes to the interval
@@ -97,7 +97,7 @@ public class CrawlerTest {
     public void returnsCorrectSleepTimeWhenHasIntervals() throws IOException, UnexpectedDataProcessorException {
         Instant time = Instant.now();
         CrawlerConfiguration configuration = CrawlerManager.createConfig(
-                time.toString(), DataType.EVENTS, Duration.ofHours(1), Collections.emptySet(), 0, ChronoUnit.MINUTES);
+                time.toString(), DataType.EVENTS, Duration.ofHours(1), Duration.ofHours(1), Collections.emptySet(), 0, ChronoUnit.MINUTES);
         CrawlerManager manager = new CrawlerManager(configuration);
         Instant end = time.plus(1, ChronoUnit.HOURS);
         manager.getIntervalsWorkerMock().storeInterval(Interval.builder()
@@ -116,6 +116,71 @@ public class CrawlerTest {
         Assertions.assertEquals(Duration.ofMinutes(25), sleep);
 
         verify(manager.getIntervalsWorkerMock()).getIntervals(any(Instant.class), any(Instant.class), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("Returns correct value as a sleep timeout when has intervals and has a short term interval length")
+    public void returnsCorrectSleepTimeWhenHasIntervalsAndShortIntervalLength() throws IOException, UnexpectedDataProcessorException {
+        Instant time = Instant.now();
+        CrawlerConfiguration configuration = CrawlerManager.createConfig(
+                time.toString(), DataType.EVENTS, Duration.ofHours(1), Duration.ofMinutes(30), Collections.emptySet(), 0, ChronoUnit.MINUTES
+        );
+        CrawlerManager manager = new CrawlerManager(configuration);
+        Instant end = time.plus(1, ChronoUnit.HOURS);
+        manager.getIntervalsWorkerMock().storeInterval(Interval.builder()
+                .startTime(time)
+                .endTime(end)
+                .lastUpdateTime(end)
+                .crawlerName(CrawlerManager.NAME)
+                .crawlerVersion(CrawlerManager.VERSION)
+                .crawlerType(DataType.EVENTS.getTypeName())
+                .processed(true)
+                .build());
+
+        Crawler crawler = manager.createCrawler(() -> time.plus(60 + 25, ChronoUnit.MINUTES)); // 35 minutes to the next interval
+        Duration sleep = crawler.process();
+
+        Assertions.assertEquals(Duration.ofMinutes(5), sleep); // going to create a short term interval and wait for only 5 minutes instead of 35
+
+        verify(manager.getIntervalsWorkerMock()).getIntervals(any(Instant.class), any(Instant.class), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("Returns correct value as a sleep timeout with current time is less than startTime + shortLengthInterval")
+    public void returnsCorrectSleepTimeWithCurrentTimeLessThanStartTimePlusShortLengthInterval() throws IOException, UnexpectedDataProcessorException {
+        Instant time = Instant.now();
+        CrawlerConfiguration configuration = CrawlerManager.createConfig(
+                time.toString(), DataType.EVENTS, Duration.ofHours(1), Duration.ofMinutes(30), Collections.emptySet(), 0, ChronoUnit.MINUTES
+        );
+        CrawlerManager manager = new CrawlerManager(configuration);
+
+        Crawler crawler = manager.createCrawler(() -> time.plus(10, ChronoUnit.MINUTES));
+        Duration sleep = crawler.process();
+
+        Assertions.assertEquals(Duration.ofMinutes(20), sleep); // going to create a short term interval and wait for only 20 minutes instead
+
+        verify(manager.getIntervalsWorkerMock()).getIntervals(any(Instant.class), any(Instant.class), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("Creates a short interval with current time is more than startTime + shortLenInterval and less than startTime + defaultLenInterval")
+    public void createShortIntervalWithCurrentTimeLessThanStartTimePlusShortLengthInterval() throws IOException, UnexpectedDataProcessorException {
+        Instant time = Instant.now();
+        CrawlerConfiguration configuration = CrawlerManager.createConfig(
+                time.toString(), DataType.EVENTS, Duration.ofHours(1), Duration.ofMinutes(30), Collections.emptySet(), 0, ChronoUnit.MINUTES
+        );
+        CrawlerManager manager = new CrawlerManager(configuration);
+
+        Crawler crawler = manager.createCrawler(() -> time.plus(40, ChronoUnit.MINUTES));
+
+        crawler.process();
+
+        verify(manager.getIntervalsWorkerMock()).getIntervals(any(Instant.class), any(Instant.class), anyString(), anyString(), anyString());
+
+        Interval interval = manager.getIntervalsWorkerMock().getIntervals(time, time.plus(3, ChronoUnit.HOURS),
+                configuration.getName(), CrawlerManager.VERSION, configuration.getType().getTypeName()).iterator().next();
+
+        Assertions.assertEquals(Duration.ofMinutes(30), Duration.between(interval.getStartTime(), interval.getEndTime()));
     }
 
     @Test
@@ -162,7 +227,7 @@ public class CrawlerTest {
         Message prototype = MessageReaderKt.parseMessage("{\"metadata\":{\"id\":{\"connectionId\":{\"sessionAlias\":\"alias1\"},\"direction\":\"SECOND\",\"sequence\":\"1635664585511283004\"},\"timestamp\":\"2021-10-31T07:18:18.085342Z\",\"messageType\":\"reqType\",\"protocol\":\"prtcl\"}}");
 
         CrawlerConfiguration configuration = CrawlerManager.createConfig(
-                "2021-06-16T12:00:00.00Z", DataType.MESSAGES, Duration.ofHours(1), Set.of(CrawlerManager.SESSIONS), 5, ChronoUnit.MINUTES, prototype.getSerializedSize() * 3);
+                "2021-06-16T12:00:00.00Z", DataType.MESSAGES, Duration.ofHours(1), Duration.ofMinutes(30), Set.of(CrawlerManager.SESSIONS), 5, ChronoUnit.MINUTES, prototype.getSerializedSize() * 3);
 
         CrawlerManager manager = new CrawlerManager(configuration);
         Crawler crawler = manager.createCrawler(Instant.parse("2021-07-11T18:00:00.00Z"));
@@ -205,7 +270,7 @@ public class CrawlerTest {
         Message prototype = MessageReaderKt.parseMessage("{\"metadata\":{\"id\":{\"connectionId\":{\"sessionAlias\":\"alias1\"},\"direction\":\"SECOND\",\"sequence\":\"1635664585511283004\"},\"timestamp\":\"2021-10-31T07:18:18.085342Z\",\"messageType\":\"reqType\",\"protocol\":\"prtcl\"}}");
 
         CrawlerConfiguration configuration = CrawlerManager.createConfig(
-                "2021-06-16T12:00:00.00Z", DataType.MESSAGES, Duration.ofHours(1), Set.of(CrawlerManager.SESSIONS), 5, ChronoUnit.MINUTES, prototype.getSerializedSize() * 2);
+                "2021-06-16T12:00:00.00Z", DataType.MESSAGES, Duration.ofHours(1), Duration.ofMinutes(30), Set.of(CrawlerManager.SESSIONS), 5, ChronoUnit.MINUTES, prototype.getSerializedSize() * 2);
 
         CrawlerManager manager = new CrawlerManager(configuration);
         Crawler crawler = manager.createCrawler(Instant.parse("2021-07-11T18:00:00.00Z"));
@@ -363,7 +428,7 @@ public class CrawlerTest {
         String lastUpdateTime = "2021-07-11T17:59:59.00Z";
 
         CrawlerConfiguration configuration = new CrawlerConfiguration(
-                from, to, "test_crawler", DataType.MESSAGES, "PT1H", 10, ChronoUnit.HOURS,
+                from, to, "test_crawler", DataType.MESSAGES, "PT1H", "PT30M", 10, ChronoUnit.HOURS,
                 1, 10, 5, ChronoUnit.MINUTES, false,
                 Set.of(CrawlerManager.SESSIONS), GrpcUtil.DEFAULT_MAX_MESSAGE_SIZE);
 
@@ -412,7 +477,7 @@ public class CrawlerTest {
         String lastUpdateTime = "2021-07-11T11:59:59.00Z";
 
         CrawlerConfiguration configuration = new CrawlerConfiguration(
-                from, null, "test_crawler", DataType.MESSAGES, "PT1H", 10, ChronoUnit.HOURS,
+                from, null, "test_crawler", DataType.MESSAGES, "PT1H", "PT30M", 10, ChronoUnit.HOURS,
                 1, 10, 5, ChronoUnit.MINUTES, false,
                 Set.of(CrawlerManager.SESSIONS), GrpcUtil.DEFAULT_MAX_MESSAGE_SIZE);
 

@@ -67,6 +67,7 @@ public class Crawler {
     private final CrawlerConfiguration configuration;
     private final CrawlerTime crawlerTime;
     private final Duration defaultIntervalLength;
+    private final Duration shortIntervalLength;
     private final long defaultSleepTime;
     private final Set<String> sessionAliases;
     private final boolean floatingToTime;
@@ -103,6 +104,7 @@ public class Crawler {
         this.crawlerTime = requireNonNull(crawlerContext.getCrawlerTime(), "Crawler time cannot be null");
         this.to = floatingToTime ? crawlerTime.now() : Instant.parse(configuration.getTo());
         this.defaultIntervalLength = Duration.parse(configuration.getDefaultLength());
+        this.shortIntervalLength = Duration.parse(configuration.getShortLength());
         this.defaultSleepTime = configuration.getDelay() * 1000;
         this.crawlerType = configuration.getType();
         this.batchSize = configuration.getBatchSize();
@@ -233,9 +235,7 @@ public class Crawler {
                 break;
             case CONTINUE:
                 currentInt.processed(true, intervalsWorker);
-                currentInt.updateState(state == null
-                                ? new RecoveryState(null, null, processedElements, 0)
-                                : new RecoveryState(state.getLastProcessedEvent(), state.getLastProcessedMessages(), processedElements, 0),
+                currentInt.updateState(CrawlerUtils.createRecoveryState(state, crawlerType, processedElements),
                         intervalsWorker
                 );
                 LOGGER.info("Interval from {}, to {} was processed successfully", interval.getStartTime(), interval.getEndTime());
@@ -344,7 +344,7 @@ public class Crawler {
         LOGGER.trace("Requesting intervals from {} to {} for name {} and version {}", from, to, name, version);
         Iterable<Interval> intervals = intervalsWorker.getIntervals(from, to, name, version, type.getTypeName());
 
-        Duration length = defaultIntervalLength;
+        Duration defaultLength = defaultIntervalLength;
 
         LOGGER.trace("Looking for suitable interval...");
         GetIntervalReport getReport = getInterval(intervals);
@@ -358,11 +358,25 @@ public class Crawler {
         LOGGER.info("Crawler did not find suitable interval. Creating new one if necessary.");
 
         if (lastInterval == null) {
-            return createAndStoreInterval(from, from.plus(length), name, version, type, lagNow);
+            Instant now = crawlerTime.now();
+            Instant shortEnd = from.plus(shortIntervalLength);
+
+            if (from.plus(defaultLength).isBefore(now)) {
+                return createAndStoreInterval(from, from.plus(defaultLength), name, version, type, lagNow);
+            } else if (from.plus(shortIntervalLength).isBefore(now)) {
+                return createAndStoreInterval(from, from.plus(shortIntervalLength), name, version, type, lagNow);
+            } else {
+                long sleepTime = getSleepTime(now, shortEnd);
+                logEarlyForCreation(now, shortEnd, sleepTime);
+                return new FetchIntervalReport(null, sleepTime); // waiting till it's possible to create a short interval
+            }
         }
+
         Instant lastIntervalEnd = lastInterval.getEndTime();
 
-        Instant expectedEnd = lastIntervalEnd.plus(length);
+        Instant expectedEnd = lastIntervalEnd.plus(defaultLength);
+        Instant shortIntervalEnd = lastIntervalEnd.plus(shortIntervalLength);
+
         if (lastIntervalEnd.isBefore(to)) {
 
             Instant newIntervalEnd;
@@ -371,19 +385,18 @@ public class Crawler {
 
                 newIntervalEnd = expectedEnd;
 
+            } else if (shortIntervalEnd.isBefore(to)) {
+
+                newIntervalEnd = shortIntervalEnd;
+
             } else {
                 newIntervalEnd = to;
 
                 if (floatingToTime) {
 
-                    long sleepTime = getSleepTime(expectedEnd, to);
+                    long sleepTime = getSleepTime(shortIntervalEnd, to);
 
-                    if (LOGGER.isInfoEnabled()) {
-                        LOGGER.info("Failed to create new interval from: {}, to: {} as it is too early now. Wait for {}",
-                                lastIntervalEnd,
-                                expectedEnd,
-                                Duration.ofMillis(sleepTime));
-                    }
+                    logEarlyForCreation(lastIntervalEnd, expectedEnd, sleepTime);
 
                     return new FetchIntervalReport(null, sleepTime);
                 }
@@ -406,6 +419,15 @@ public class Crawler {
                 lastIntervalEnd, expectedEnd, to);
 
         return new FetchIntervalReport(null, getSleepTime(expectedEnd, lagNow));
+    }
+
+    private void logEarlyForCreation(Instant from, Instant to, long sleepTime) {
+        if (LOGGER.isInfoEnabled()) {
+            LOGGER.info("Failed to create new interval from: {}, to: {} as it is too early now. Wait for {}",
+                    from,
+                    to,
+                    Duration.ofMillis(sleepTime));
+        }
     }
 
     private FetchIntervalReport createAndStoreInterval(Instant from, Instant to, String name, String version, DataType type, Instant lagTime) throws IOException {
