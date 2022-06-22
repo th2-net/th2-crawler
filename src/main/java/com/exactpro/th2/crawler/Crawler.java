@@ -363,11 +363,11 @@ public class Crawler {
 
             if (from.plus(defaultLength).isBefore(now)) {
                 return createAndStoreInterval(from, from.plus(defaultLength), name, version, type, lagNow);
-            } else if (from.plus(shortIntervalLength).isBefore(now)) {
-                return createAndStoreInterval(from, from.plus(shortIntervalLength), name, version, type, lagNow);
+            } else if (shortEnd.isBefore(now)) {
+                return createAndStoreInterval(from, shortEnd, name, version, type, lagNow);
             } else {
                 long sleepTime = getSleepTime(now, shortEnd);
-                logEarlyForCreation(now, shortEnd, sleepTime);
+                logEarlyForCreation(from, shortEnd, sleepTime);
                 return new FetchIntervalReport(null, sleepTime); // waiting till it's possible to create a short interval
             }
         }
