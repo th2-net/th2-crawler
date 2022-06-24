@@ -156,6 +156,37 @@ spec:
         pin: server
 ```
 
+## Metrics
+
+th2_crawler_processing_data_time_seconds (Histogram) - time in seconds to process an interval
+* data_type - EVENTS or MESSAGES
+* method - name of action
+
+th2_crawler_processed_data_count (Counter) - number of data processed by the crawler
+* data_type - EVENTS or MESSAGES
+
+th2_crawler_received_data_count (Counter) - number of data received by the crawler from the data provider
+* data_type - EVENTS or MESSAGES
+
+th2_crawler_processing_message_sequence_number (Gauge) - contains the sequence number of the last processed message for corresponding alias and direction
+* session_alias - session alias of TH2 Message
+* direction - direction of TH2 Message
+
+th2_crawler_processing_message_timestamp_milliseconds (Gauge) - contains the timestamp of the last processed message in milliseconds for corresponding alias and direction
+* session_alias - session alias of TH2 Message
+* direction - direction of TH2 Message
+
+th2_crawler_processing_event_timestamp_milliseconds (Gauge) - contains the timestamp (creation time) of the last processed event in milliseconds
+
+th2_crawler_processing_start_time_interval_milliseconds (Gauge) - contains the timestamp (start time) of the last processed interval in milliseconds
+
+th2_crawler_data_provider_api_calls_count (Counter) - total number of invocations of corresponding data provider's method
+
+th2_crawler_processor_api_calls_number (Counter) - total number of invocations of corresponding data processor's method
+
+th2_crawler_interval (Gauge) - contains the information about current crawler interval in seconds
+
+
 ### Important notes
 
 Crawler takes events/messages from intervals with startTimestamps >= "from" and < "to" of intervals.
