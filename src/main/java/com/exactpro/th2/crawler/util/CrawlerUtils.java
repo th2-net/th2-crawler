@@ -62,6 +62,8 @@ import com.google.protobuf.Int32Value;
 import com.google.protobuf.MessageOrBuilder;
 import com.google.protobuf.Timestamp;
 
+import javax.annotation.Nullable;
+
 public class CrawlerUtils {
     private static final Logger LOGGER = LoggerFactory.getLogger(CrawlerUtils.class);
     private static final BoolValue METADATA_ONLY = BoolValue.newBuilder().setValue(false).build();
@@ -211,6 +213,18 @@ public class CrawlerUtils {
             T obj = objectExtractor.apply(el);
             return obj == null || !to.equals(timeExtractor.apply(obj));
         });
+    }
+
+    public static RecoveryState createRecoveryState(@Nullable RecoveryState previousState,
+                                                    DataType crawlerType,
+                                                    long processedElements) {
+        return previousState == null ? (crawlerType == DataType.EVENTS
+                ? new RecoveryState(null, null, processedElements, 0)
+                : new RecoveryState(null, null, 0, processedElements)
+        ) : (crawlerType == DataType.EVENTS
+                ? new RecoveryState(previousState.getLastProcessedEvent(), previousState.getLastProcessedMessages(), processedElements, 0)
+                : new RecoveryState(previousState.getLastProcessedEvent(), previousState.getLastProcessedMessages(), 0, processedElements)
+        );
     }
 
     public static class EventsSearchParameters {

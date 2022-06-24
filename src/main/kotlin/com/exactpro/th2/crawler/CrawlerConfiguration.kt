@@ -34,6 +34,8 @@ class CrawlerConfiguration @JvmOverloads constructor(
     @JsonProperty
     val defaultLength: String = "PT1H",
     @JsonProperty
+    val shortLength: String = "PT10M",
+    @JsonProperty
     val lastUpdateOffset: Long = 1,
     @JsonProperty
     val lastUpdateOffsetUnit: ChronoUnit = ChronoUnit.HOURS,
