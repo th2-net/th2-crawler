@@ -17,6 +17,7 @@
 package com.exactpro.th2.crawler;
 
 import static com.exactpro.th2.common.message.MessageUtils.toTimestamp;
+import static com.exactpro.th2.crawler.util.CrawlerUtils.createRecoveryState;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 import static java.util.Objects.requireNonNullElse;
@@ -239,9 +240,7 @@ public class Crawler {
                 LOGGER.info("Got the same name ({}) and version ({}) from repeated crawlerConnect", dataProcessorName, dataProcessorVersion);
                 break;
             case CONTINUE:
-                updateProcessedState(currentInt, state == null
-                        ? new RecoveryState(null, null, processedElements, 0)
-                        : new RecoveryState(state.getLastProcessedEvent(), state.getLastProcessedMessages(), processedElements, 0));
+                updateProcessedState(currentInt, createRecoveryState(state, crawlerType, processedElements));
                 LOGGER.info("Interval from {}, to {} was processed successfully", interval.getStartTime(), interval.getEndTime());
                 break;
             default:
