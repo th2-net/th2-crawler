@@ -99,6 +99,11 @@ public class PrometheusMetrics implements CrawlerMetrics {
             .labelNames(DATA_TYPE_LABEL)
             .register();
 
+    private final Gauge currentIntervalLength = Gauge.build()
+            .name("th2_crawler_current_interval_length_milliseconds")
+            .help("contains the length of the current interval in milliseconds")
+            .register();
+
     public PrometheusMetrics(CrawlerConfiguration configuration) {
         crawlerIntervalExporter.labels(configuration.getType().getTypeName())
                 .set(Duration.parse(configuration.getDefaultLength()).toSeconds());
@@ -118,6 +123,7 @@ public class PrometheusMetrics implements CrawlerMetrics {
     @Override
     public void currentInterval(Interval interval) {
         lastIntervalTimestamp.set(interval.getStartTime().toEpochMilli());
+        currentIntervalLength.set(interval.getStartTime().toEpochMilli() - interval.getEndTime().toEpochMilli());
     }
 
     @Override
