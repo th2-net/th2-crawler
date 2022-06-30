@@ -123,7 +123,7 @@ public class PrometheusMetrics implements CrawlerMetrics {
     @Override
     public void currentInterval(Interval interval) {
         lastIntervalTimestamp.set(interval.getStartTime().toEpochMilli());
-        currentIntervalLength.set(interval.getStartTime().toEpochMilli() - interval.getEndTime().toEpochMilli());
+        currentIntervalLength.set(interval.getEndTime().toEpochMilli() - interval.getStartTime().toEpochMilli());
     }
 
     @Override
