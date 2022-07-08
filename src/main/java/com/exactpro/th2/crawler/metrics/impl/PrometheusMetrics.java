@@ -16,26 +16,29 @@
 
 package com.exactpro.th2.crawler.metrics.impl;
 
+import static com.exactpro.th2.common.metrics.CommonMetrics.*;
+
 import java.io.IOException;
 
 import com.exactpro.cradle.intervals.Interval;
 import com.exactpro.th2.common.grpc.Direction;
 import com.exactpro.th2.crawler.DataType;
+import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
 import com.exactpro.th2.crawler.util.CrawlerUtils;
-import com.exactpro.th2.dataprovider.grpc.EventData;
-import com.exactpro.th2.dataprovider.grpc.MessageData;
+import com.exactpro.th2.dataprovider.grpc.EventResponse;
+import com.exactpro.th2.dataprovider.grpc.MessageGroupResponse;
+
 import io.prometheus.client.Counter;
 import io.prometheus.client.Gauge;
 import io.prometheus.client.Histogram;
-
-import static com.exactpro.th2.common.metrics.CommonMetrics.DEFAULT_DIRECTION_LABEL_NAME;
-import static com.exactpro.th2.common.metrics.CommonMetrics.DEFAULT_SESSION_ALIAS_LABEL_NAME;
+import io.prometheus.client.Histogram.Timer;
 
 public class PrometheusMetrics implements CrawlerMetrics {
     private final Histogram processingTime = Histogram.build()
             .name("th2_crawler_processing_data_time_seconds")
             .help("time in seconds to process an interval")
+            .buckets(0.005, 0.01, 0.05, 0.1, 0.5, 1, 2.5, 5, 7.5, 10, 15, 20, 25, 30, 45, 60, 90, 120)
             .labelNames("data_type", "method")
             .register();
     private final Counter processedDataCount = Counter.build()
@@ -47,12 +50,12 @@ public class PrometheusMetrics implements CrawlerMetrics {
     private final Gauge lastMessageSequence = Gauge.build()
             .name("th2_crawler_processing_message_sequence_number")
             .help("contains the sequence number of the last processed message for corresponding alias and direction")
-            .labelNames(DEFAULT_SESSION_ALIAS_LABEL_NAME, DEFAULT_DIRECTION_LABEL_NAME)
+            .labelNames(SESSION_ALIAS_LABEL, DIRECTION_LABEL)
             .register();
     private final Gauge lastMessageTimestamp = Gauge.build()
             .name("th2_crawler_processing_message_timestamp_milliseconds")
             .help("contains the timestamp of the last processed message in milliseconds for corresponding alias and direction")
-            .labelNames(DEFAULT_SESSION_ALIAS_LABEL_NAME, DEFAULT_DIRECTION_LABEL_NAME)
+            .labelNames(SESSION_ALIAS_LABEL, DIRECTION_LABEL)
             .register();
     //endregion
     private final Gauge lastEventTimestamp = Gauge.build()
@@ -80,7 +83,7 @@ public class PrometheusMetrics implements CrawlerMetrics {
     //endregion
 
     @Override
-    public void lastMessage(String alias, Direction direction, MessageData messageData) {
+    public void lastMessage(String alias, Direction direction, MessageGroupResponse messageData) {
         String[] labels = {alias, direction.name()};
         lastMessageSequence
                 .labels(labels)
@@ -96,7 +99,7 @@ public class PrometheusMetrics implements CrawlerMetrics {
     }
 
     @Override
-    public void lastEvent(EventData event) {
+    public void lastEvent(EventResponse event) {
         lastEventTimestamp.set(CrawlerUtils.fromTimestamp(event.getStartTimestamp()).toEpochMilli());
     }
 
@@ -111,8 +114,18 @@ public class PrometheusMetrics implements CrawlerMetrics {
     }
 
     @Override
-    public <T> T measureTime(DataType dataType, Method method, CrawlerDataOperation<T> function) throws IOException {
-        Histogram.Timer timer = processingTime.labels(dataType.getTypeName(), method.name()).startTimer();
+    public <T> T measureTime(DataType dataType, Method method, CrawlerDataOperation<T> function) {
+        Timer timer = processingTime.labels(dataType.getTypeName(), method.name()).startTimer();
+        try {
+            return function.call();
+        } finally {
+            timer.observeDuration();
+        }
+    }
+
+    @Override
+    public <T> T measureTimeWithException(DataType dataType, Method method, CrawlerDataOperationWithException<T> function) throws IOException, UnexpectedDataProcessorException {
+        Timer timer = processingTime.labels(dataType.getTypeName(), method.name()).startTimer();
         try {
             return function.call();
         } finally {

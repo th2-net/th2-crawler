@@ -34,16 +34,19 @@ import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerInfo;
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorInfo;
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService;
 import com.exactpro.th2.crawler.dataprocessor.grpc.EventDataRequest;
-import com.exactpro.th2.crawler.dataprocessor.grpc.EventResponse;
+import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
+import com.exactpro.th2.crawler.metrics.CrawlerMetrics.CrawlerDataOperation;
+import com.exactpro.th2.crawler.metrics.CrawlerMetrics.CrawlerDataOperationWithException;
+import com.exactpro.th2.crawler.metrics.CrawlerMetrics.Method;
 import com.exactpro.th2.crawler.state.StateService;
 import com.exactpro.th2.crawler.state.v1.RecoveryState;
 import com.exactpro.th2.crawler.util.CrawlerTime;
 import com.exactpro.th2.crawler.util.CrawlerTimeTestImpl;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
-import com.exactpro.th2.dataprovider.grpc.EventData;
+import com.exactpro.th2.dataprovider.grpc.EventResponse;
 import com.exactpro.th2.dataprovider.grpc.EventSearchRequest;
-import com.exactpro.th2.dataprovider.grpc.StreamResponse;
+import com.exactpro.th2.dataprovider.grpc.EventSearchResponse;
 import org.jetbrains.annotations.NotNull;
 
 import static com.exactpro.th2.common.event.EventUtils.toEventID;
@@ -53,6 +56,8 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+
+import io.grpc.internal.GrpcUtil;
 
 public class CrawlerManager {
     public static final String NAME = "test_crawler";
@@ -68,7 +73,7 @@ public class CrawlerManager {
             null);
 
     private List<Interval> intervals;
-    private List<StreamResponse> searchEventResponse;
+    private List<EventSearchResponse> searchEventResponse;
     private final CrawlerConfiguration configuration;
 
     public static final String[] SESSIONS = {"alias1", "alias2"};
@@ -100,15 +105,17 @@ public class CrawlerManager {
     }
 
     @NotNull
-    public Crawler createCrawler() throws IOException {
+    public Crawler createCrawler() throws IOException, UnexpectedDataProcessorException {
         return createCrawler(new CrawlerTimeTestImpl());
     }
 
     @NotNull
-    public Crawler createCrawler(CrawlerTime crawlerTime) throws IOException {
+    public Crawler createCrawler(CrawlerTime crawlerTime) throws IOException, UnexpectedDataProcessorException {
         CrawlerMetrics metrics = mock(CrawlerMetrics.class);
-        when(metrics.measureTime(any(DataType.class), any(CrawlerMetrics.Method.class), any())).then(invk ->
-                invk.<CrawlerMetrics.CrawlerDataOperation<?>>getArgument(2).call());
+        when(metrics.measureTime(any(DataType.class), any(Method.class), any())).then(invk ->
+                invk.<CrawlerDataOperation<?>>getArgument(2).call());
+        when(metrics.measureTimeWithException(any(DataType.class), any(Method.class), any())).then(invk ->
+                invk.<CrawlerDataOperationWithException<?>>getArgument(2).call());
         CrawlerContext crawlerContext = new CrawlerContext()
                 .setCrawlerTime(crawlerTime)
                 .setMetrics(metrics);
@@ -120,9 +127,13 @@ public class CrawlerManager {
     }
 
     public static CrawlerConfiguration createConfig(String from, DataType dataType, Duration length, Set<String> sessions, int lagOffset, ChronoUnit lagOffsetUnit) {
+        return createConfig(from, dataType, length, sessions, lagOffset, lagOffsetUnit, GrpcUtil.DEFAULT_MAX_MESSAGE_SIZE);
+    }
+
+    public static CrawlerConfiguration createConfig(String from, DataType dataType, Duration length, Set<String> sessions, int lagOffset, ChronoUnit lagOffsetUnit, int maxOutgoingDataSize) {
         return new CrawlerConfiguration(from, null, NAME,
-                dataType, length.toString(), 1, ChronoUnit.NANOS, 1, 10, lagOffset,
-                lagOffsetUnit, true, sessions);
+                dataType, length.toString(), 1, ChronoUnit.NANOS, 1, lagOffset,
+                lagOffsetUnit, true, sessions, maxOutgoingDataSize);
     }
 
     private void prepare() throws IOException {
@@ -138,7 +149,7 @@ public class CrawlerManager {
 
     private void prepareDataProvider() {
         when(dataProviderMock.getEvent(any(EventID.class)))
-                .thenReturn(EventData.newBuilder().setEventId(toEventID("2")).setEventName("0.0.1|ProviderTest|"+ Instant.now()).build());
+                .thenReturn(EventResponse.newBuilder().setEventId(toEventID("2")).setEventName("0.0.1|ProviderTest|"+ Instant.now()).build());
 
         when(dataProviderMock.searchEvents(any(EventSearchRequest.class)))
                 .thenAnswer(invocation -> searchEventResponse.stream().filter(streamResponse -> {
@@ -174,11 +185,11 @@ public class CrawlerManager {
         when(dataServiceMock.sendEvent(any(EventDataRequest.class))).then(invocation -> {
             EventDataRequest request = invocation.getArgument(0);
 
-            List<EventData> events = request.getEventDataList();
+            List<EventResponse> events = request.getEventDataList();
 
             EventID eventID = events.get(events.size() - 1).getEventId();
 
-            return EventResponse.newBuilder().setId(eventID).build();
+            return com.exactpro.th2.crawler.dataprocessor.grpc.EventResponse.newBuilder().setId(eventID).build();
         });
     }
 
@@ -258,13 +269,13 @@ public class CrawlerManager {
         });
     }
 
-    private List<StreamResponse> addEvents() {
+    private List<EventSearchResponse> addEvents() {
 
-        List<StreamResponse> responses = new ArrayList<>();
+        List<EventSearchResponse> responses = new ArrayList<>();
 
         for (int i = 0; i < 100; i++) {
-            StreamResponse response = StreamResponse.newBuilder()
-                    .setEvent(EventData.newBuilder()
+            EventSearchResponse response = EventSearchResponse.newBuilder()
+                    .setEvent(EventResponse.newBuilder()
                             .setEventId(toEventID(i +"id"))
                             .setEventName("0.0.1|SearchProviderDataTest|"+Instant.now())
                             .setStartTimestamp(toTimestamp(Instant.parse(configuration.getFrom()).plus(i * 10, ChronoUnit.MINUTES)))

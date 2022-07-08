@@ -16,30 +16,112 @@
 
 package com.exactpro.th2.crawler.events.strategy;
 
+import static java.util.Objects.requireNonNull;
+
 import java.time.Instant;
+import java.util.Collection;
+import java.util.Iterator;
 import java.util.List;
-import java.util.Objects;
 
 import org.jetbrains.annotations.Nullable;
 
 import com.exactpro.th2.common.grpc.EventID;
+import com.exactpro.th2.common.message.MessageUtils;
 import com.exactpro.th2.crawler.AbstractStrategy.AbstractCrawlerData;
 import com.exactpro.th2.crawler.Continuation;
+import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId;
+import com.exactpro.th2.crawler.dataprocessor.grpc.EventDataRequest;
+import com.exactpro.th2.crawler.events.strategy.EventsCrawlerData.EventPart;
 import com.exactpro.th2.crawler.events.strategy.EventsCrawlerData.ResumeEventId;
-import com.exactpro.th2.dataprovider.grpc.EventData;
+import com.exactpro.th2.crawler.util.CrawlerUtils;
+import com.exactpro.th2.dataprovider.grpc.EventResponse;
+import com.exactpro.th2.dataprovider.grpc.EventSearchResponse;
 
-public class EventsCrawlerData extends AbstractCrawlerData<ResumeEventId, EventData> {
-    private final ResumeEventId resumeEventId;
+public class EventsCrawlerData extends AbstractCrawlerData<EventSearchResponse, ResumeEventId, EventPart, EventResponse> {
+    private EventResponse lastEvent;
 
-    public EventsCrawlerData(List<EventData> data, ResumeEventId resumeEventId, boolean needsNextRequest) {
-        super(data, needsNextRequest);
-        this.resumeEventId = resumeEventId;
+    public EventsCrawlerData(Iterator<EventSearchResponse> data, CrawlerId id,  int maxSize) {
+        super(data, id, maxSize);
     }
 
     @Nullable
     @Override
-    public ResumeEventId getContinuation() {
-        return resumeEventId;
+    public ResumeEventId getContinuationInternal() {
+        EventResponse data = lastEvent;
+        return data == null ? null : resumeIdFromEvent(data);
+    }
+
+    @Override
+    protected String extractId(EventResponse last) {
+        return MessageUtils.toJson(last.getEventId());
+    }
+
+    @Override
+    protected void updateState(EventSearchResponse response) {
+        if (response.hasEvent()) {
+            lastEvent = response.getEvent();
+        }
+    }
+
+    @Override
+    protected @Nullable EventResponse extractValue(EventSearchResponse response) {
+        if (response.hasEvent()) {
+            return response.getEvent();
+        }
+        return null;
+    }
+
+    @Override
+    protected int extractCount(EventResponse eventResponse) {
+        return 1;
+    }
+
+    @Override
+    protected EventPart buildDataPart(CrawlerId crawlerId, Collection<EventResponse> eventData) {
+        return new EventPart(crawlerId, eventData);
+    }
+
+    public static ResumeEventId resumeIdFromEvent(EventResponse data) {
+        return new ResumeEventId(data.getEventId(), CrawlerUtils.fromTimestamp(data.getStartTimestamp()));
+    }
+
+    public static class EventPart implements SizableDataPart<EventResponse> {
+        private final EventDataRequest.Builder builder;
+        private EventDataRequest request;
+
+        private EventPart(CrawlerId id, Collection<EventResponse> data) {
+            this.builder = EventDataRequest.newBuilder()
+                    .setId(id)
+                    .addAllEventData(data);
+            request = builder.build();
+        }
+
+        public EventDataRequest getRequest() {
+            return requireNonNull(request, "request must be initialized");
+        }
+
+        @Override
+        public int serializedSize() {
+            return requireNonNull(request, "request must be initialized").getSerializedSize();
+        }
+
+        @Override
+        public @Nullable EventResponse pullLast() {
+            List<EventResponse> dataList = builder.getEventDataList();
+            if (dataList.isEmpty()) {
+                return null;
+            }
+            int lastIndex = dataList.size() - 1;
+            EventResponse last = dataList.get(lastIndex);
+            builder.removeEventData(lastIndex);
+            request = builder.build();
+            return last;
+        }
+
+        @Override
+        public int getSize() {
+            return builder.getEventDataCount();
+        }
     }
 
     public static class ResumeEventId implements Continuation {
@@ -47,8 +129,8 @@ public class EventsCrawlerData extends AbstractCrawlerData<ResumeEventId, EventD
         private final Instant timestamp;
 
         public ResumeEventId(EventID resumeId, Instant timestamp) {
-            this.resumeId = Objects.requireNonNull(resumeId, "'Resume id' parameter");
-            this.timestamp = Objects.requireNonNull(timestamp, "'Timestamp' parameter");
+            this.resumeId = requireNonNull(resumeId, "'Resume id' parameter");
+            this.timestamp = requireNonNull(timestamp, "'Timestamp' parameter");
         }
 
         public EventID getResumeId() {

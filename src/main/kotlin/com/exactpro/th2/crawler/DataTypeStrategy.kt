@@ -18,7 +18,6 @@ package com.exactpro.th2.crawler
 import com.exactpro.cradle.intervals.Interval
 import com.exactpro.cradle.intervals.IntervalsWorker
 import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId
-import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorInfo
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService
 import com.exactpro.th2.crawler.dataprocessor.grpc.IntervalInfo
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics
@@ -29,7 +28,7 @@ import com.google.protobuf.Timestamp
 import mu.KotlinLogging
 import java.io.IOException
 
-interface DataTypeStrategy<T : CrawlerData<C>, C : Continuation> {
+interface DataTypeStrategy<C : Continuation, D : DataPart> {
     fun setupIntervalInfo(info: IntervalInfo.Builder, state: RecoveryState?)
 
     /**
@@ -58,7 +57,7 @@ interface DataTypeStrategy<T : CrawlerData<C>, C : Continuation> {
         end: Timestamp,
         parameters: DataParameters,
         continuation: C?
-    ): T
+    ): CrawlerData<C, D>
 
     /**
      * @param processor the processor to transfer data
@@ -67,17 +66,26 @@ interface DataTypeStrategy<T : CrawlerData<C>, C : Continuation> {
      * @param data the data to process
      * @return the report with information about next action and the checkpoint to store in [RecoveryState]
      */
-    @Throws(IOException::class)
     fun processData(
         processor: DataProcessorService,
         interval: InternalInterval,
         parameters: DataParameters,
-        data: T
+        data: D,
+        prevCheckpoint: C?
     ): Report<C>
 }
 
-interface CrawlerData<C : Continuation> {
-    val isNeedsNextRequest: Boolean
+/**
+ * The marker for data part received from the provider
+ */
+interface DataPart {
+    /**
+     * Return the number of elements in data part
+     */
+    val size: Int
+}
+
+interface CrawlerData<C : Continuation, D : DataPart> : Iterator<D> {
     val hasData: Boolean
     val continuation: C?
     fun size(): Int
@@ -85,7 +93,7 @@ interface CrawlerData<C : Continuation> {
 
 interface Continuation
 
-interface DataTypeStrategyFactory<T : CrawlerData<C>, C : Continuation> {
+interface DataTypeStrategyFactory<C : Continuation, D : DataPart> {
     val dataType: DataType
     fun create(
         worker: IntervalsWorker,
@@ -93,16 +101,15 @@ interface DataTypeStrategyFactory<T : CrawlerData<C>, C : Continuation> {
         stateService: StateService<RecoveryState>,
         metrics: CrawlerMetrics,
         config: CrawlerConfiguration, // TODO: maybe use a separate class
-    ): DataTypeStrategy<T, C>
+    ): DataTypeStrategy<C, D>
 }
 
 class DataParameters(
-    val dataProcessorInfo: DataProcessorInfo,
     val crawlerId: CrawlerId,
     val sessionAliases: Collection<String> = emptyList(),
 )
 
-data class Report<out C>(
+data class Report<out C> @JvmOverloads constructor(
     val action: Action,
     val processedData: Long,
     val remainingData: Long,

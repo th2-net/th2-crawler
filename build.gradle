@@ -25,21 +25,21 @@ compileTestKotlin {
 }
 
 ext {
-    cradleVersion = '2.17.0'
-    grpcCrawlerVersion = '0.2.0'
+    cradleVersion = '2.21.0'
+    grpcCrawlerVersion = '0.3.0-update-rpt-grpc-SNAPSHOT'
     sharedDir = file("${project.rootDir}/shared")
 }
 
 dependencies {
     // BOM with external dependencies restrictions
-    api platform('com.exactpro.th2:bom:3.0.0')
+    api platform('com.exactpro.th2:bom:3.1.0-TH2-3093-1766515619-SNAPSHOT')
 
     api "com.exactpro.th2:cradle-core:${cradleVersion}"
 
     implementation "com.exactpro.th2:cradle-cassandra:${cradleVersion}"
 
     // the library for interaction with infra API
-    implementation 'com.exactpro.th2:common:3.24.2'
+    implementation 'com.exactpro.th2:common:3.33.1-dev-1801872848-SNAPSHOT'
 
     implementation "com.exactpro.th2:grpc-crawler-data-processor:${grpcCrawlerVersion}"
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310") {
@@ -63,6 +63,10 @@ dependencies {
 
     implementation('io.prometheus:simpleclient') {
         because('metrics to export')
+    }
+
+    implementation('io.grpc:grpc-core') {
+        because('default max message size constant')
     }
 
     compileOnly 'com.google.auto.service:auto-service-annotations:1.0'

@@ -29,7 +29,7 @@ import org.jetbrains.annotations.Nullable;
 public class MessagesSearchParameters {
     private final Timestamp from;
     private final Timestamp to;
-    private final int batchSize;
+    private final Integer batchSize;
     private final Map<StreamKey, MessageID> resumeIds;
     private final Collection<String> aliases;
     private final TimeRelation timeRelation;
@@ -37,7 +37,7 @@ public class MessagesSearchParameters {
     private MessagesSearchParameters(
             Timestamp from,
             Timestamp to,
-            int batchSize,
+            Integer batchSize,
             Map<StreamKey, MessageID> resumeIds,
             Collection<String> aliases,
             TimeRelation timeRelation
@@ -62,7 +62,7 @@ public class MessagesSearchParameters {
         return to;
     }
 
-    public int getBatchSize() {
+    public Integer getBatchSize() {
         return batchSize;
     }
 
@@ -87,7 +87,7 @@ public class MessagesSearchParameters {
     public static class Builder {
         private Timestamp from;
         private Timestamp to;
-        private int batchSize = 1;
+        private Integer batchSize;
         private Map<StreamKey, MessageID> resumeIds;
         private Collection<String> aliases;
         private TimeRelation timeRelation = TimeRelation.NEXT;

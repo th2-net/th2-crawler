@@ -34,29 +34,30 @@ import com.exactpro.th2.common.grpc.EventID;
 import com.exactpro.th2.crawler.AbstractStrategy;
 import com.exactpro.th2.crawler.Action;
 import com.exactpro.th2.crawler.CrawlerConfiguration;
+import com.exactpro.th2.crawler.CrawlerData;
 import com.exactpro.th2.crawler.DataParameters;
+import com.exactpro.th2.crawler.DataType;
 import com.exactpro.th2.crawler.InternalInterval;
 import com.exactpro.th2.crawler.Report;
-import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId;
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService;
 import com.exactpro.th2.crawler.dataprocessor.grpc.EventDataRequest;
-import com.exactpro.th2.crawler.dataprocessor.grpc.EventResponse;
 import com.exactpro.th2.crawler.dataprocessor.grpc.IntervalInfo.Builder;
+import com.exactpro.th2.crawler.events.strategy.EventsCrawlerData.EventPart;
 import com.exactpro.th2.crawler.events.strategy.EventsCrawlerData.ResumeEventId;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
+import com.exactpro.th2.crawler.metrics.CrawlerMetrics.Method;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics.ProcessorMethod;
 import com.exactpro.th2.crawler.state.v1.InnerEventId;
 import com.exactpro.th2.crawler.state.v1.RecoveryState;
 import com.exactpro.th2.crawler.util.CrawlerUtils;
 import com.exactpro.th2.crawler.util.CrawlerUtils.EventsSearchParameters;
-import com.exactpro.th2.crawler.util.SearchResult;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
-import com.exactpro.th2.dataprovider.grpc.EventData;
+import com.exactpro.th2.dataprovider.grpc.EventResponse;
 import com.google.protobuf.Timestamp;
 
 import kotlin.Pair;
 
-public class EventsStrategy extends AbstractStrategy<EventsCrawlerData, ResumeEventId> {
+public class EventsStrategy extends AbstractStrategy<ResumeEventId, EventPart> {
     private static final Logger LOGGER = LoggerFactory.getLogger(EventsStrategy.class);
 
     private final DataProviderService provider;
@@ -83,22 +84,17 @@ public class EventsStrategy extends AbstractStrategy<EventsCrawlerData, ResumeEv
 
     @NotNull
     @Override
-    public EventsCrawlerData requestData(@NotNull Timestamp start, @NotNull Timestamp end, @NotNull DataParameters parameters,
-                                         @Nullable EventsCrawlerData.ResumeEventId prevResult) {
+    public CrawlerData<ResumeEventId, EventPart> requestData(@NotNull Timestamp start, @NotNull Timestamp end, @NotNull DataParameters parameters,
+                                                             @Nullable EventsCrawlerData.ResumeEventId prevResult) {
         requireNonNull(start, "'start' parameter");
         requireNonNull(end, "'end' parameter");
         requireNonNull(parameters, "'parameters' parameter");
         EventID resumeId = getResumeId(prevResult);
-        int batchSize = config.getBatchSize();
-        SearchResult<EventData> result = CrawlerUtils.searchEvents(provider,
-                new EventsSearchParameters(start, end, batchSize, resumeId), metrics);
-        List<EventData> events = result.getData();
-        if (events.isEmpty()) {
-            LOGGER.info("No more events in interval from: {}, to: {}", start, end);
-        }
-        return new EventsCrawlerData(events,
-                events.isEmpty() ? null : resumeIdFromEvent(events.get(events.size() - 1)),
-                events.size() == batchSize
+        return new EventsCrawlerData(
+                CrawlerUtils.searchEvents(provider,
+                        new EventsSearchParameters(start, end, resumeId), metrics),
+                parameters.getCrawlerId(),
+                config.getMaxOutgoingDataSize()
         );
     }
 
@@ -108,27 +104,24 @@ public class EventsStrategy extends AbstractStrategy<EventsCrawlerData, ResumeEv
             @NotNull DataProcessorService processor,
             @NotNull InternalInterval interval,
             @NotNull DataParameters parameters,
-            @NotNull EventsCrawlerData data
-    ) {
+            @NotNull EventPart data,
+            @Nullable ResumeEventId prevCheckpoint) {
         requireNonNull(processor, "'processor' parameter");
         requireNonNull(interval, "'interval' parameter");
         requireNonNull(parameters, "'parameters' parameter");
         requireNonNull(data, "'data' parameter");
 
-        CrawlerId crawlerId = parameters.getCrawlerId();
         Interval original = interval.getOriginal();
 
-        List<EventData> events = data.getData();
+        EventDataRequest eventRequest = data.getRequest();
 
+        List<EventResponse> events = eventRequest.getEventDataList();
         if (events.isEmpty()) {
             LOGGER.info("No more events in interval from: {}, to: {}", original.getStartTime(), original.getEndTime());
             return Report.empty();
         }
 
-        EventDataRequest.Builder eventRequestBuilder = EventDataRequest.newBuilder();
-        EventDataRequest eventRequest = eventRequestBuilder.setId(crawlerId).addAllEventData(events).build();
-
-        EventResponse response = sendEventsToProcessor(processor, eventRequest);
+        com.exactpro.th2.crawler.dataprocessor.grpc.EventResponse response = sendEventsToProcessor(processor, eventRequest);
 
         if (response.hasStatus()) {
             if (response.getStatus().getHandshakeRequired()) {
@@ -144,7 +137,7 @@ public class EventsStrategy extends AbstractStrategy<EventsCrawlerData, ResumeEv
 
         ResumeEventId continuation = null;
         if (hasCheckpoint) {
-            EventData checkpointEvent = countAndCheckpoint.getSecond();
+            EventResponse checkpointEvent = countAndCheckpoint.getSecond();
             if (checkpointEvent != null) {
                 Instant startTimeStamp = CrawlerUtils.fromTimestamp(checkpointEvent.getStartTimestamp());
                 continuation = new ResumeEventId(checkpointEvent.getEventId(), startTimeStamp);
@@ -187,19 +180,19 @@ public class EventsStrategy extends AbstractStrategy<EventsCrawlerData, ResumeEv
         );
     }
 
-    private EventResponse sendEventsToProcessor(DataProcessorService dataProcessor, EventDataRequest eventRequest) {
-        EventResponse response = dataProcessor.sendEvent(eventRequest);
+    private com.exactpro.th2.crawler.dataprocessor.grpc.EventResponse sendEventsToProcessor(DataProcessorService dataProcessor, EventDataRequest eventRequest) {
+        com.exactpro.th2.crawler.dataprocessor.grpc.EventResponse response = metrics.measureTime(DataType.EVENTS, Method.PROCESS_DATA, () -> dataProcessor.sendEvent(eventRequest));
         metrics.processorMethodInvoked(ProcessorMethod.SEND_EVENT);
         return response;
     }
 
-    private Pair<@NotNull Integer, @Nullable EventData> processServiceResponse(@Nullable EventID checkpoint, List<EventData> events) {
+    private Pair<@NotNull Integer, @Nullable EventResponse> processServiceResponse(@Nullable EventID checkpoint, List<EventResponse> events) {
         if (checkpoint == null) {
             return new Pair<>(events.size(), null);
         }
         int processed = 0;
-        EventData checkpointEvent = null;
-        for (EventData event : events) {
+        EventResponse checkpointEvent = null;
+        for (EventResponse event : events) {
             if (checkpointEvent == null) {
                 processed++;
             }
@@ -211,10 +204,6 @@ public class EventsStrategy extends AbstractStrategy<EventsCrawlerData, ResumeEv
             metrics.lastEvent(events.get(events.size() - 1));
         }
         return new Pair<>(processed, checkpointEvent);
-    }
-
-    private static ResumeEventId resumeIdFromEvent(EventData data) {
-        return new ResumeEventId(data.getEventId(), CrawlerUtils.fromTimestamp(data.getStartTimestamp()));
     }
 
     @Nullable

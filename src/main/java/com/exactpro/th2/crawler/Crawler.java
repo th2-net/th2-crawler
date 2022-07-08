@@ -72,12 +72,11 @@ public class Crawler {
     private final boolean floatingToTime;
     private final boolean workAlone;
     private final DataType crawlerType;
-    private final int batchSize;
     private final DataProcessorInfo info;
     private final CrawlerId crawlerId;
     private final StateService<RecoveryState> stateService;
     private final CrawlerMetrics metrics;
-    private final DataTypeStrategy<CrawlerData<Continuation>, Continuation> typeStrategy;
+    private final DataTypeStrategy<Continuation, DataPart> typeStrategy;
 
     private final Instant from;
     private Instant to;
@@ -105,13 +104,13 @@ public class Crawler {
         this.defaultIntervalLength = Duration.parse(configuration.getDefaultLength());
         this.defaultSleepTime = configuration.getDelay() * 1000;
         this.crawlerType = configuration.getType();
-        this.batchSize = configuration.getBatchSize();
         this.crawlerId = CrawlerId.newBuilder().setName(configuration.getName()).build();
         this.sessionAliases = configuration.getSessionAliases();
         metrics = requireNonNull(crawlerContext.getMetrics(), "'metrics' must not be null");
         info = crawlerConnect(dataProcessor, CrawlerInfo.newBuilder().setId(crawlerId).build());
-        Map<DataType, DataTypeStrategyFactory<CrawlerData<Continuation>, Continuation>> knownStrategies = loadStrategies();
-        DataTypeStrategyFactory<CrawlerData<Continuation>, Continuation> factory = requireNonNull(knownStrategies.get(crawlerType),
+        // TODO: overrides value of configuration.maxOutgoingDataSize by info.maxOutgoingDataSize if the info's value is less than configuration
+        Map<DataType, DataTypeStrategyFactory<Continuation, DataPart>> knownStrategies = loadStrategies();
+        DataTypeStrategyFactory<Continuation, DataPart> factory = requireNonNull(knownStrategies.get(crawlerType),
                 () -> "Cannot find factory for type: " + crawlerType + ". Known types: " + knownStrategies.keySet());
         typeStrategy = factory.create(intervalsWorker, dataProviderService, stateService, metrics, configuration);
         prepare();
@@ -119,11 +118,11 @@ public class Crawler {
 
     @SuppressWarnings("unchecked")
     @NotNull
-    private Map<DataType, DataTypeStrategyFactory<CrawlerData<Continuation>, Continuation>> loadStrategies() {
+    private Map<DataType, DataTypeStrategyFactory<Continuation, DataPart>> loadStrategies() {
         return ServiceLoader.load(DataTypeStrategyFactory.class).stream()
                 .collect(toUnmodifiableMap(
                         it -> it.get().getDataType(),
-                        it -> (DataTypeStrategyFactory<CrawlerData<Continuation>, Continuation>)it.get()
+                        it -> (DataTypeStrategyFactory<Continuation, DataPart>)it.get()
                 ));
     }
 
@@ -143,6 +142,10 @@ public class Crawler {
     }
 
     public Duration process() throws IOException, UnexpectedDataProcessorException {
+        return metrics.measureTimeWithException(crawlerType, Method.HANDLE_INTERVAL, this::internalProcess);
+    }
+
+    private Duration internalProcess() throws IOException, UnexpectedDataProcessorException {
         String dataProcessorName = info.getName();
         String dataProcessorVersion = info.getVersion();
 
@@ -165,33 +168,48 @@ public class Crawler {
             intervalStartForProcessor(dataProcessor, interval, state);
 
             Continuation continuation = state == null ? null : typeStrategy.continuationFromState(state);
-            DataParameters parameters = new DataParameters(info, crawlerId, sessionAliases);
-            CrawlerData<Continuation> data;
+            DataParameters parameters = new DataParameters(crawlerId, sessionAliases);
             Report<Continuation> sendingReport = null;
-            long processedEvents = 0L;
+            long processedElements = 0L;
             Timestamp startTime = toTimestamp(interval.getStartTime());
             Timestamp endTime = toTimestamp(interval.getEndTime());
-            do {
-                LOGGER.trace("Requesting data for interval");
-                data = requestData(startTime, endTime, continuation, parameters);
-                continuation = data.getContinuation();
-                var currentData = data;
-                long remaining = sendingReport == null ? 0 : sendingReport.getRemainingData();
-                sendingReport = currentData.getHasData()
-                        ? processData(currentInt, parameters, currentData)
-                        : requireNonNullElse(sendingReport, Report.empty());
+            LOGGER.trace("Requesting data for interval");
+            CrawlerData<Continuation, DataPart> data = requestData(startTime, endTime, continuation, parameters);
+            long remaining = 0;
+            while (data.hasNext()) {
+                DataPart nextPart = data.next();
+                Continuation prevCheckpoint = sendingReport == null ? null : sendingReport.getCheckpoint();
+                sendingReport = typeStrategy.processData(dataProcessor, currentInt, parameters, nextPart, prevCheckpoint);
 
-                if (currentData.getHasData()) {
-                    metrics.updateProcessedData(crawlerType, currentData.size());
+                if (sendingReport.getAction() == Action.HANDSHAKE) {
+                    LOGGER.info("Handshake from {}:{} received. Stop processing", dataProcessorName, dataProcessorVersion);
+                    break;
+                }
+
+                if (nextPart.getSize() > 0) {
+                    metrics.updateProcessedData(crawlerType, nextPart.getSize());
                 }
 
                 Continuation checkpoint = sendingReport.getCheckpoint();
-                processedEvents += sendingReport.getProcessedData() + remaining;
+                processedElements += sendingReport.getProcessedData() + remaining;
                 if (checkpoint != null) {
-                    state = typeStrategy.continuationToState(state, checkpoint, processedEvents);
+                    state = typeStrategy.continuationToState(state, checkpoint, processedElements);
                     currentInt.updateState(state, intervalsWorker);
                 }
-            } while (data.isNeedsNextRequest());
+            }
+            sendingReport = requireNonNullElse(sendingReport, Report.empty());
+
+            if (sendingReport.getAction() == Action.HANDSHAKE) {
+                if (data.hasNext()) {
+                    LOGGER.info("Finishing data iterator because of handshake");
+                    int parts = 0;
+                    while (data.hasNext()) {
+                        DataPart dataPart = data.next();
+                        parts++;
+                    }
+                    LOGGER.info("Remaining parts in data iterator: {}", parts);
+                }
+            }
 
             Action action = sendingReport.getAction();
             switch (action) {
@@ -207,8 +225,8 @@ public class Crawler {
             case CONTINUE:
                 currentInt.processed(true, intervalsWorker);
                 currentInt.updateState(state == null
-                                ? new RecoveryState(null, null, processedEvents, 0)
-                                : new RecoveryState(state.getLastProcessedEvent(), state.getLastProcessedMessages(), processedEvents, 0),
+                                ? new RecoveryState(null, null, processedElements, 0)
+                                : new RecoveryState(state.getLastProcessedEvent(), state.getLastProcessedMessages(), processedElements, 0),
                         intervalsWorker
                 );
                 LOGGER.info("Interval from {}, to {} was processed successfully", interval.getStartTime(), interval.getEndTime());
@@ -224,12 +242,8 @@ public class Crawler {
         return Duration.of(sleepTime, ChronoUnit.MILLIS);
     }
 
-    private Report<Continuation> processData(InternalInterval current, DataParameters parameters, CrawlerData<Continuation> currentData) throws IOException {
-        return metrics.measureTime(crawlerType, Method.PROCESS_DATA, () -> typeStrategy.processData(dataProcessor, current, parameters, currentData));
-    }
-
-    private CrawlerData<Continuation> requestData(Timestamp startTime, Timestamp endTime, Continuation continuation, DataParameters parameters) throws IOException {
-        return metrics.measureTime(crawlerType, Method.REQUEST_DATA, () -> typeStrategy.requestData(startTime, endTime, parameters, continuation));
+    private CrawlerData<Continuation, DataPart> requestData(Timestamp startTime, Timestamp endTime, Continuation continuation, DataParameters parameters) {
+        return typeStrategy.requestData(startTime, endTime, parameters, continuation);
     }
 
     private void intervalStartForProcessor(DataProcessorService dataProcessor, Interval interval, RecoveryState state) {
