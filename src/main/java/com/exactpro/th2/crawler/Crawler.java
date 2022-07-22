@@ -501,8 +501,8 @@ public class Crawler {
             interval = intervalsWorker.setIntervalProcessed(interval, false);
         }
 
-        LOGGER.info("Crawler is starting processing interval from: {}, to: {} with Recovery state {}",
-                interval.getStartTime(), interval.getEndTime(), interval.getRecoveryState());
+        LOGGER.info("Crawler is starting processing interval from: {}, to: {} with Recovery state {}; last update {}",
+                interval.getStartTime(), interval.getEndTime(), interval.getRecoveryState(), interval.getLastUpdateDateTime());
     }
 
     private static class GetIntervalReport {
