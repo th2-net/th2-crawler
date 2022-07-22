@@ -310,7 +310,8 @@ public class Crawler {
                 }
             }
 
-            LOGGER.trace("Interval from Cassandra from {}, to {}", interval.getStartTime(), interval.getEndTime());
+            LOGGER.trace("Interval from Cassandra from {}, to {}, lastUpdateTime {}, recoveryState {}", interval.getStartTime(),
+                    interval.getEndTime(), interval.getLastUpdateDateTime(), interval.getRecoveryState());
 
             boolean floatingAndMultiple = floatingToTime && !workAlone && !interval.isProcessed() && lastUpdateCheck;
             boolean floatingAndAlone = floatingToTime && workAlone && !interval.isProcessed();
