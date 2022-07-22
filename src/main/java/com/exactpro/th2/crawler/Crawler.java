@@ -162,6 +162,8 @@ public class Crawler {
         if (interval != null) {
             metrics.currentInterval(interval);
 
+            LOGGER.debug("Found interval " + interval);
+
             reachedTo = !floatingToTime && interval.getEndTime().equals(to);
 
             DataType crawlerType = DataType.byTypeName(interval.getCrawlerType());
