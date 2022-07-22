@@ -145,20 +145,24 @@ class InternalInterval(
     @Throws(IOException::class)
     fun updateState(newState: RecoveryState, worker: IntervalsWorker) {
         val serializedState = stateService.serialize(newState)
-        LOGGER.trace { "Updating state for interval ${original.toLogString()}: $serializedState" }
+//        LOGGER.trace { "Updating state for interval ${original.toLogString()}: $serializedState" }
+        LOGGER.trace { "Updating state for interval ${original.toDetailedLogString()}: $serializedState" }
         original = worker.updateRecoveryState(original, serializedState)
         _state = newState
     }
 
     @Throws(IOException::class)
     fun processed(processed: Boolean, worker: IntervalsWorker) {
-        LOGGER.trace { "Updating processed status for interval ${original.toLogString()}: value=$processed" }
+//        LOGGER.trace { "Updating processed status for interval ${original.toLogString()}: value=$processed" }
+        LOGGER.trace { "Updating processed status for interval ${original.toDetailedLogString()}: value=$processed" }
         original = worker.setIntervalProcessed(original, processed)
     }
 
     companion object {
         private val LOGGER = KotlinLogging.logger { }
         private fun Interval.toLogString(): String = "(from: $startTime; to: $endTime)"
+        private fun Interval.toDetailedLogString(): String = "(from: $startTime; to: $endTime, " +
+                "last update time: $lastUpdateDateTime, recovery state: $recoveryState, is processed: $isProcessed)"
     }
 }
 
