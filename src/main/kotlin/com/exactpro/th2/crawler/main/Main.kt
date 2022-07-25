@@ -57,6 +57,8 @@ fun main(args: Array<String>) {
     val resources: Deque<AutoCloseable> = ConcurrentLinkedDeque()
     configureShutdownHook(resources)
 
+    lateinit var configuration: CrawlerConfiguration
+
     try {
         // You need to initialize the CommonFactory
 
@@ -72,7 +74,7 @@ fun main(args: Array<String>) {
         val dataProcessor = grpcRouter.getService(DataProcessorService::class.java)
         val dataProviderService = grpcRouter.getService(DataProviderService::class.java)
 
-        val configuration = factory.getCustomConfiguration(CrawlerConfiguration::class.java)
+        configuration = factory.getCustomConfiguration(CrawlerConfiguration::class.java)
 
         // The BOX is alive
         LIVENESS_MONITOR.enable()
@@ -133,7 +135,14 @@ fun main(args: Array<String>) {
         LOGGER.info(ex) { "Data processor changed its name and/or version" }
         exitProcess(0)
     } catch (ex: UpdateNotAppliedException) {
-        LOGGER.info(ex) { "Failed to update some fields of table with intervals" }
+        val logText = "Failed to update some fields of table with intervals"
+
+        if (configuration.workAlone) {
+            LOGGER.error (ex) { logText }
+        } else {
+            LOGGER.warn (ex) { logText }
+        }
+
         exitProcess(0)
     } catch (ex: Exception) {
         LOGGER.error(ex) { "Cannot start Crawler" }
