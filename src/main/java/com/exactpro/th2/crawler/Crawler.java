@@ -162,8 +162,6 @@ public class Crawler {
         if (interval != null) {
             metrics.currentInterval(interval);
 
-            LOGGER.debug("Found interval " + interval);
-
             reachedTo = !floatingToTime && interval.getEndTime().equals(to);
 
             DataType crawlerType = DataType.byTypeName(interval.getCrawlerType());
@@ -310,8 +308,7 @@ public class Crawler {
                 }
             }
 
-            LOGGER.trace("Interval from Cassandra from {}, to {}, lastUpdateTime {}, recoveryState {}", interval.getStartTime(),
-                    interval.getEndTime(), interval.getLastUpdateDateTime(), interval.getRecoveryState());
+            LOGGER.trace("Interval from Cassandra from {}, to {}", interval.getStartTime(), interval.getEndTime());
 
             boolean floatingAndMultiple = floatingToTime && !workAlone && !interval.isProcessed() && lastUpdateCheck;
             boolean floatingAndAlone = floatingToTime && workAlone && !interval.isProcessed();
@@ -504,8 +501,8 @@ public class Crawler {
             interval.setLastUpdateDateTime(updatedInterval.getLastUpdateDateTime());
         }
 
-        LOGGER.info("Crawler is starting processing interval from: {}, to: {} with Recovery state {}; last update {}",
-                interval.getStartTime(), interval.getEndTime(), interval.getRecoveryState(), interval.getLastUpdateDateTime());
+        LOGGER.info("Crawler is starting processing interval from: {}, to: {} with Recovery state {}",
+                interval.getStartTime(), interval.getEndTime(), interval.getRecoveryState());
     }
 
     private static class GetIntervalReport {
