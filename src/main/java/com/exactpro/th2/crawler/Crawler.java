@@ -495,7 +495,10 @@ public class Crawler {
 
     private void captureInterval(Interval interval) throws IOException {
         if (interval.isProcessed()) {
-            interval = intervalsWorker.setIntervalProcessed(interval, false);
+            Interval updatedInterval = intervalsWorker.setIntervalProcessed(interval, false);
+
+            interval.setProcessed(false);
+            interval.setLastUpdateDateTime(updatedInterval.getLastUpdateDateTime());
         }
 
         LOGGER.info("Crawler is starting processing interval from: {}, to: {} with Recovery state {}",
