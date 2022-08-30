@@ -119,6 +119,7 @@ public class CrawlerUtils {
                 .addAllMessageGroup(Objects.requireNonNull(info.getAliases()).stream()
                         .map(it -> Group.newBuilder().setName(it).build())
                         .collect(Collectors.toUnmodifiableList()))
+                .setKeepOpen(true)
                 .setSort(GROUP_SORT);
         metrics.providerMethodInvoked(ProviderMethod.SEARCH_MESSAGES);
         return collectMessages(dataProviderService.searchMessageGroups(request.build()), info.getTo());

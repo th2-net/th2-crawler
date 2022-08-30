@@ -25,7 +25,7 @@ compileTestKotlin {
 }
 
 ext {
-    cradleVersion = '3.2.2-TH2-3789-2508815656-SNAPSHOT'
+    cradleVersion = '3.2.3-TH2-4117-2932978377-SNAPSHOT'
     grpcCrawlerVersion = '0.3.0-th2-3661-SNAPSHOT'
     sharedDir = file("${project.rootDir}/shared")
 }
@@ -42,6 +42,9 @@ dependencies {
     implementation 'com.exactpro.th2:common:3.38.0-TH2-3789-2508882525-SNAPSHOT'
 
     implementation "com.exactpro.th2:grpc-crawler-data-processor:${grpcCrawlerVersion}"
+    implementation('com.exactpro.th2:grpc-data-provider:1.1.0-raw-message-field-message-group-response-2917372559-SNAPSHOT'){
+        force = true
+    }
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310") {
         because('we need to process java Instant class')
     }
