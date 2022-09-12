@@ -27,6 +27,7 @@ import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import com.exactpro.th2.crawler.DataType;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -97,7 +98,11 @@ public class CrawlerUtils {
         }
 
         metrics.providerMethodInvoked(ProviderMethod.SEARCH_EVENTS);
-        return collectEvents(dataProviderService.searchEvents(request), info.to);
+        return collectEvents(metrics.measureTime(
+                DataType.EVENTS,
+                CrawlerMetrics.Method.REQUEST_DATA,
+                () -> dataProviderService.searchEvents(request)
+        ), info.to);
     }
 
     public static Iterator<MessageSearchResponse> searchMessages(DataProviderService dataProviderService,
@@ -121,7 +126,10 @@ public class CrawlerUtils {
                         .collect(Collectors.toUnmodifiableList()))
                 .setSort(GROUP_SORT);
         metrics.providerMethodInvoked(ProviderMethod.SEARCH_MESSAGES);
-        return collectMessages(dataProviderService.searchMessageGroups(request.build()), info.getTo());
+        return collectMessages(metrics.measureTime(
+                        DataType.MESSAGES,
+                        CrawlerMetrics.Method.REQUEST_DATA,
+                        () -> dataProviderService.searchMessageGroups(request.build())), info.getTo());
     }
 
     @NotNull
@@ -163,7 +171,11 @@ public class CrawlerUtils {
             LOGGER.debug("Requesting messages from data provider with parameters: {}", MessageUtils.toJson(request));
         }
         metrics.providerMethodInvoked(ProviderMethod.SEARCH_MESSAGES);
-        return collectMessages(dataProviderService.searchMessages(request), info.getTo());
+        return collectMessages(metrics.measureTime(
+                DataType.MESSAGES,
+                CrawlerMetrics.Method.REQUEST_DATA,
+                () -> dataProviderService.searchMessages(request)
+        ), info.getTo());
     }
 
     public static void updateEventRecoveryState(
