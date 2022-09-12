@@ -61,8 +61,7 @@ class TestMessagesCrawlerData {
                 .build(),
             100,
             oneMessageSize * 2 /*2 msg per request*/ + oneMessageSize / 2 /*for request*/,
-            DataParameters(CrawlerId.getDefaultInstance())
-        ) { true }
+            DataParameters(CrawlerId.getDefaultInstance()), { true }, {})
 
         val dataParts = data.asSequence().toList()
         Assertions.assertEquals(5, dataParts.size)

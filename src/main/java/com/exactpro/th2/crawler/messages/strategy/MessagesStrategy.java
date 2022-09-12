@@ -37,11 +37,14 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.function.BinaryOperator;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
+import com.exactpro.th2.common.event.Event;
 import com.exactpro.th2.common.grpc.Direction;
+import com.exactpro.th2.crawler.EventType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -94,16 +97,19 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
     private final DataProviderService provider;
     private final CrawlerMetrics metrics;
     private final CrawlerConfiguration config;
+    private final Consumer<Event> sendEvent;
 
     public MessagesStrategy(
             @NotNull DataProviderService provider,
             @NotNull CrawlerMetrics metrics,
-            @NotNull CrawlerConfiguration config
-    ) {
+            @NotNull CrawlerConfiguration config,
+            @NotNull Consumer<Event> sendEvent
+            ) {
         super(metrics);
         this.provider = requireNonNull(provider, "'Provider' parameter");
         this.metrics = requireNonNull(metrics, "'Metrics' parameter");
         this.config = requireNonNull(config, "'Config' parameter");
+        this.sendEvent = requireNonNull(sendEvent, "'sendEvent' must be not null");
     }
 
     @Override
@@ -173,7 +179,8 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
                 batchSize,
                 config.getMaxOutgoingDataSize(),
                 parameters,
-                msg -> filterMessageType(msg, filter)
+                msg -> filterMessageType(msg, filter),
+                sendEvent
         );
     }
 
@@ -194,6 +201,16 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
 
         MessageDataRequest request = data.getRequest();
         List<MessageData> messages = request.getMessageDataList();
+
+        Event sendMessageEvent = Event
+            .start()
+            .type(EventType.MESSAGE_SEND.name())
+            .name(String.format("Messages sent to processor. Interval: {}-{}",
+                    original.getStartTime(),
+                    original.getEndTime()));
+        messages.stream()
+                .forEach(it -> sendMessageEvent.messageID(it.getMessageId()));
+        sendEvent.accept(sendMessageEvent);
 
         if (messages.isEmpty()) {
             LOGGER.info("No more messages in interval from: {}, to: {}", original.getStartTime(), original.getEndTime());

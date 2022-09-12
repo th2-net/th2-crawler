@@ -118,7 +118,14 @@ public class CrawlerManager {
         CrawlerContext crawlerContext = new CrawlerContext()
                 .setCrawlerTime(crawlerTime)
                 .setMetrics(metrics);
-        return new Crawler(stateService, storageMock, dataServiceMock, dataProviderMock, configuration, crawlerContext);
+        return new Crawler(stateService,
+                storageMock,
+                dataServiceMock,
+                dataProviderMock,
+                configuration,
+                crawlerContext,
+                event -> {}
+        );
     }
 
     public static CrawlerConfiguration createConfig(String from, DataType dataType, Set<String> sessions) {

@@ -16,6 +16,7 @@
 
 package com.exactpro.th2.crawler.messages.strategy;
 
+import com.exactpro.th2.common.event.Event;
 import org.jetbrains.annotations.NotNull;
 
 import com.exactpro.cradle.intervals.IntervalsWorker;
@@ -32,6 +33,8 @@ import com.exactpro.th2.crawler.state.v1.RecoveryState;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import com.google.auto.service.AutoService;
 
+import java.util.function.Consumer;
+
 @AutoService(DataTypeStrategyFactory.class)
 public class MessagesStrategyFactory implements DataTypeStrategyFactory<ResumeMessageIDs, MessagePart> {
     @NotNull
@@ -47,7 +50,9 @@ public class MessagesStrategyFactory implements DataTypeStrategyFactory<ResumeMe
             @NotNull DataProviderService provider,
             @NotNull StateService<RecoveryState> stateService,
             @NotNull CrawlerMetrics metrics,
-            @NotNull CrawlerConfiguration config) {
-        return new MessagesStrategy(provider, metrics, config);
+            @NotNull CrawlerConfiguration config,
+            @NotNull Consumer<Event> sendEvent
+            ) {
+        return new MessagesStrategy(provider, metrics, config, sendEvent);
     }
 }

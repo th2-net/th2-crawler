@@ -27,11 +27,17 @@ import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.function.BinaryOperator;
+import java.util.function.Consumer;
 
+import com.exactpro.th2.common.event.Event;
+import com.exactpro.th2.common.grpc.EventBatch;
+import com.exactpro.th2.common.schema.message.MessageRouter;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -92,8 +98,9 @@ public class Crawler {
             @NotNull DataProcessorService dataProcessor,
             @NotNull DataProviderService dataProviderService,
             @NotNull CrawlerConfiguration configuration,
-            @NotNull CrawlerContext crawlerContext
-    ) {
+            @NotNull CrawlerContext crawlerContext,
+            @NotNull Consumer<Event> sendEvent
+            ) {
         this.stateService = requireNonNull(stateService, "'state service' cannot be null");
         this.intervalsWorker = requireNonNull(storage, "Cradle storage cannot be null").getIntervalsWorker();
         this.dataProcessor = requireNonNull(dataProcessor, "Data service cannot be null");
@@ -117,7 +124,12 @@ public class Crawler {
         Map<DataType, DataTypeStrategyFactory<Continuation, DataPart>> knownStrategies = loadStrategies();
         DataTypeStrategyFactory<Continuation, DataPart> factory = requireNonNull(knownStrategies.get(crawlerType),
                 () -> "Cannot find factory for type: " + crawlerType + ". Known types: " + knownStrategies.keySet());
-        typeStrategy = factory.create(intervalsWorker, dataProviderService, stateService, metrics, configuration);
+        typeStrategy = factory.create(intervalsWorker,
+                dataProviderService,
+                stateService,
+                metrics,
+                configuration,
+                sendEvent);
         prepare();
     }
 

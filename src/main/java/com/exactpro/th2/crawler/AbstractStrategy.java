@@ -22,7 +22,9 @@ import java.util.Collections;
 import java.util.Deque;
 import java.util.Iterator;
 import java.util.Objects;
+import java.util.function.Consumer;
 
+import com.exactpro.th2.common.event.Event;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -59,7 +61,12 @@ public abstract class AbstractStrategy<C extends Continuation, P extends DataPar
         private boolean finished;
         private DataParameters parameters;
 
-        protected AbstractCrawlerData(Iterator<StreamResponse> data, CrawlerId id, int limit, int maxSize, DataParameters parameters) {
+        protected AbstractCrawlerData(Iterator<StreamResponse> data,
+                                      CrawlerId id,
+                                      int limit,
+                                      int maxSize,
+                                      DataParameters parameters
+        ) {
             this.data = Objects.requireNonNull(data, "'Data' parameter");
             if (limit <= 0) {
                 throw new IllegalArgumentException("not positive limit " + limit);
@@ -70,11 +77,12 @@ public abstract class AbstractStrategy<C extends Continuation, P extends DataPar
             }
             this.maxSize = maxSize;
             this.parameters = parameters;
+
             crawlerId = Objects.requireNonNull(id, "'Id' parameter");
         }
 
         @Override
-        protected final DATA computeNext() {
+        protected DATA computeNext() {
             while (data.hasNext()) {
                 StreamResponse response = data.next();
                 updateState(response, parameters);

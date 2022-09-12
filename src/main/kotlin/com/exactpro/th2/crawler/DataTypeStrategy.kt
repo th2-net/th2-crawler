@@ -17,6 +17,7 @@ package com.exactpro.th2.crawler
 
 import com.exactpro.cradle.intervals.Interval
 import com.exactpro.cradle.intervals.IntervalsWorker
+import com.exactpro.th2.common.event.Event
 import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService
 import com.exactpro.th2.crawler.dataprocessor.grpc.IntervalInfo
@@ -27,6 +28,7 @@ import com.exactpro.th2.dataprovider.grpc.DataProviderService
 import com.google.protobuf.Timestamp
 import mu.KotlinLogging
 import java.io.IOException
+import java.util.function.Consumer
 
 interface DataTypeStrategy<C : Continuation, D : DataPart> {
     fun setupIntervalInfo(info: IntervalInfo.Builder, state: RecoveryState?)
@@ -102,6 +104,7 @@ interface DataTypeStrategyFactory<C : Continuation, D : DataPart> {
         stateService: StateService<RecoveryState>,
         metrics: CrawlerMetrics,
         config: CrawlerConfiguration, // TODO: maybe use a separate class
+        sendEvent: Consumer<Event>
     ): DataTypeStrategy<C, D>
 }
 

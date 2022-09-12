@@ -22,8 +22,12 @@ import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
+import com.exactpro.th2.common.event.Event;
+import com.exactpro.th2.crawler.EventType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -120,6 +124,11 @@ public class EventsStrategy extends AbstractStrategy<ResumeEventId, EventPart> {
         Interval original = interval.getOriginal();
 
         EventDataRequest eventRequest = data.getRequest();
+        List<EventID> eventIDS = data.getRequest()
+                .getEventDataList()
+                .stream()
+                .map((it) -> it.getEventId())
+                .collect(Collectors.toList());
 
         List<EventData> events = eventRequest.getEventDataList();
         if (events.isEmpty()) {

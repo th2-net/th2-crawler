@@ -23,10 +23,13 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
+import com.exactpro.th2.common.event.Event;
 import com.exactpro.th2.crawler.DataParameters;
+import com.exactpro.th2.crawler.EventType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -49,17 +52,36 @@ public class MessagesCrawlerData extends AbstractCrawlerData<ResumeMessageIDs, M
     private final Map<StreamKey, MessageID> startIDs;
     private final Predicate<MessageData> acceptMessages;
     private ResumeMessageIDs resumeMessageIDs;
+    private final Consumer<Event> sendEvent;
+    private Event droppedMessagesEvent = droppedMessagesEvent();
 
     public MessagesCrawlerData(Iterator<StreamResponse> data, Map<StreamKey, MessageID> startIDs, CrawlerId id, int limit, int maxSize,
-                               DataParameters parameters, Predicate<MessageData> acceptMessages) {
+                               DataParameters parameters, Predicate<MessageData> acceptMessages,
+                               Consumer<Event> sendEvent
+                               ) {
         super(data, id, limit, maxSize, parameters);
         this.startIDs = requireNonNull(startIDs, "'Start ids' parameter");
         this.acceptMessages = requireNonNull(acceptMessages, "'Accept messages' parameter");
+        this.sendEvent = requireNonNull(sendEvent, "`sendEvent` must be not null");
     }
 
     @Override
     protected boolean dropValue(MessageData messageData) {
-        return !acceptMessages.test(messageData);
+        boolean isDrop = !acceptMessages.test(messageData);
+        if(isDrop) {
+            droppedMessagesEvent.messageID(messageData.getMessageId());
+        }
+        return isDrop;
+    }
+
+    @Override
+    protected MessagePart computeNext() {
+        var data = super.computeNext();
+        if(data == null) {
+            sendEvent.accept(droppedMessagesEvent);
+            droppedMessagesEvent = droppedMessagesEvent();
+        }
+        return data;
     }
 
     @Override
@@ -99,6 +121,13 @@ public class MessagesCrawlerData extends AbstractCrawlerData<ResumeMessageIDs, M
     @NotNull
     public ResumeMessageIDs getContinuationInternal() {
         return requireNonNull(resumeMessageIDs, "stream info was not received");
+    }
+
+    private Event droppedMessagesEvent() {
+        return Event
+                .start()
+                .name("Dropped messages by filter")
+                .type(EventType.DROP.name());
     }
 
     public static class MessagePart implements SizableDataPart<MessageData> {

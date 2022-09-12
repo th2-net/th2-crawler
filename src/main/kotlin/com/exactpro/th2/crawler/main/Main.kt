@@ -19,12 +19,17 @@
 package com.exactpro.th2.crawler.main
 
 import com.exactpro.cradle.utils.UpdateNotAppliedException
+import com.exactpro.th2.common.event.Event
+import com.exactpro.th2.common.grpc.EventBatch
+import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.metrics.LIVENESS_MONITOR
 import com.exactpro.th2.common.metrics.READINESS_MONITOR
 import com.exactpro.th2.common.schema.factory.CommonFactory
+import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.crawler.Crawler
 import com.exactpro.th2.crawler.CrawlerConfiguration
 import com.exactpro.th2.crawler.CrawlerContext
+import com.exactpro.th2.crawler.EventType
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService
 import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException
 import com.exactpro.th2.crawler.metrics.impl.PrometheusMetrics
@@ -34,12 +39,13 @@ import com.exactpro.th2.crawler.util.impl.CrawlerTimeImpl
 import com.exactpro.th2.dataprovider.grpc.DataProviderService
 import mu.KotlinLogging
 import java.io.IOException
-import java.util.Deque
+import java.util.*
 import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
 import kotlin.system.exitProcess
+
 
 private val LOGGER = KotlinLogging.logger { }
 private enum class State { WORK, WAIT, STOP }
@@ -80,6 +86,12 @@ fun main(args: Array<String>) {
         val context = CrawlerContext()
             .setCrawlerTime(CrawlerTimeImpl())
             .setMetrics(PrometheusMetrics(configuration))
+
+        val eventBatchRouter = factory.eventBatchRouter
+        resources += eventBatchRouter
+
+        val rootEventId = eventBatchRouter.createRootEventId(configuration.name)
+
         val crawler = Crawler(
             StateService.createFromClasspath(
                 dataProvider = dataProviderService,
@@ -91,7 +103,7 @@ fun main(args: Array<String>) {
             dataProviderService,
             configuration,
             context
-        )
+        ) { eventBatchRouter.sendAll(it.toBatchProto(rootEventId)) }
 
         // The BOX is ready to work
         READINESS_MONITOR.enable()
@@ -161,6 +173,15 @@ private fun awaitCrawlerFinishesProcessing(
     } else {
         LOGGER.warn { "Crawler did not finish processing the current interval in $timeout $unit" }
     }
+}
+
+private fun MessageRouter<EventBatch>.createRootEventId(name: String): EventID {
+    val batch: EventBatch = Event.start()
+        .name(name)
+        .type(EventType.CRAWLER_START.name)
+        .toBatchProto(null)
+    sendAll(batch)
+    return batch.getEvents(0).id
 }
 
 private fun configureShutdownHook(resources: Deque<AutoCloseable>) {

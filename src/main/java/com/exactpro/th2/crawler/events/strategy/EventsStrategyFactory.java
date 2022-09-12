@@ -16,6 +16,7 @@
 
 package com.exactpro.th2.crawler.events.strategy;
 
+import com.exactpro.th2.common.event.Event;
 import org.jetbrains.annotations.NotNull;
 
 import com.exactpro.cradle.intervals.IntervalsWorker;
@@ -30,6 +31,8 @@ import com.exactpro.th2.crawler.state.StateService;
 import com.exactpro.th2.crawler.state.v1.RecoveryState;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import com.google.auto.service.AutoService;
+
+import java.util.function.Consumer;
 
 @AutoService(DataTypeStrategyFactory.class)
 public class EventsStrategyFactory implements DataTypeStrategyFactory<ResumeEventId, EventPart> {
@@ -46,7 +49,9 @@ public class EventsStrategyFactory implements DataTypeStrategyFactory<ResumeEven
             @NotNull DataProviderService provider,
             @NotNull StateService<RecoveryState> stateService,
             @NotNull CrawlerMetrics metrics,
-            @NotNull CrawlerConfiguration config) {
+            @NotNull CrawlerConfiguration config,
+            Consumer<Event> sendEvent
+            ) {
         return new EventsStrategy(provider, metrics, config);
     }
 }
