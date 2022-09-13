@@ -39,7 +39,7 @@ public abstract class AbstractStrategy<C extends Continuation, P extends DataPar
     protected final CrawlerMetrics metrics;
     protected static final Counter messageCounter = Counter.build()
             .name("th2_crawler_incoming_messages_count")
-            .help("number of messages inputted from data provider.")
+            .help("number of messages inputted from data provider")
             .register();
 
     public AbstractStrategy(CrawlerMetrics metrics) {
