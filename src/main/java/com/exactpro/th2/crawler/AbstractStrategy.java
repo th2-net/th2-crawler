@@ -23,7 +23,6 @@ import java.util.Deque;
 import java.util.Iterator;
 import java.util.Objects;
 
-import io.prometheus.client.Counter;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -35,12 +34,10 @@ import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
 import com.google.common.collect.AbstractIterator;
 import com.google.protobuf.Message;
 
+import static com.exactpro.th2.crawler.metrics.impl.PrometheusMetrics.INCOMING_MESSAGE_COUNTER;
+
 public abstract class AbstractStrategy<C extends Continuation, P extends DataPart> implements DataTypeStrategy<C, P> {
     protected final CrawlerMetrics metrics;
-    protected static final Counter messageCounter = Counter.build()
-            .name("th2_crawler_incoming_messages_count")
-            .help("number of messages inputted from data provider")
-            .register();
 
     public AbstractStrategy(CrawlerMetrics metrics) {
         this.metrics = Objects.requireNonNull(metrics, "'Metrics' parameter");
@@ -77,13 +74,14 @@ public abstract class AbstractStrategy<C extends Continuation, P extends DataPar
                 updateState(response);
                 VALUE value = extractValue(response);
                 if (value != null) {
-                    messageCounter.inc(1);
+                    int valueSize = extractCount(value);
+                    INCOMING_MESSAGE_COUNTER.inc(valueSize);
                     elements++;
                     VALUE filtered = filterValue(value);
                     if (filtered == null) {
                         dropped++;
                         if (LOGGER.isTraceEnabled()) {
-                            LOGGER.trace("Value with ID {} was dropped. Values inside: {}", extractId(value), extractCount(value));
+                            LOGGER.trace("Value with ID {} was dropped. Values inside: {}", extractId(value), valueSize);
                         }
                         continue;
                     }
