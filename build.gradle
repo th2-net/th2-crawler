@@ -32,14 +32,14 @@ ext {
 
 dependencies {
     // BOM with external dependencies restrictions
-    api platform('com.exactpro.th2:bom:3.1.0-TH2-3093-1766515619-SNAPSHOT')
+    api platform('com.exactpro.th2:bom:3.3.0-TH2-3093-3052871635-SNAPSHOT')
 
     api "com.exactpro.th2:cradle-core:${cradleVersion}"
 
     implementation "com.exactpro.th2:cradle-cassandra:${cradleVersion}"
 
     // the library for interaction with infra API
-    implementation 'com.exactpro.th2:common:3.38.0-TH2-3789-2508882525-SNAPSHOT'
+    implementation 'com.exactpro.th2:common:3.41.0-th2-3093-3052928493-SNAPSHOT'
 
     implementation "com.exactpro.th2:grpc-crawler-data-processor:${grpcCrawlerVersion}"
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310") {
