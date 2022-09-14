@@ -7,6 +7,25 @@ Those intervals are processed periodically, and new ones are written to Cradle i
 
 The **crawler data processor** must implement the [crawler data processor gRPC service](https://github.com/th2-net/th2-grpc-crawler-data-processor).
 
+## Metrics
+ * th2_crawler_processing_data_time_seconds - time in seconds to process an interval. `type: Histogram` 
+   - data_type - { MESSAGES, EVENTS }
+   - method - { REQUEST_DATA, PROCESS_DATA, HANDLE_INTERVAL }
+ * th2_crawler_processed_data_count - number of data processed by the crawler. `type: Counter` 
+   - data_type - { MESSAGES, EVENTS }
+ * th2_crawler_processing_message_sequence_number - contains the sequence number of the last processed message for corresponding alias and direction. `type: Gauge` 
+   - session alias
+   - direction
+ * th2_crawler_processing_message_timestamp_milliseconds - contains the timestamp of the last processed message in milliseconds for corresponding alias and direction. `type: Gauge`
+   - session alias
+   - direction
+ * th2_crawler_processing_event_timestamp_milliseconds - contains the timestamp (creation time) of the last processed event in milliseconds. `type: Gauge`
+ * th2_crawler_data_provider_api_calls_count - total number of invocations of corresponding data provider's method. `type: Counter`
+   - method - { SEARCH_MESSAGES, SEARCH_EVENTS }
+ * th2_crawler_processor_api_calls_number - total number of invocations of corresponding data processor's method. `type: Counter`
+   - method - { CRAWLER_CONNECT, INTERVAL_START, SEND_EVENT, SEND_MESSAGE }
+ * th2_crawler_incoming_messages_count - number of messages inputted from data provider.
+
 ## Configuration parameters
 
 **from: _2021-06-16T12:00:00.00Z_** - the lower boundary for processing interval of time.
