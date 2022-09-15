@@ -16,25 +16,6 @@
 
 package com.exactpro.th2.crawler;
 
-import static com.exactpro.th2.common.message.MessageUtils.toTimestamp;
-import static java.lang.String.format;
-import static java.util.Objects.requireNonNull;
-import static java.util.Objects.requireNonNullElse;
-import static java.util.stream.Collectors.toUnmodifiableMap;
-
-import java.io.IOException;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import java.util.Map;
-import java.util.ServiceLoader;
-import java.util.Set;
-import java.util.function.BinaryOperator;
-
-import org.jetbrains.annotations.NotNull;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.exactpro.cradle.CradleStorage;
 import com.exactpro.cradle.intervals.Interval;
 import com.exactpro.cradle.intervals.IntervalsWorker;
@@ -55,6 +36,24 @@ import com.exactpro.th2.crawler.util.CrawlerTime;
 import com.exactpro.th2.crawler.util.CrawlerUtils;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import com.google.protobuf.Timestamp;
+import org.jetbrains.annotations.NotNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.Map;
+import java.util.ServiceLoader;
+import java.util.Set;
+import java.util.function.BinaryOperator;
+
+import static com.exactpro.th2.common.message.MessageUtils.toTimestamp;
+import static java.lang.String.format;
+import static java.util.Objects.requireNonNull;
+import static java.util.Objects.requireNonNullElseGet;
+import static java.util.stream.Collectors.toUnmodifiableMap;
 
 public class Crawler {
     private static final Logger LOGGER = LoggerFactory.getLogger(Crawler.class);
@@ -202,7 +201,7 @@ public class Crawler {
                     currentInt.updateState(state, intervalsWorker);
                 }
             }
-            sendingReport = requireNonNullElse(sendingReport, Report.empty());
+            sendingReport = requireNonNullElseGet(sendingReport, Report::empty);
 
             if (sendingReport.getAction() == Action.HANDSHAKE) {
                 if (data.hasNext()) {

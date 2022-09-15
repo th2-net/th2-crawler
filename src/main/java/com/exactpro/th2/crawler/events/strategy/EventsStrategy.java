@@ -91,6 +91,7 @@ public class EventsStrategy extends AbstractStrategy<ResumeEventId, EventPart> {
         requireNonNull(parameters, "'parameters' parameter");
         EventID resumeId = getResumeId(prevResult);
         return new EventsCrawlerData(
+                metrics,
                 CrawlerUtils.searchEvents(provider,
                         new EventsSearchParameters(start, end, resumeId), metrics),
                 parameters.getCrawlerId(),

@@ -23,6 +23,8 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 
+import com.exactpro.th2.crawler.DataType;
+import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
 import org.jetbrains.annotations.Nullable;
 
 import com.exactpro.th2.common.grpc.EventID;
@@ -40,8 +42,11 @@ import com.exactpro.th2.dataprovider.grpc.EventSearchResponse;
 public class EventsCrawlerData extends AbstractCrawlerData<EventSearchResponse, ResumeEventId, EventPart, EventResponse> {
     private EventResponse lastEvent;
 
-    public EventsCrawlerData(Iterator<EventSearchResponse> data, CrawlerId id,  int maxSize) {
-        super(data, id, maxSize);
+    public EventsCrawlerData(CrawlerMetrics metrics,
+                             Iterator<EventSearchResponse> data,
+                             CrawlerId id,
+                             int maxSize) {
+        super(metrics, data, id, maxSize);
     }
 
     @Nullable
@@ -49,6 +54,11 @@ public class EventsCrawlerData extends AbstractCrawlerData<EventSearchResponse, 
     public ResumeEventId getContinuationInternal() {
         EventResponse data = lastEvent;
         return data == null ? null : resumeIdFromEvent(data);
+    }
+
+    @Override
+    protected DataType getDataType() {
+        return DataType.EVENTS;
     }
 
     @Override

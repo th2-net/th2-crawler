@@ -22,6 +22,7 @@ import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.common.message.toTimestamp
 import com.exactpro.th2.crawler.createMessageID
 import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId
+import com.exactpro.th2.crawler.metrics.CrawlerMetrics
 import com.exactpro.th2.crawler.state.v1.StreamKey
 import com.exactpro.th2.dataprovider.grpc.MessageGroupItem
 import com.exactpro.th2.dataprovider.grpc.MessageGroupResponse
@@ -32,6 +33,7 @@ import com.exactpro.th2.dataprovider.grpc.MessageStreamPointers
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
+import org.mockito.Mockito.mock
 import java.time.Instant
 
 @Disabled
@@ -61,6 +63,7 @@ class TestMessagesCrawlerData {
     fun `returns correct data parts`() {
         val oneMessageSize = responses.first().message.serializedSize
         val data = MessagesCrawlerData(
+            mock(CrawlerMetrics::class.java),
             responses.iterator(), emptyMap(), CrawlerId.newBuilder()
                 .setName("test")
                 .build(),

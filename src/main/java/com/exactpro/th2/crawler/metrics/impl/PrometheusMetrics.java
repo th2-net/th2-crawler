@@ -19,6 +19,9 @@ package com.exactpro.th2.crawler.metrics.impl;
 import static com.exactpro.th2.common.metrics.CommonMetrics.*;
 
 import java.io.IOException;
+import java.util.EnumMap;
+import java.util.EnumSet;
+import java.util.Map;
 
 import com.exactpro.cradle.intervals.Interval;
 import com.exactpro.th2.common.grpc.Direction;
@@ -30,9 +33,11 @@ import com.exactpro.th2.dataprovider.grpc.EventResponse;
 import com.exactpro.th2.dataprovider.grpc.MessageGroupResponse;
 
 import io.prometheus.client.Counter;
+import io.prometheus.client.Counter.Child;
 import io.prometheus.client.Gauge;
 import io.prometheus.client.Histogram;
 import io.prometheus.client.Histogram.Timer;
+import org.jetbrains.annotations.NotNull;
 
 public class PrometheusMetrics implements CrawlerMetrics {
     private static final Histogram PROCESSING_TIME = Histogram.build()
@@ -47,6 +52,10 @@ public class PrometheusMetrics implements CrawlerMetrics {
             .help("number of data processed by the crawler")
             .labelNames("data_type")
             .register();
+
+    @SuppressWarnings("StaticCollection")
+    private static final Map<DataType, Child> PROCESSED_DATA_COUNT_MAP = createMetricMap(PROCESSED_DATA_COUNT, DataType.class);
+
     //region Message's metrics
     private static final Gauge LAST_MESSAGE_SEQUENCE = Gauge.build()
             .name("th2_crawler_processing_message_sequence_number")
@@ -83,10 +92,22 @@ public class PrometheusMetrics implements CrawlerMetrics {
             .register();
     //endregion
 
+    @SuppressWarnings("StaticCollection")
+    private static final Map<ProcessorMethod, Child> DATA_PROCESSOR_INVOCATIONS_MAP = createMetricMap(DATA_PROCESSOR_INVOCATIONS, ProcessorMethod.class);
+
     public static final Counter INCOMING_MESSAGE_COUNTER = Counter.build()
             .name("th2_crawler_incoming_data_items_count")
             .help("number of data items received from data provider")
             .register();
+
+    @NotNull
+    private static <T extends Enum<T>> Map<T, Child> createMetricMap(Counter counter, Class<T> keyType) {
+        Map<T, Child> map = new EnumMap<>(keyType);
+        for (T dataType : EnumSet.allOf(keyType)) {
+            map.put(dataType, counter.labels(dataType.name()));
+        }
+        return map;
+    }
 
     @Override
     public void lastMessage(String alias, Direction direction, MessageGroupResponse messageData) {
@@ -111,7 +132,7 @@ public class PrometheusMetrics implements CrawlerMetrics {
 
     @Override
     public void processorMethodInvoked(ProcessorMethod method) {
-        DATA_PROCESSOR_INVOCATIONS.labels(method.name()).inc();
+        DATA_PROCESSOR_INVOCATIONS_MAP.get(method).inc();
     }
 
     @Override
@@ -141,6 +162,6 @@ public class PrometheusMetrics implements CrawlerMetrics {
 
     @Override
     public void updateProcessedData(DataType dataType, long count) {
-        PROCESSED_DATA_COUNT.labels(dataType.getTypeName()).inc(count);
+        PROCESSED_DATA_COUNT_MAP.get(dataType).inc(count);
     }
 }

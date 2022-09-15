@@ -162,6 +162,7 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
 
         NameFilter filter = config.getFilter();
         return new MessagesCrawlerData(
+                metrics,
                 CrawlerUtils.searchMessages(provider, searchParams, metrics),
                 startIDs,
                 parameters.getCrawlerId(),

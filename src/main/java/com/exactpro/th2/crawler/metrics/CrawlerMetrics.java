@@ -43,7 +43,7 @@ public interface CrawlerMetrics {
 
     void updateProcessedData(DataType dataType, long count);
 
-    enum Method { REQUEST_DATA, PROCESS_DATA, HANDLE_INTERVAL }
+    enum Method { REQUEST_DATA, PROCESS_DATA, HANDLE_INTERVAL, WAIT_DATA }
 
     enum ProcessorMethod { CRAWLER_CONNECT, INTERVAL_START, SEND_EVENT, SEND_MESSAGE }
 

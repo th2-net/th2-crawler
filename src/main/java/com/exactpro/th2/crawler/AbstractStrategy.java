@@ -16,31 +16,32 @@
 
 package com.exactpro.th2.crawler;
 
-import java.util.ArrayDeque;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Deque;
-import java.util.Iterator;
-import java.util.Objects;
-
+import com.exactpro.th2.crawler.AbstractStrategy.AbstractCrawlerData.SizableDataPart;
+import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId;
+import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
+import com.exactpro.th2.crawler.metrics.CrawlerMetrics.CrawlerDataOperation;
+import com.google.common.collect.AbstractIterator;
+import com.google.protobuf.Message;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.exactpro.th2.crawler.AbstractStrategy.AbstractCrawlerData.SizableDataPart;
-import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId;
-import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
-import com.google.common.collect.AbstractIterator;
-import com.google.protobuf.Message;
+import java.util.ArrayDeque;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Deque;
+import java.util.Iterator;
 
+import static com.exactpro.th2.crawler.metrics.CrawlerMetrics.Method.WAIT_DATA;
 import static com.exactpro.th2.crawler.metrics.impl.PrometheusMetrics.INCOMING_MESSAGE_COUNTER;
+import static java.util.Objects.requireNonNull;
 
 public abstract class AbstractStrategy<C extends Continuation, P extends DataPart> implements DataTypeStrategy<C, P> {
     protected final CrawlerMetrics metrics;
 
     public AbstractStrategy(CrawlerMetrics metrics) {
-        this.metrics = Objects.requireNonNull(metrics, "'Metrics' parameter");
+        this.metrics = requireNonNull(metrics, "'Metrics' parameter");
     }
 
     public abstract static class AbstractCrawlerData<S, C extends Continuation, DATA extends SizableDataPart<VALUE>, VALUE extends Message>
@@ -53,23 +54,25 @@ public abstract class AbstractStrategy<C extends Continuation, P extends DataPar
         private final Deque<VALUE> cache = new ArrayDeque<>();
         private final int maxSize;
         private final CrawlerId crawlerId;
+        protected final CrawlerMetrics metrics;
         private int elements;
         private int currentValuesSize;
         private int dropped;
         private boolean finished;
 
-        protected AbstractCrawlerData(Iterator<S> data, CrawlerId id, int maxSize) {
-            this.data = Objects.requireNonNull(data, "'Data' parameter");
+        protected AbstractCrawlerData(CrawlerMetrics metrics, Iterator<S> data, CrawlerId id, int maxSize) {
+            this.metrics = requireNonNull(metrics, "'Metrics' parameter");
+            this.data = requireNonNull(data, "'Data' parameter");
             if (maxSize <= 0) {
                 throw new IllegalArgumentException("not positive maxSize " + maxSize);
             }
             this.maxSize = maxSize;
-            crawlerId = Objects.requireNonNull(id, "'Id' parameter");
+            crawlerId = requireNonNull(id, "'Id' parameter");
         }
 
         @Override
         protected final DATA computeNext() {
-            while (data.hasNext()) {
+            while (measureWaitTime(data::hasNext)) {
                 S response = data.next();
                 updateState(response);
                 VALUE value = extractValue(response);
@@ -127,6 +130,10 @@ public abstract class AbstractStrategy<C extends Continuation, P extends DataPar
             return dataPart;
         }
 
+        private boolean measureWaitTime(CrawlerDataOperation<Boolean> function) {
+            return metrics.measureTime(getDataType(), WAIT_DATA, function);
+        }
+
         protected abstract String extractId(VALUE last);
 
         protected abstract void updateState(S response);
@@ -139,6 +146,8 @@ public abstract class AbstractStrategy<C extends Continuation, P extends DataPar
         protected abstract DATA buildDataPart(CrawlerId crawlerId, Collection<VALUE> values);
 
         protected abstract C getContinuationInternal();
+
+        protected abstract DataType getDataType();
 
         @Nullable
         @Override

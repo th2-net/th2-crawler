@@ -16,7 +16,25 @@
 
 package com.exactpro.th2.crawler.messages.strategy;
 
-import static java.util.Objects.requireNonNull;
+import com.exactpro.th2.common.grpc.Message;
+import com.exactpro.th2.common.grpc.MessageID;
+import com.exactpro.th2.common.message.MessageUtils;
+import com.exactpro.th2.crawler.AbstractStrategy.AbstractCrawlerData;
+import com.exactpro.th2.crawler.Continuation;
+import com.exactpro.th2.crawler.DataType;
+import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId;
+import com.exactpro.th2.crawler.dataprocessor.grpc.MessageDataRequest;
+import com.exactpro.th2.crawler.messages.strategy.MessagesCrawlerData.MessagePart;
+import com.exactpro.th2.crawler.messages.strategy.MessagesCrawlerData.ResumeMessageIDs;
+import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
+import com.exactpro.th2.crawler.state.v1.StreamKey;
+import com.exactpro.th2.dataprovider.grpc.MessageGroupItem;
+import com.exactpro.th2.dataprovider.grpc.MessageGroupResponse;
+import com.exactpro.th2.dataprovider.grpc.MessageSearchResponse;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Collection;
 import java.util.HashMap;
@@ -26,24 +44,8 @@ import java.util.Map;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import com.exactpro.th2.common.grpc.Message;
-import com.exactpro.th2.common.grpc.MessageID;
-import com.exactpro.th2.common.message.MessageUtils;
-import com.exactpro.th2.crawler.AbstractStrategy.AbstractCrawlerData;
-import com.exactpro.th2.crawler.Continuation;
-import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId;
-import com.exactpro.th2.crawler.dataprocessor.grpc.MessageDataRequest;
-import com.exactpro.th2.crawler.messages.strategy.MessagesCrawlerData.MessagePart;
-import com.exactpro.th2.crawler.messages.strategy.MessagesCrawlerData.ResumeMessageIDs;
-import com.exactpro.th2.crawler.state.v1.StreamKey;
-import com.exactpro.th2.dataprovider.grpc.MessageGroupItem;
-import com.exactpro.th2.dataprovider.grpc.MessageGroupResponse;
-import com.exactpro.th2.dataprovider.grpc.MessageSearchResponse;
+import static com.exactpro.th2.crawler.DataType.MESSAGES;
+import static java.util.Objects.requireNonNull;
 
 public class MessagesCrawlerData extends AbstractCrawlerData<MessageSearchResponse, ResumeMessageIDs, MessagePart, MessageGroupResponse> {
     private static final Logger LOGGER = LoggerFactory.getLogger(MessagesCrawlerData.class);
@@ -51,9 +53,13 @@ public class MessagesCrawlerData extends AbstractCrawlerData<MessageSearchRespon
     private final Predicate<Message> acceptMessages;
     private ResumeMessageIDs resumeMessageIDs;
 
-    public MessagesCrawlerData(Iterator<MessageSearchResponse> data, Map<StreamKey, MessageID> startIDs, CrawlerId id, int maxSize,
+    public MessagesCrawlerData(CrawlerMetrics metrics,
+                               Iterator<MessageSearchResponse> data,
+                               Map<StreamKey, MessageID> startIDs,
+                               CrawlerId id,
+                               int maxSize,
                                Predicate<Message> acceptMessages) {
-        super(data, id, maxSize);
+        super(metrics, data, id, maxSize);
         this.startIDs = requireNonNull(startIDs, "'Start ids' parameter");
         this.acceptMessages = requireNonNull(acceptMessages, "'Accept messages' parameter");
     }
@@ -124,12 +130,17 @@ public class MessagesCrawlerData extends AbstractCrawlerData<MessageSearchRespon
         return requireNonNull(resumeMessageIDs, "stream info was not received");
     }
 
+    @Override
+    protected DataType getDataType() {
+        return MESSAGES;
+    }
+
     public static class MessagePart implements SizableDataPart<MessageGroupResponse> {
         private final MessageDataRequest.Builder builder;
         private final Map<StreamKey, MessageID> startIDs;
         private MessageDataRequest request;
 
-        private MessagePart(CrawlerId id, Collection<MessageGroupResponse> data, Map<StreamKey, MessageID> startIDs) {
+        private MessagePart(CrawlerId id, Iterable<MessageGroupResponse> data, Map<StreamKey, MessageID> startIDs) {
             this.startIDs = requireNonNull(startIDs, "'Start ids' parameter");
             builder = MessageDataRequest.newBuilder()
                     .setId(id)
