@@ -108,11 +108,7 @@ class BlockingService(
         return responses(request, function).next()
     }
 
-    private fun <ReqT, RespT> responses(
-        request: ReqT,
-        function: (ReqT, StreamObserver<RespT>) -> Unit,
-        setMetric: (Int) -> Unit = {}
-    ): Iterator<RespT> {
+    private fun <ReqT, RespT> responses(request: ReqT, function: (ReqT, StreamObserver<RespT>) -> Unit, setMetric: (Int) -> Unit = {}): Iterator<RespT> {
         ClientObserver<ReqT, RespT>(
             context.configuration.initialRequest,
             context.configuration.request,
@@ -145,7 +141,7 @@ class BlockingService(
         override fun onNext(value: RespT) {
             LOGGER.debug { "onNext has been called $value" }
             if (counter.incrementAndGet() % request == 0) {
-                requestStream.request(request * 2)
+                requestStream.request(request)
             }
             iterator.put(value)
         }
