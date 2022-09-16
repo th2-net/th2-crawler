@@ -95,18 +95,23 @@ public class PrometheusMetrics implements CrawlerMetrics {
     @SuppressWarnings("StaticCollection")
     private static final Map<ProcessorMethod, Child> DATA_PROCESSOR_INVOCATIONS_MAP = createMetricMap(DATA_PROCESSOR_INVOCATIONS, ProcessorMethod.class);
 
-    public static final Counter INCOMING_MESSAGE_COUNTER = Counter.build()
+    private static final Counter INCOMING_MESSAGE_COUNTER = Counter.build()
             .name("th2_crawler_incoming_data_items_count")
             .help("number of data items received from data provider")
             .register();
 
     private static final Counter PROCESSED_DATA_SIZE_COUNTER = Counter.build()
-            .name("th2_ldp_processed_data_size_bytes_total")
+            .name("th2_crawler_processed_data_size_bytes_total")
             .help("Size of data transferred to processor in bytes")
             .labelNames("data_type")
             .register();
 
     private static final Map<DataType, Child> PROCESSED_DATA_SIZE_MAP = createMetricMap(PROCESSED_DATA_SIZE_COUNTER, DataType.class);
+
+    private static final Gauge BACKPRESSURE_BUFFER_SIZE_GAUGE = Gauge.build()
+            .name("th2_crawler_backpressure_buffer_size")
+            .help("Actual size of backpressure buffer")
+            .register();
 
     @NotNull
     private static <T extends Enum<T>> Map<T, Child> createMetricMap(Counter counter, Class<T> keyType) {
@@ -169,6 +174,11 @@ public class PrometheusMetrics implements CrawlerMetrics {
     }
 
     @Override
+    public void updateIncomingData(long count) {
+        INCOMING_MESSAGE_COUNTER.inc(count);
+    }
+
+    @Override
     public void updateProcessedData(DataType dataType, long count) {
         PROCESSED_DATA_COUNT_MAP.get(dataType).inc(count);
     }
@@ -176,5 +186,10 @@ public class PrometheusMetrics implements CrawlerMetrics {
     @Override
     public void updateProcessedDataSize(DataType dataType, long size) {
         PROCESSED_DATA_SIZE_MAP.get(dataType).inc(size);
+    }
+
+    @Override
+    public void setBackpressureBufferSize(int size) {
+        BACKPRESSURE_BUFFER_SIZE_GAUGE.set(size);
     }
 }

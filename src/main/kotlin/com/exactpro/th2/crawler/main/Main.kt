@@ -70,17 +70,15 @@ fun main(args: Array<String>) {
         val cradleManager = factory.cradleManager
         val configuration = factory.getCustomConfiguration(CrawlerConfiguration::class.java)
 
+        val context = CrawlerContext(CrawlerTimeImpl(), PrometheusMetrics(), configuration)
+
         val grpcRouter = factory.grpcRouter
         val dataProcessor = grpcRouter.getService(DataProcessorService::class.java)
-        val dataProviderService = BlockingService(grpcRouter.getService(AsyncDataProviderService::class.java), configuration.initialRequest)
-
+        val dataProviderService = BlockingService(context, grpcRouter.getService(AsyncDataProviderService::class.java))
 
         // The BOX is alive
         LIVENESS_MONITOR.enable()
 
-        val context = CrawlerContext()
-            .setCrawlerTime(CrawlerTimeImpl())
-            .setMetrics(PrometheusMetrics())
         val crawler = Crawler(
             StateService.createFromClasspath(
                 dataProvider = dataProviderService,
@@ -90,7 +88,6 @@ fun main(args: Array<String>) {
             cradleManager.storage,
             dataProcessor,
             dataProviderService,
-            configuration,
             context
         )
 

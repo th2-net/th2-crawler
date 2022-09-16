@@ -16,38 +16,39 @@
 
 package com.exactpro.th2.crawler;
 
-import java.util.Objects;
-
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
-import com.exactpro.th2.crawler.metrics.impl.PrometheusMetrics;
 import com.exactpro.th2.crawler.util.CrawlerTime;
-import com.exactpro.th2.crawler.util.impl.CrawlerTimeImpl;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+
+import static java.util.Objects.requireNonNull;
 
 public class CrawlerContext {
 
-    private CrawlerTime crawlerTime;
+    private final CrawlerTime crawlerTime;
 
-    private CrawlerMetrics metrics;
+    private final CrawlerMetrics metrics;
 
-    @Nullable
+    private final CrawlerConfiguration configuration;
+
+    public CrawlerContext(CrawlerTime crawlerTime, CrawlerMetrics metrics, CrawlerConfiguration configuration) {
+        this.crawlerTime = requireNonNull(crawlerTime, "'Crawler time' parameter");
+        this.metrics = requireNonNull(metrics, "'Metrics' parameter");
+        this.configuration = requireNonNull(configuration, "'Configuration' parameter");
+    }
+
+    @NotNull
     public CrawlerTime getCrawlerTime() {
         return crawlerTime;
     }
 
-    public CrawlerContext setCrawlerTime(CrawlerTime crawlerTime) {
-        this.crawlerTime = Objects.requireNonNull(crawlerTime, "'Crawler time' parameter");
-        return this;
-    }
 
-    @Nullable
+    @NotNull
     public CrawlerMetrics getMetrics() {
         return metrics;
     }
 
-    public CrawlerContext setMetrics(CrawlerMetrics metrics) {
-        this.metrics = Objects.requireNonNull(metrics, "'Metrics' parameter");
-        return this;
+    @NotNull
+    public CrawlerConfiguration getConfiguration() {
+        return configuration;
     }
 }

@@ -57,9 +57,10 @@ class CrawlerConfiguration @JvmOverloads constructor(
     val shutdownTimeoutUnit: TimeUnit = TimeUnit.SECONDS,
 
     val useGroupsForRequest: Boolean = false,
-    val initialRequest: Int = 1000,
+    val initialRequest: Int = 1000, //TODO: add to readme
+    val request: Int = 300, //TODO: add to readme
 
-    val debug: DebugConfiguration = DebugConfiguration()
+    val debug: DebugConfiguration = DebugConfiguration() //TODO: add to readme
 )
 
 class DebugConfiguration @JvmOverloads constructor(

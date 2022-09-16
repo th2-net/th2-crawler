@@ -41,9 +41,13 @@ public interface CrawlerMetrics {
 
     <T> T measureTimeWithException(DataType dataType, Method method, CrawlerDataOperationWithException<T> function) throws IOException, UnexpectedDataProcessorException;
 
+    void updateIncomingData(long count);
+
     void updateProcessedData(DataType dataType, long count);
 
     void updateProcessedDataSize(DataType dataType, long size);
+
+    void setBackpressureBufferSize(int size);
 
     enum Method { REQUEST_DATA, PROCESS_DATA, HANDLE_INTERVAL, WAIT_DATA }
 

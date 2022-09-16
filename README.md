@@ -25,6 +25,9 @@ The **crawler data processor** must implement the [crawler data processor gRPC s
  * th2_crawler_processor_api_calls_number - total number of invocations of corresponding data processor's method. `type: Counter`
    - method - { CRAWLER_CONNECT, INTERVAL_START, SEND_EVENT, SEND_MESSAGE }
  * th2_crawler_incoming_data_items_count - number of data items received from data provider
+ * th2_crawler_processed_data_size_bytes_total - size of data transferred to processor in bytes. `type: Counter`
+   - data_type - { MESSAGES, EVENTS }
+ * th2_crawler_backpressure_buffer_size - actual size of backpressure buffer. `type: Gauge`
 
 ## Configuration parameters
 

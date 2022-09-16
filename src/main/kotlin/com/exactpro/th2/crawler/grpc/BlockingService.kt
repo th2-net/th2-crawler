@@ -18,6 +18,7 @@ package com.exactpro.th2.crawler.grpc
 
 import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.MessageID
+import com.exactpro.th2.crawler.CrawlerContext
 import com.exactpro.th2.dataprovider.grpc.AsyncDataProviderService
 import com.exactpro.th2.dataprovider.grpc.BulkEventRequest
 import com.exactpro.th2.dataprovider.grpc.BulkEventResponse
@@ -39,17 +40,18 @@ import com.exactpro.th2.dataprovider.grpc.MessageSearchRequest
 import com.exactpro.th2.dataprovider.grpc.MessageSearchResponse
 import com.exactpro.th2.dataprovider.grpc.MessageStreamsRequest
 import com.exactpro.th2.dataprovider.grpc.MessageStreamsResponse
-import com.google.protobuf.TextFormat
 import io.grpc.stub.ClientCallStreamObserver
 import io.grpc.stub.ClientResponseObserver
 import io.grpc.stub.StreamObserver
 import mu.KotlinLogging
+import java.util.concurrent.atomic.AtomicInteger
 
 //FIXME: this class has been made for test concept
 class BlockingService(
+    private val context: CrawlerContext,
     private val asyncDataProviderService: AsyncDataProviderService,
-    private val initialRequest: Int = 1000
 ) : DataProviderService {
+
     override fun getEvent(input: EventID?): EventResponse {
         return response(input, asyncDataProviderService::getEvent)
     }
@@ -67,15 +69,15 @@ class BlockingService(
     }
 
     override fun searchMessages(input: MessageSearchRequest?): Iterator<MessageSearchResponse> {
-        return responses(input, asyncDataProviderService::searchMessages)
+        return responses(input, asyncDataProviderService::searchMessages, context.metrics::setBackpressureBufferSize)
     }
 
     override fun searchEvents(input: EventSearchRequest?): Iterator<EventSearchResponse> {
-        return responses(input, asyncDataProviderService::searchEvents)
+        return responses(input, asyncDataProviderService::searchEvents, context.metrics::setBackpressureBufferSize)
     }
 
     override fun searchMessageGroups(input: MessageGroupsSearchRequest?): Iterator<MessageSearchResponse> {
-        return responses(input, asyncDataProviderService::searchMessageGroups)
+        return responses(input, asyncDataProviderService::searchMessageGroups, context.metrics::setBackpressureBufferSize)
     }
 
     override fun getMessagesFilters(input: MessageFiltersRequest?): FilterNamesResponse {
@@ -95,7 +97,7 @@ class BlockingService(
     }
 
     override fun matchEvent(input: EventMatchRequest?): MatchResponse {
-        return response(input, asyncDataProviderService::matchEvent)
+        return response(input, asyncDataProviderService::matchEvent, )
     }
 
     override fun matchMessage(input: MessageMatchRequest?): MatchResponse {
@@ -106,19 +108,27 @@ class BlockingService(
         return responses(request, function).next()
     }
 
-    private fun <ReqT, RespT> responses(request: ReqT, function: (ReqT, StreamObserver<RespT>) -> Unit): Iterator<RespT> {
-        ClientObserver<ReqT, RespT>(initialRequest).apply {
+    private fun <ReqT, RespT> responses(request: ReqT, function: (ReqT, StreamObserver<RespT>) -> Unit, setMetric: (Int) -> Unit = {}): Iterator<RespT> {
+        ClientObserver<ReqT, RespT>(
+            context.configuration.initialRequest,
+            context.configuration.request,
+            setMetric
+        ).apply {
             function.invoke(request, this)
             return iterator
         }
     }
 
     private class ClientObserver<ReqT, RespT>(
-        val initialRequest: Int
+        val initialRequest: Int,
+        val request: Int,
+        setMetric: (Int) -> Unit,
     ) : ClientResponseObserver<ReqT, RespT> {
-        val iterator = BlockingIterator<RespT>()
+        val iterator = BlockingIterator<RespT>(setMetric)
+
         @Volatile
         private lateinit var requestStream: ClientCallStreamObserver<ReqT>
+        private val counter = AtomicInteger()
 
         override fun beforeStart(requestStream: ClientCallStreamObserver<ReqT>) {
             LOGGER.debug { "beforeStart has been called" }
@@ -130,7 +140,9 @@ class BlockingService(
 
         override fun onNext(value: RespT) {
             LOGGER.debug { "onNext has been called $value" }
-            requestStream.request(1)
+            if (counter.incrementAndGet() % request == 0) {
+                requestStream.request(request)
+            }
             iterator.put(value)
         }
 

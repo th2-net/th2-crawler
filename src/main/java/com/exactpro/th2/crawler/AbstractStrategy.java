@@ -34,7 +34,6 @@ import java.util.Deque;
 import java.util.Iterator;
 
 import static com.exactpro.th2.crawler.metrics.CrawlerMetrics.Method.WAIT_DATA;
-import static com.exactpro.th2.crawler.metrics.impl.PrometheusMetrics.INCOMING_MESSAGE_COUNTER;
 import static java.util.Objects.requireNonNull;
 
 public abstract class AbstractStrategy<C extends Continuation, P extends DataPart> implements DataTypeStrategy<C, P> {
@@ -82,7 +81,7 @@ public abstract class AbstractStrategy<C extends Continuation, P extends DataPar
                 VALUE value = extractValue(response);
                 if (value != null) {
                     int valueSize = extractCount(value);
-                    INCOMING_MESSAGE_COUNTER.inc(valueSize);
+                    metrics.updateIncomingData(valueSize);
                     elements++;
                     VALUE filtered = filterValue(value);
                     if (filtered == null) {

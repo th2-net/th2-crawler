@@ -87,14 +87,14 @@ public class Crawler {
             @NotNull CradleStorage storage,
             @NotNull DataProcessorService dataProcessor,
             @NotNull DataProviderService dataProviderService,
-            @NotNull CrawlerConfiguration configuration,
             @NotNull CrawlerContext crawlerContext
     ) {
+        requireNonNull(crawlerContext, "'Crawler context' cannot be null");
+        this.configuration = crawlerContext.getConfiguration();
         this.stateService = requireNonNull(stateService, "'state service' cannot be null");
         this.intervalsWorker = requireNonNull(storage, "Cradle storage cannot be null").getIntervalsWorker();
         this.dataProcessor = requireNonNull(dataProcessor, "Data service cannot be null");
         this.dataProviderService = requireNonNull(dataProviderService, "Data provider service cannot be null");
-        this.configuration = requireNonNull(configuration, "Crawler configuration cannot be null");
         this.from = Instant.parse(configuration.getFrom());
         this.floatingToTime = configuration.getTo() == null;
         this.workAlone = configuration.getWorkAlone();

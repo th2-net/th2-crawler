@@ -17,7 +17,9 @@ package com.exactpro.th2.crawler.grpc
 
 import java.util.concurrent.locks.ReentrantLock
 
-class BlockingIterator<T> : Iterator<T> {
+class BlockingIterator<T>(
+    private val setMetric: (Int) -> Unit = {},
+) : Iterator<T> {
     private val lock = ReentrantLock()
     private val condition = lock.newCondition()
     private val queue = ArrayDeque<T>()
@@ -44,6 +46,7 @@ class BlockingIterator<T> : Iterator<T> {
             }
 
             queue.addLast(value)
+            setMetric(queue.size)
             condition.signalAll()
         } finally {
             lock.unlock()
@@ -77,7 +80,9 @@ class BlockingIterator<T> : Iterator<T> {
             if (!hasNext()) {
                 throw NoSuchElementException()
             }
-            return queue.removeFirst()
+            return queue.removeFirst().also {
+                setMetric(queue.size)
+            }
         } finally {
             lock.unlock()
         }
