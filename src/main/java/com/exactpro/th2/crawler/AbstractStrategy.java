@@ -91,10 +91,12 @@ public abstract class AbstractStrategy<C extends Continuation, P extends DataPar
                         }
                         continue;
                     }
-                    cache.addLast(filtered);
+                    if (config.getDebug().getEnableHandling()) {
+                        cache.addLast(filtered);
 //                    currentValuesSize += filtered.getSerializedSize();
-                    if (cache.size() >= maxSize) {
-                        return createDataPart(cache);
+                        if (cache.size() >= maxSize) {
+                            return createDataPart(cache);
+                        }
                     }
                 }
             }

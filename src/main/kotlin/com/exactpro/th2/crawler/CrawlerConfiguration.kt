@@ -68,4 +68,6 @@ class DebugConfiguration @JvmOverloads constructor(
     val enableProcessor: Boolean = true,
     @JsonProperty
     val enableMessageSizeMeasuring: Boolean = false,
+    @JsonProperty
+    val enableHandling: Boolean = true
 )
