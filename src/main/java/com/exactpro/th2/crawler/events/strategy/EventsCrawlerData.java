@@ -23,6 +23,7 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 
+import com.exactpro.th2.crawler.CrawlerConfiguration;
 import com.exactpro.th2.crawler.DataType;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
 import org.jetbrains.annotations.Nullable;
@@ -43,10 +44,10 @@ public class EventsCrawlerData extends AbstractCrawlerData<EventSearchResponse, 
     private EventResponse lastEvent;
 
     public EventsCrawlerData(CrawlerMetrics metrics,
+                             CrawlerConfiguration config,
                              Iterator<EventSearchResponse> data,
-                             CrawlerId id,
-                             int maxSize) {
-        super(metrics, data, id, maxSize);
+                             CrawlerId id) {
+        super(metrics, config, data, id);
     }
 
     @Nullable

@@ -61,16 +61,14 @@ public class EventsStrategy extends AbstractStrategy<ResumeEventId, EventPart> {
     private static final Logger LOGGER = LoggerFactory.getLogger(EventsStrategy.class);
 
     private final DataProviderService provider;
-    private final CrawlerConfiguration config;
 
     public EventsStrategy(
             DataProviderService provider,
             CrawlerMetrics metrics,
             CrawlerConfiguration config
     ) {
-        super(metrics);
+        super(metrics, config);
         this.provider = Objects.requireNonNull(provider, "'Provider' parameter");
-        this.config = Objects.requireNonNull(config, "'Config' parameter");
     }
 
     @Override
@@ -92,10 +90,10 @@ public class EventsStrategy extends AbstractStrategy<ResumeEventId, EventPart> {
         EventID resumeId = getResumeId(prevResult);
         return new EventsCrawlerData(
                 metrics,
+                config,
                 CrawlerUtils.searchEvents(provider,
                         new EventsSearchParameters(start, end, resumeId), metrics),
-                parameters.getCrawlerId(),
-                config.getMaxOutgoingDataSize()
+                parameters.getCrawlerId()
         );
     }
 

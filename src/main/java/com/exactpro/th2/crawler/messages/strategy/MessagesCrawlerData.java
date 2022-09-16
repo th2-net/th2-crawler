@@ -21,7 +21,9 @@ import com.exactpro.th2.common.grpc.MessageID;
 import com.exactpro.th2.common.message.MessageUtils;
 import com.exactpro.th2.crawler.AbstractStrategy.AbstractCrawlerData;
 import com.exactpro.th2.crawler.Continuation;
+import com.exactpro.th2.crawler.CrawlerConfiguration;
 import com.exactpro.th2.crawler.DataType;
+import com.exactpro.th2.crawler.DebugConfiguration;
 import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId;
 import com.exactpro.th2.crawler.dataprocessor.grpc.MessageDataRequest;
 import com.exactpro.th2.crawler.messages.strategy.MessagesCrawlerData.MessagePart;
@@ -54,12 +56,12 @@ public class MessagesCrawlerData extends AbstractCrawlerData<MessageSearchRespon
     private ResumeMessageIDs resumeMessageIDs;
 
     public MessagesCrawlerData(CrawlerMetrics metrics,
+                               CrawlerConfiguration debug,
                                Iterator<MessageSearchResponse> data,
                                Map<StreamKey, MessageID> startIDs,
                                CrawlerId id,
-                               int maxSize,
                                Predicate<Message> acceptMessages) {
-        super(metrics, data, id, maxSize);
+        super(metrics, debug, data, id);
         this.startIDs = requireNonNull(startIDs, "'Start ids' parameter");
         this.acceptMessages = requireNonNull(acceptMessages, "'Accept messages' parameter");
     }

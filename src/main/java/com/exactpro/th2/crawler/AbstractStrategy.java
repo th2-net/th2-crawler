@@ -39,9 +39,11 @@ import static java.util.Objects.requireNonNull;
 
 public abstract class AbstractStrategy<C extends Continuation, P extends DataPart> implements DataTypeStrategy<C, P> {
     protected final CrawlerMetrics metrics;
+    protected final CrawlerConfiguration config;
 
-    public AbstractStrategy(CrawlerMetrics metrics) {
+    public AbstractStrategy(CrawlerMetrics metrics, @NotNull CrawlerConfiguration config) {
         this.metrics = requireNonNull(metrics, "'Metrics' parameter");
+        this.config = requireNonNull(config, "'Config' parameter");
     }
 
     public abstract static class AbstractCrawlerData<S, C extends Continuation, DATA extends SizableDataPart<VALUE>, VALUE extends Message>
@@ -59,14 +61,16 @@ public abstract class AbstractStrategy<C extends Continuation, P extends DataPar
         private int currentValuesSize;
         private int dropped;
         private boolean finished;
+        private CrawlerConfiguration config;
 
-        protected AbstractCrawlerData(CrawlerMetrics metrics, Iterator<S> data, CrawlerId id, int maxSize) {
+        protected AbstractCrawlerData(CrawlerMetrics metrics, CrawlerConfiguration config, Iterator<S> data, CrawlerId id) {
             this.metrics = requireNonNull(metrics, "'Metrics' parameter");
             this.data = requireNonNull(data, "'Data' parameter");
+            this.config = requireNonNull(config, "'config' parameter");
+            this.maxSize = config.getMaxOutgoingDataSize();
             if (maxSize <= 0) {
                 throw new IllegalArgumentException("not positive maxSize " + maxSize);
             }
-            this.maxSize = maxSize;
             crawlerId = requireNonNull(id, "'Id' parameter");
         }
 
@@ -113,6 +117,11 @@ public abstract class AbstractStrategy<C extends Continuation, P extends DataPar
         @NotNull
         private DATA createDataPart(Deque<VALUE> cache) {
             DATA dataPart = buildDataPart(crawlerId, Collections.unmodifiableCollection(cache));
+            if (config.getDebug().getEnableMessageSizeMeasuring()) {
+                int size = cache.stream().mapToInt(VALUE::getSerializedSize).sum();
+                metrics.updateProcessedDataSize(getDataType(), size);
+                LOGGER.debug("Message is prepared for processor has {} bytes size", size);
+            }
             cache.clear();
 //            int pushedBackSize = 0;
 //            while (dataPart.serializedSize() > maxSize) {

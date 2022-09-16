@@ -58,4 +58,13 @@ class CrawlerConfiguration @JvmOverloads constructor(
 
     val useGroupsForRequest: Boolean = false,
     val initialRequest: Int = 1000,
+
+    val debug: DebugConfiguration = DebugConfiguration()
+)
+
+class DebugConfiguration @JvmOverloads constructor(
+    @JsonProperty
+    val enableProcessor: Boolean = true,
+    @JsonProperty
+    val enableMessageSizeMeasuring: Boolean = false,
 )

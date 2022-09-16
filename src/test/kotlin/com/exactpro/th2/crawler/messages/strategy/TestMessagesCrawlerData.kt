@@ -20,6 +20,7 @@ import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.Message
 import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.common.message.toTimestamp
+import com.exactpro.th2.crawler.CrawlerConfiguration
 import com.exactpro.th2.crawler.createMessageID
 import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics
@@ -64,10 +65,10 @@ class TestMessagesCrawlerData {
         val oneMessageSize = responses.first().message.serializedSize
         val data = MessagesCrawlerData(
             mock(CrawlerMetrics::class.java),
+            CrawlerConfiguration(from = "", name = "", maxOutgoingDataSize = oneMessageSize * 2 + 10),
             responses.iterator(), emptyMap(), CrawlerId.newBuilder()
                 .setName("test")
-                .build(),
-            oneMessageSize * 2 + 10
+                .build()
         ) { true }
 
         val dataParts = data.asSequence().toList()

@@ -100,6 +100,14 @@ public class PrometheusMetrics implements CrawlerMetrics {
             .help("number of data items received from data provider")
             .register();
 
+    private static final Counter PROCESSED_DATA_SIZE_COUNTER = Counter.build()
+            .name("th2_ldp_processed_data_size_bytes_total")
+            .help("Size of data transferred to processor in bytes")
+            .labelNames("data_type")
+            .register();
+
+    private static final Map<DataType, Child> PROCESSED_DATA_SIZE_MAP = createMetricMap(PROCESSED_DATA_SIZE_COUNTER, DataType.class);
+
     @NotNull
     private static <T extends Enum<T>> Map<T, Child> createMetricMap(Counter counter, Class<T> keyType) {
         Map<T, Child> map = new EnumMap<>(keyType);
@@ -163,5 +171,10 @@ public class PrometheusMetrics implements CrawlerMetrics {
     @Override
     public void updateProcessedData(DataType dataType, long count) {
         PROCESSED_DATA_COUNT_MAP.get(dataType).inc(count);
+    }
+
+    @Override
+    public void updateProcessedDataSize(DataType dataType, long size) {
+        PROCESSED_DATA_SIZE_MAP.get(dataType).inc(size);
     }
 }

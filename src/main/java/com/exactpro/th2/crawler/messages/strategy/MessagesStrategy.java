@@ -16,34 +16,6 @@
 
 package com.exactpro.th2.crawler.messages.strategy;
 
-import static java.util.Objects.requireNonNull;
-import static java.util.Objects.requireNonNullElse;
-import static java.util.stream.Collectors.toMap;
-import static java.util.stream.Collectors.toUnmodifiableMap;
-
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.function.BinaryOperator;
-import java.util.function.Consumer;
-import java.util.function.Function;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
-
-import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.exactpro.cradle.intervals.Interval;
 import com.exactpro.th2.common.grpc.ConnectionID;
 import com.exactpro.th2.common.grpc.Direction;
@@ -80,8 +52,32 @@ import com.exactpro.th2.dataprovider.grpc.MessageStream;
 import com.exactpro.th2.dataprovider.grpc.MessageStreamPointer;
 import com.exactpro.th2.dataprovider.grpc.MessageStreamPointers;
 import com.google.protobuf.Timestamp;
-
 import kotlin.Pair;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.function.BinaryOperator;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import static java.util.Objects.requireNonNull;
+import static java.util.Objects.requireNonNullElse;
+import static java.util.stream.Collectors.toMap;
+import static java.util.stream.Collectors.toUnmodifiableMap;
 
 public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, MessagePart> {
     public static final BinaryOperator<MessageID> LATEST_SEQUENCE = (first, second) -> first.getSequence() < second.getSequence() ? second : first;
@@ -90,17 +86,15 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
 
     private final DataProviderService provider;
     private final CrawlerMetrics metrics;
-    private final CrawlerConfiguration config;
 
     public MessagesStrategy(
             @NotNull DataProviderService provider,
             @NotNull CrawlerMetrics metrics,
             @NotNull CrawlerConfiguration config
     ) {
-        super(metrics);
+        super(metrics, config);
         this.provider = requireNonNull(provider, "'Provider' parameter");
         this.metrics = requireNonNull(metrics, "'Metrics' parameter");
-        this.config = requireNonNull(config, "'Config' parameter");
     }
 
     @Override
@@ -163,10 +157,10 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
         NameFilter filter = config.getFilter();
         return new MessagesCrawlerData(
                 metrics,
+                config,
                 CrawlerUtils.searchMessages(provider, searchParams, metrics),
                 startIDs,
                 parameters.getCrawlerId(),
-                config.getMaxOutgoingDataSize(),
                 msg -> filter == null || filter.accept(msg.getMetadata().getMessageType())
         );
     }
@@ -248,7 +242,11 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
         LOGGER.info("Sending request to processor");
         MessageResponse response;
         try {
-            response = metrics.measureTime(DataType.MESSAGES, Method.PROCESS_DATA, () -> dataProcessor.sendMessage(messageRequest));
+            if (config.getDebug().getEnableProcessor()) {
+                response = metrics.measureTime(DataType.MESSAGES, Method.PROCESS_DATA, () -> dataProcessor.sendMessage(messageRequest));
+            } else {
+                response = MessageResponse.getDefaultInstance();
+            }
         } finally {
             if (LOGGER.isInfoEnabled()) {
                 LOGGER.info("Received response from processor in {} mls", System.currentTimeMillis() - start);
