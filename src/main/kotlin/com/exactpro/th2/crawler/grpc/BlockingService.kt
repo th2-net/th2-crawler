@@ -39,6 +39,7 @@ import com.exactpro.th2.dataprovider.grpc.MessageSearchRequest
 import com.exactpro.th2.dataprovider.grpc.MessageSearchResponse
 import com.exactpro.th2.dataprovider.grpc.MessageStreamsRequest
 import com.exactpro.th2.dataprovider.grpc.MessageStreamsResponse
+import com.google.protobuf.TextFormat
 import io.grpc.stub.ClientCallStreamObserver
 import io.grpc.stub.ClientResponseObserver
 import io.grpc.stub.StreamObserver
@@ -128,7 +129,7 @@ class BlockingService(
         }
 
         override fun onNext(value: RespT) {
-            LOGGER.debug { "onNext has been called" }
+            LOGGER.debug { "onNext has been called $value" }
             requestStream.request(1)
             iterator.put(value)
         }
