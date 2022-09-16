@@ -42,6 +42,7 @@ import com.exactpro.th2.dataprovider.grpc.MessageStreamsResponse
 import io.grpc.stub.ClientCallStreamObserver
 import io.grpc.stub.ClientResponseObserver
 import io.grpc.stub.StreamObserver
+import mu.KotlinLogging
 
 //FIXME: this class has been made for test concept
 class BlockingService(
@@ -115,9 +116,11 @@ class BlockingService(
         val initialRequest: Int
     ) : ClientResponseObserver<ReqT, RespT> {
         val iterator = BlockingIterator<RespT>()
+        @Volatile
         private lateinit var requestStream: ClientCallStreamObserver<ReqT>
 
         override fun beforeStart(requestStream: ClientCallStreamObserver<ReqT>) {
+            LOGGER.debug { "beforeStart has been called" }
             this.requestStream = requestStream
             // Set up manual flow control for the response stream. It feels backwards to configure the response
             // stream's flow control using the request stream's observer, but this is the way it is.
@@ -125,16 +128,23 @@ class BlockingService(
         }
 
         override fun onNext(value: RespT) {
+            LOGGER.debug { "onNext has been called" }
             requestStream.request(1)
             iterator.put(value)
         }
 
         override fun onError(t: Throwable) {
+            LOGGER.error(t) { "onError has been called" }
             iterator.complete(t)
         }
 
         override fun onCompleted() {
+            LOGGER.debug { "onCompleted has been called" }
             iterator.complete()
+        }
+
+        companion object {
+            private val LOGGER = KotlinLogging.logger { }
         }
     }
 }
