@@ -1,0 +1,140 @@
+/*
+ * Copyright 2022 Exactpro (Exactpro Systems Limited)
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.exactpro.th2.crawler.grpc
+
+import com.exactpro.th2.common.grpc.EventID
+import com.exactpro.th2.common.grpc.MessageID
+import com.exactpro.th2.dataprovider.grpc.AsyncDataProviderService
+import com.exactpro.th2.dataprovider.grpc.BulkEventRequest
+import com.exactpro.th2.dataprovider.grpc.BulkEventResponse
+import com.exactpro.th2.dataprovider.grpc.DataProviderService
+import com.exactpro.th2.dataprovider.grpc.EventFiltersRequest
+import com.exactpro.th2.dataprovider.grpc.EventMatchRequest
+import com.exactpro.th2.dataprovider.grpc.EventResponse
+import com.exactpro.th2.dataprovider.grpc.EventSearchRequest
+import com.exactpro.th2.dataprovider.grpc.EventSearchResponse
+import com.exactpro.th2.dataprovider.grpc.FilterInfoRequest
+import com.exactpro.th2.dataprovider.grpc.FilterInfoResponse
+import com.exactpro.th2.dataprovider.grpc.FilterNamesResponse
+import com.exactpro.th2.dataprovider.grpc.MatchResponse
+import com.exactpro.th2.dataprovider.grpc.MessageFiltersRequest
+import com.exactpro.th2.dataprovider.grpc.MessageGroupResponse
+import com.exactpro.th2.dataprovider.grpc.MessageGroupsSearchRequest
+import com.exactpro.th2.dataprovider.grpc.MessageMatchRequest
+import com.exactpro.th2.dataprovider.grpc.MessageSearchRequest
+import com.exactpro.th2.dataprovider.grpc.MessageSearchResponse
+import com.exactpro.th2.dataprovider.grpc.MessageStreamsRequest
+import com.exactpro.th2.dataprovider.grpc.MessageStreamsResponse
+import io.grpc.stub.ClientCallStreamObserver
+import io.grpc.stub.ClientResponseObserver
+import io.grpc.stub.StreamObserver
+
+//FIXME: this class has been made for test concept
+class BlockingService(
+    private val asyncDataProviderService: AsyncDataProviderService,
+    private val initialRequest: Int = 1000
+) : DataProviderService {
+    override fun getEvent(input: EventID?): EventResponse {
+        return response(input, asyncDataProviderService::getEvent)
+    }
+
+    override fun getEvents(input: BulkEventRequest?): BulkEventResponse {
+        return response(input, asyncDataProviderService::getEvents)
+    }
+
+    override fun getMessage(input: MessageID?): MessageGroupResponse {
+        return response(input, asyncDataProviderService::getMessage)
+    }
+
+    override fun getMessageStreams(input: MessageStreamsRequest?): MessageStreamsResponse {
+        return response(input, asyncDataProviderService::getMessageStreams)
+    }
+
+    override fun searchMessages(input: MessageSearchRequest?): Iterator<MessageSearchResponse> {
+        return responses(input, asyncDataProviderService::searchMessages)
+    }
+
+    override fun searchEvents(input: EventSearchRequest?): Iterator<EventSearchResponse> {
+        return responses(input, asyncDataProviderService::searchEvents)
+    }
+
+    override fun searchMessageGroups(input: MessageGroupsSearchRequest?): Iterator<MessageSearchResponse> {
+        return responses(input, asyncDataProviderService::searchMessageGroups)
+    }
+
+    override fun getMessagesFilters(input: MessageFiltersRequest?): FilterNamesResponse {
+        return response(input, asyncDataProviderService::getMessagesFilters)
+    }
+
+    override fun getEventsFilters(input: EventFiltersRequest?): FilterNamesResponse {
+        return response(input, asyncDataProviderService::getEventsFilters)
+    }
+
+    override fun getEventFilterInfo(input: FilterInfoRequest?): FilterInfoResponse {
+        return response(input, asyncDataProviderService::getEventFilterInfo)
+    }
+
+    override fun getMessageFilterInfo(input: FilterInfoRequest?): FilterInfoResponse {
+        return response(input, asyncDataProviderService::getMessageFilterInfo)
+    }
+
+    override fun matchEvent(input: EventMatchRequest?): MatchResponse {
+        return response(input, asyncDataProviderService::matchEvent)
+    }
+
+    override fun matchMessage(input: MessageMatchRequest?): MatchResponse {
+        return response(input, asyncDataProviderService::matchMessage)
+    }
+
+    private fun <ReqT, RespT> response(request: ReqT, function: (ReqT, StreamObserver<RespT>) -> Unit): RespT {
+        return responses(request, function).next()
+    }
+
+    private fun <ReqT, RespT> responses(request: ReqT, function: (ReqT, StreamObserver<RespT>) -> Unit): Iterator<RespT> {
+        ClientObserver<ReqT, RespT>(initialRequest).apply {
+            function.invoke(request, this)
+            return iterator
+        }
+    }
+
+    private class ClientObserver<ReqT, RespT>(
+        val initialRequest: Int
+    ) : ClientResponseObserver<ReqT, RespT> {
+        val iterator = BlockingIterator<RespT>()
+        private lateinit var requestStream: ClientCallStreamObserver<ReqT>
+
+        override fun beforeStart(requestStream: ClientCallStreamObserver<ReqT>) {
+            this.requestStream = requestStream
+            // Set up manual flow control for the response stream. It feels backwards to configure the response
+            // stream's flow control using the request stream's observer, but this is the way it is.
+            requestStream.disableAutoRequestWithInitial(initialRequest)
+        }
+
+        override fun onNext(value: RespT) {
+            requestStream.request(1)
+            iterator.put(value)
+        }
+
+        override fun onError(t: Throwable) {
+            iterator.complete(t)
+        }
+
+        override fun onCompleted() {
+            iterator.complete()
+        }
+    }
+}

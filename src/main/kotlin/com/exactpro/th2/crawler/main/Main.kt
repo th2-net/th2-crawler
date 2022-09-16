@@ -27,11 +27,12 @@ import com.exactpro.th2.crawler.CrawlerConfiguration
 import com.exactpro.th2.crawler.CrawlerContext
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService
 import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException
+import com.exactpro.th2.crawler.grpc.BlockingService
 import com.exactpro.th2.crawler.metrics.impl.PrometheusMetrics
 import com.exactpro.th2.crawler.state.StateService
 import com.exactpro.th2.crawler.state.v1.RecoveryState
 import com.exactpro.th2.crawler.util.impl.CrawlerTimeImpl
-import com.exactpro.th2.dataprovider.grpc.DataProviderService
+import com.exactpro.th2.dataprovider.grpc.AsyncDataProviderService
 import mu.KotlinLogging
 import java.io.IOException
 import java.util.Deque
@@ -67,12 +68,12 @@ fun main(args: Array<String>) {
         resources += factory
 
         val cradleManager = factory.cradleManager
+        val configuration = factory.getCustomConfiguration(CrawlerConfiguration::class.java)
 
         val grpcRouter = factory.grpcRouter
         val dataProcessor = grpcRouter.getService(DataProcessorService::class.java)
-        val dataProviderService = grpcRouter.getService(DataProviderService::class.java)
+        val dataProviderService = BlockingService(grpcRouter.getService(AsyncDataProviderService::class.java), configuration.initialRequest)
 
-        val configuration = factory.getCustomConfiguration(CrawlerConfiguration::class.java)
 
         // The BOX is alive
         LIVENESS_MONITOR.enable()

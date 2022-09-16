@@ -57,4 +57,5 @@ class CrawlerConfiguration @JvmOverloads constructor(
     val shutdownTimeoutUnit: TimeUnit = TimeUnit.SECONDS,
 
     val useGroupsForRequest: Boolean = false,
+    val initialRequest: Int = 1000,
 )
