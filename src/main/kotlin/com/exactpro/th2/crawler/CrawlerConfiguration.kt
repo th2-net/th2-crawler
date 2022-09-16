@@ -23,51 +23,35 @@ import java.time.temporal.ChronoUnit
 import java.util.concurrent.TimeUnit
 
 class CrawlerConfiguration @JvmOverloads constructor(
-    @JsonProperty
     val from: String,
-    @JsonProperty
     val to: String? = null,
-    @JsonProperty
     val name: String,
-    @JsonProperty
     val type: DataType = DataType.EVENTS,
-    @JsonProperty
     val defaultLength: String = "PT1H",
-    @JsonProperty
     val lastUpdateOffset: Long = 1,
-    @JsonProperty
     val lastUpdateOffsetUnit: ChronoUnit = ChronoUnit.HOURS,
-    @JsonProperty
     val delay: Long = 10,
-    @JsonProperty
     val toLag: Int = 1,
-    @JsonProperty
     val toLagOffsetUnit: ChronoUnit = ChronoUnit.HOURS,
-    @JsonProperty
     val workAlone: Boolean = false,
-    @JsonProperty
     val sessionAliases: Set<String> = emptySet(),
-    @JsonProperty
     val maxOutgoingDataSize: Int = GrpcUtil.DEFAULT_MAX_MESSAGE_SIZE,
 
-    @JsonProperty
     val filter: NameFilter? = null,
 
     val shutdownTimeout: Long = 10,
     val shutdownTimeoutUnit: TimeUnit = TimeUnit.SECONDS,
 
     val useGroupsForRequest: Boolean = false,
-    val initialRequest: Int = 1000, //TODO: add to readme
-    val request: Int = 300, //TODO: add to readme
+    val initialGrpcRequest: Int = 1000, //TODO: add to readme
+    val periodicalGrpcRequest: Int = 300, //TODO: add to readme
 
     val debug: DebugConfiguration = DebugConfiguration() //TODO: add to readme
 )
 
 class DebugConfiguration @JvmOverloads constructor(
-    @JsonProperty
     val enableProcessor: Boolean = true,
-    @JsonProperty
     val enableMessageSizeMeasuring: Boolean = false,
-    @JsonProperty
-    val enableHandling: Boolean = true
+    val enableHandling: Boolean = true,
+    val enablePeriodicalGrpcRequest: Boolean = true
 )

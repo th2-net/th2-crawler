@@ -18,6 +18,7 @@ package com.exactpro.th2.crawler.grpc
 
 import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.MessageID
+import com.exactpro.th2.crawler.CrawlerConfiguration
 import com.exactpro.th2.crawler.CrawlerContext
 import com.exactpro.th2.dataprovider.grpc.AsyncDataProviderService
 import com.exactpro.th2.dataprovider.grpc.BulkEventRequest
@@ -110,8 +111,7 @@ class BlockingService(
 
     private fun <ReqT, RespT> responses(request: ReqT, function: (ReqT, StreamObserver<RespT>) -> Unit, setMetric: (Int) -> Unit = {}): Iterator<RespT> {
         ClientObserver<ReqT, RespT>(
-            context.configuration.initialRequest,
-            context.configuration.request,
+            context.configuration,
             setMetric
         ).apply {
             function.invoke(request, this)
@@ -120,8 +120,7 @@ class BlockingService(
     }
 
     private class ClientObserver<ReqT, RespT>(
-        val initialRequest: Int,
-        val request: Int,
+        val config: CrawlerConfiguration,
         setMetric: (Int) -> Unit,
     ) : ClientResponseObserver<ReqT, RespT> {
         val iterator = BlockingIterator<RespT>(setMetric)
@@ -135,13 +134,15 @@ class BlockingService(
             this.requestStream = requestStream
             // Set up manual flow control for the response stream. It feels backwards to configure the response
             // stream's flow control using the request stream's observer, but this is the way it is.
-            requestStream.disableAutoRequestWithInitial(initialRequest)
+            requestStream.disableAutoRequestWithInitial(config.initialGrpcRequest)
         }
 
         override fun onNext(value: RespT) {
             LOGGER.debug { "onNext has been called $value" }
-            if (counter.incrementAndGet() % request == 0) {
-                requestStream.request(request)
+            if (config.debug.enablePeriodicalGrpcRequest) {
+                if (counter.incrementAndGet() % config.periodicalGrpcRequest == 0) {
+                    requestStream.request(config.periodicalGrpcRequest)
+                }
             }
             iterator.put(value)
         }
