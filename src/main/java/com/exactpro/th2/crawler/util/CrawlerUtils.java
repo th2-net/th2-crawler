@@ -16,6 +16,7 @@
 
 package com.exactpro.th2.crawler.util;
 
+import static java.util.Objects.requireNonNull;
 import static java.util.Objects.requireNonNullElse;
 
 import java.io.IOException;
@@ -23,11 +24,14 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import com.exactpro.th2.crawler.DataType;
+import com.exactpro.th2.dataprovider.grpc.MessageGroupResponse;
+import com.exactpro.th2.dataprovider.grpc.MessageGroupsSearchResponse;
+import com.google.common.collect.AbstractIterator;
+import com.google.protobuf.TextFormat;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -61,6 +65,8 @@ import com.google.protobuf.BoolValue;
 import com.google.protobuf.Int32Value;
 import com.google.protobuf.MessageOrBuilder;
 import com.google.protobuf.Timestamp;
+
+import javax.annotation.CheckForNull;
 
 public class CrawlerUtils {
     private static final Logger LOGGER = LoggerFactory.getLogger(CrawlerUtils.class);
@@ -121,7 +127,7 @@ public class CrawlerUtils {
         Builder request = MessageGroupsSearchRequest.newBuilder()
                 .setStartTimestamp(info.getFrom())
                 .setEndTimestamp(info.getTo())
-                .addAllMessageGroup(Objects.requireNonNull(info.getAliases()).stream()
+                .addAllMessageGroup(requireNonNull(info.getAliases()).stream()
                         .map(it -> Group.newBuilder().setName(it).build())
                         .collect(Collectors.toUnmodifiableList()))
                 .setSort(GROUP_SORT);
@@ -129,7 +135,7 @@ public class CrawlerUtils {
         return collectMessages(metrics.measureTime(
                         DataType.MESSAGES,
                         CrawlerMetrics.Method.REQUEST_DATA,
-                        () -> dataProviderService.searchMessageGroups(request.build())), info.getTo());
+                        () -> flatten(dataProviderService.searchMessageGroups(request.build()))), info.getTo());
     }
 
     @NotNull
@@ -262,14 +268,47 @@ public class CrawlerUtils {
         });
     }
 
+    static Iterator<MessageSearchResponse> flatten(Iterator<MessageGroupsSearchResponse> iterator) {
+        return new AbstractIterator<>() {
+            private final Iterator<MessageGroupsSearchResponse> batchIterator = requireNonNull(iterator, "'iterator' can not be null");
+            private Iterator<MessageGroupResponse> groupIterator;
+
+            @Override
+            @CheckForNull
+            protected MessageSearchResponse computeNext() {
+                if (groupIterator != null && groupIterator.hasNext()) {
+                    return MessageSearchResponse.newBuilder()
+                            .setMessage(groupIterator.next())
+                            .build();
+                }
+
+                if(batchIterator.hasNext()) {
+                    MessageGroupsSearchResponse response = batchIterator.next();
+                    switch (response.getDataCase()) {
+                        case COLLECTION:
+                            groupIterator = response.getCollection().getMessagesList().iterator();
+                            return computeNext();
+                        case MESSAGE_STREAM_POINTERS:
+                            return MessageSearchResponse.newBuilder()
+                                    .setMessageStreamPointers(response.getMessageStreamPointers())
+                                    .build();
+                        default: throw new IllegalStateException("Unknown the `" + response.getDataCase() + "` data case in response " + TextFormat.shortDebugString(response));
+                    }
+                }
+
+                return endOfData();
+            }
+        };
+    }
+
     public static class EventsSearchParameters {
         private final Timestamp from;
         private final Timestamp to;
         private final EventID resumeId;
 
         public EventsSearchParameters(Timestamp from, Timestamp to, EventID resumeId) {
-            this.from = Objects.requireNonNull(from, "Timestamp 'from' must not be null");
-            this.to = Objects.requireNonNull(to, "Timestamp 'to' must not be null");
+            this.from = requireNonNull(from, "Timestamp 'from' must not be null");
+            this.to = requireNonNull(to, "Timestamp 'to' must not be null");
             this.resumeId = resumeId;
         }
     }

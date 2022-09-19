@@ -21,10 +21,13 @@ import com.exactpro.th2.common.grpc.Direction.FIRST
 import com.exactpro.th2.common.grpc.Direction.SECOND
 import com.exactpro.th2.common.message.toTimestamp
 import com.exactpro.th2.dataprovider.grpc.MessageGroupResponse
+import com.exactpro.th2.dataprovider.grpc.MessageGroupsSearchResponse
 import com.exactpro.th2.dataprovider.grpc.MessageStreamPointers
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 import java.time.Instant
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class CrawlerUtilTest {
 
@@ -85,4 +88,34 @@ class CrawlerUtilTest {
                 }
             }
         }.build()
+
+    @Test
+    fun flattenTest() {
+        val list = listOf(
+            MessageGroupsSearchResponse.newBuilder().apply {
+                collectionBuilder.apply {
+                    addMessages(MessageGroupResponse.newBuilder())
+                }
+            }.build(),
+            MessageGroupsSearchResponse.newBuilder().apply {
+                messageStreamPointers = MessageStreamPointers.newBuilder().build()
+            }.build(),
+            MessageGroupsSearchResponse.newBuilder().apply {
+                collectionBuilder.apply {
+                    addMessages(MessageGroupResponse.newBuilder())
+                    addMessages(MessageGroupResponse.newBuilder())
+                }
+            }.build()
+        )
+        val iterator = CrawlerUtils.flatten(list.iterator())
+
+        assertTrue(iterator.hasNext())
+        assertEquals(list[0].collection.getMessages(0), iterator.next().message)
+        assertTrue(iterator.hasNext())
+        assertEquals(list[1].messageStreamPointers, iterator.next().messageStreamPointers)
+        assertTrue(iterator.hasNext())
+        assertEquals(list[2].collection.getMessages(0), iterator.next().message)
+        assertTrue(iterator.hasNext())
+        assertEquals(list[2].collection.getMessages(1), iterator.next().message)
+    }
 }

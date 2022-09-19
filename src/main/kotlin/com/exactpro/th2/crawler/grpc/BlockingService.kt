@@ -36,6 +36,7 @@ import com.exactpro.th2.dataprovider.grpc.MatchResponse
 import com.exactpro.th2.dataprovider.grpc.MessageFiltersRequest
 import com.exactpro.th2.dataprovider.grpc.MessageGroupResponse
 import com.exactpro.th2.dataprovider.grpc.MessageGroupsSearchRequest
+import com.exactpro.th2.dataprovider.grpc.MessageGroupsSearchResponse
 import com.exactpro.th2.dataprovider.grpc.MessageMatchRequest
 import com.exactpro.th2.dataprovider.grpc.MessageSearchRequest
 import com.exactpro.th2.dataprovider.grpc.MessageSearchResponse
@@ -77,7 +78,7 @@ class BlockingService(
         return responses(input, asyncDataProviderService::searchEvents, context.metrics::setBackpressureBufferSize)
     }
 
-    override fun searchMessageGroups(input: MessageGroupsSearchRequest?): Iterator<MessageSearchResponse> {
+    override fun searchMessageGroups(input: MessageGroupsSearchRequest?): Iterator<MessageGroupsSearchResponse> {
         return responses(input, asyncDataProviderService::searchMessageGroups, context.metrics::setBackpressureBufferSize)
     }
 
