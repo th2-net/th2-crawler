@@ -33,6 +33,7 @@ import com.exactpro.th2.crawler.state.StateService
 import com.exactpro.th2.crawler.state.v1.RecoveryState
 import com.exactpro.th2.crawler.util.impl.CrawlerTimeImpl
 import com.exactpro.th2.dataprovider.grpc.AsyncDataProviderService
+import com.exactpro.th2.dataprovider.grpc.DataProviderService
 import mu.KotlinLogging
 import java.io.IOException
 import java.util.Deque
@@ -74,7 +75,11 @@ fun main(args: Array<String>) {
 
         val grpcRouter = factory.grpcRouter
         val dataProcessor = grpcRouter.getService(DataProcessorService::class.java)
-        val dataProviderService = BlockingService(context, grpcRouter.getService(AsyncDataProviderService::class.java))
+        val dataProviderService = if(configuration.debug.enableBackpressure) {
+            BlockingService(context, grpcRouter.getService(AsyncDataProviderService::class.java))
+        } else {
+            grpcRouter.getService(DataProviderService::class.java)
+        }
 
         // The BOX is alive
         LIVENESS_MONITOR.enable()

@@ -53,5 +53,6 @@ class DebugConfiguration @JvmOverloads constructor(
     val enableProcessor: Boolean = true,
     val enableMessageSizeMeasuring: Boolean = false,
     val enableHandling: Boolean = true,
-    val enablePeriodicalGrpcRequest: Boolean = true
+    val enablePeriodicalGrpcRequest: Boolean = true,
+    val enableBackpressure: Boolean = false
 )
