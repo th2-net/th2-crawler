@@ -86,6 +86,7 @@ dependencies {
 
     testImplementation 'org.junit.jupiter:junit-jupiter:5.6.0'
     testImplementation 'org.jetbrains.kotlin:kotlin-test-junit'
+    testImplementation "io.grpc:grpc-netty"
 
     // https://mvnrepository.com/artifact/org.mockito/mockito-core
     testImplementation group: 'org.mockito', name: 'mockito-core', version: '3.11.2'

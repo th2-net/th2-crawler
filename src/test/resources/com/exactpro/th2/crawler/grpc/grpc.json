@@ -1,0 +1,26 @@
+{
+  "server": {
+    "host": null,
+    "port": 8090,
+    "workers": 5
+  },
+  "services": {
+    "to_data_provider": {
+      "endpoints": {
+        "dataprocessor-endpoint": {
+          "attributes": [],
+          "host": "localhost",
+          "port": 8090
+        }
+      },
+      "service-class": "com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService",
+      "strategy": {
+        "endpoints": [
+          "dataprocessor-endpoint"
+        ],
+        "name": "robin"
+      }
+    }
+  }
+}
+		
