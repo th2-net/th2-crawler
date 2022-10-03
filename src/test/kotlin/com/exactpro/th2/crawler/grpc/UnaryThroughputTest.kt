@@ -158,6 +158,9 @@ class UnaryThroughputTest {
             }
         }
 
-        private fun rndString(): String = String(ByteArray(STRING_LENGTH).apply(RANDOM::nextBytes))
+        private fun rndString(): String = RANDOM.ints(32, 126)
+            .limit(STRING_LENGTH.toLong() - 1)
+            .collect({ StringBuilder() }, StringBuilder::appendCodePoint, StringBuilder::append)
+            .toString() + "\u0001"
     }
 }
