@@ -59,7 +59,7 @@ dependencies {
 
     implementation ("com.exactpro.th2:grpc-service-generator") {
         version {//FIXME: this structure will not be required after migration to release version
-            strictly '3.2.2-TH2-4188-100-msg-sec-throughput-in-end-to-end-test-3066539800-SNAPSHOT'
+            strictly '3.2.2-TH2-4262-reduce-load-on-a-separate-boxes-in-crawler-schema-3197511115-SNAPSHOT'
         }
     }
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310") {
