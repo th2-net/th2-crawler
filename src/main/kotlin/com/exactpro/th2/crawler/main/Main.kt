@@ -25,6 +25,7 @@ import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.exactpro.th2.crawler.Crawler
 import com.exactpro.th2.crawler.CrawlerConfiguration
 import com.exactpro.th2.crawler.CrawlerContext
+import com.exactpro.th2.crawler.dataprocessor.grpc.AsyncProcessorService
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService
 import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException
 import com.exactpro.th2.crawler.grpc.BlockingService
@@ -36,7 +37,7 @@ import com.exactpro.th2.dataprovider.grpc.AsyncDataProviderService
 import com.exactpro.th2.dataprovider.grpc.DataProviderService
 import mu.KotlinLogging
 import java.io.IOException
-import java.util.Deque
+import java.util.*
 import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
@@ -74,6 +75,7 @@ fun main(args: Array<String>) {
         val context = CrawlerContext(CrawlerTimeImpl(), PrometheusMetrics(), configuration)
 
         val grpcRouter = factory.grpcRouter
+        val processorService = grpcRouter.getService(AsyncProcessorService::class.java)
         val dataProcessor = grpcRouter.getService(DataProcessorService::class.java)
         val dataProviderService = if(configuration.debug.enableBackpressure) {
             BlockingService(context, grpcRouter.getService(AsyncDataProviderService::class.java))
@@ -91,6 +93,7 @@ fun main(args: Array<String>) {
                 defaultImplementation = RecoveryState::class.java,
             ),
             cradleManager.storage,
+            processorService,
             dataProcessor,
             dataProviderService,
             context

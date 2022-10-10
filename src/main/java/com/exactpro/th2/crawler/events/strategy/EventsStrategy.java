@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Function;
 
+import com.exactpro.th2.crawler.handler.ProcessorObserver;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -95,6 +96,11 @@ public class EventsStrategy extends AbstractStrategy<ResumeEventId, EventPart> {
                         new EventsSearchParameters(start, end, resumeId), metrics),
                 parameters.getCrawlerId()
         );
+    }
+
+    @Override
+    public void loadData(ProcessorObserver observer, @NotNull Timestamp start, @NotNull Timestamp end, @NotNull DataParameters parameters) {
+        super.loadData(observer, start, end, parameters);
     }
 
     @NotNull

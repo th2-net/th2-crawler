@@ -20,6 +20,7 @@ import com.exactpro.cradle.intervals.IntervalsWorker
 import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService
 import com.exactpro.th2.crawler.dataprocessor.grpc.IntervalInfo
+import com.exactpro.th2.crawler.handler.ProcessorObserver
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics
 import com.exactpro.th2.crawler.state.StateService
 import com.exactpro.th2.crawler.state.v1.RecoveryState
@@ -58,6 +59,19 @@ interface DataTypeStrategy<C : Continuation, D : DataPart> {
         parameters: DataParameters,
         continuation: C?
     ): CrawlerData<C, D>
+
+    /**
+     * @param start the lower boundary for requested data
+     * @param end the upper boundary for requested data
+     * @param parameters parameters for the request
+     * @return the [CrawlerData] object with data to process
+     */
+    fun loadData(
+        observer: ProcessorObserver,
+        start: Timestamp,
+        end: Timestamp,
+        parameters: DataParameters
+    )
 
     /**
      * @param processor the processor to transfer data

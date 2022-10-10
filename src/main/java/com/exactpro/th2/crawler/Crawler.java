@@ -23,10 +23,13 @@ import com.exactpro.th2.common.grpc.MessageID;
 import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId;
 import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerInfo;
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorInfo;
+import com.exactpro.th2.crawler.dataprocessor.grpc.AsyncProcessorService;
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService;
 import com.exactpro.th2.crawler.dataprocessor.grpc.IntervalInfo;
 import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException;
 import com.exactpro.th2.crawler.exception.UnsupportedRecoveryStateException;
+import com.exactpro.th2.crawler.handler.ProcessorObserver;
+import com.exactpro.th2.crawler.messages.strategy.load.MessagesStrategyFactory;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics.Method;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics.ProcessorMethod;
@@ -36,10 +39,12 @@ import com.exactpro.th2.crawler.util.CrawlerTime;
 import com.exactpro.th2.crawler.util.CrawlerUtils;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import com.google.protobuf.Timestamp;
+import kotlin.Unit;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.xml.crypto.Data;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
@@ -47,6 +52,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.Map;
 import java.util.ServiceLoader;
 import java.util.Set;
+import java.util.concurrent.Executors;
 import java.util.function.BinaryOperator;
 
 import static com.exactpro.th2.common.message.MessageUtils.toTimestamp;
@@ -60,6 +66,7 @@ public class Crawler {
 
     public static final BinaryOperator<MessageID> LATEST_SEQUENCE = (first, second) -> first.getSequence() < second.getSequence() ? second : first;
 
+    private final AsyncProcessorService processorService;
     private final DataProcessorService dataProcessor;
     private final DataProviderService dataProviderService;
     private final IntervalsWorker intervalsWorker;
@@ -71,7 +78,7 @@ public class Crawler {
     private final boolean floatingToTime;
     private final boolean workAlone;
     private final DataType crawlerType;
-    private final DataProcessorInfo info;
+    private final ProcessorObserver processorObserver;
     private final CrawlerId crawlerId;
     private final StateService<RecoveryState> stateService;
     private final CrawlerMetrics metrics;
@@ -85,6 +92,7 @@ public class Crawler {
     public Crawler(
             @NotNull StateService<RecoveryState> stateService,
             @NotNull CradleStorage storage,
+            @NotNull AsyncProcessorService processorService,
             @NotNull DataProcessorService dataProcessor,
             @NotNull DataProviderService dataProviderService,
             @NotNull CrawlerContext crawlerContext
@@ -93,6 +101,7 @@ public class Crawler {
         this.configuration = crawlerContext.getConfiguration();
         this.stateService = requireNonNull(stateService, "'state service' cannot be null");
         this.intervalsWorker = requireNonNull(storage, "Cradle storage cannot be null").getIntervalsWorker();
+        this.processorService = requireNonNull(processorService, "Processor service cannot be null");
         this.dataProcessor = requireNonNull(dataProcessor, "Data service cannot be null");
         this.dataProviderService = requireNonNull(dataProviderService, "Data provider service cannot be null");
         this.from = Instant.parse(configuration.getFrom());
@@ -106,7 +115,7 @@ public class Crawler {
         this.crawlerId = CrawlerId.newBuilder().setName(configuration.getName()).build();
         this.sessionAliases = configuration.getSessionAliases();
         metrics = requireNonNull(crawlerContext.getMetrics(), "'metrics' must not be null");
-        info = crawlerConnect(dataProcessor, CrawlerInfo.newBuilder().setId(crawlerId).build());
+        processorObserver = crawlerConnect(processorService);
         // TODO: overrides value of configuration.maxOutgoingDataSize by info.maxOutgoingDataSize if the info's value is less than configuration
         Map<DataType, DataTypeStrategyFactory<Continuation, DataPart>> knownStrategies = loadStrategies();
         DataTypeStrategyFactory<Continuation, DataPart> factory = requireNonNull(knownStrategies.get(crawlerType),
@@ -131,6 +140,18 @@ public class Crawler {
         return info;
     }
 
+    private ProcessorObserver crawlerConnect(@NotNull AsyncProcessorService processorService) {
+        ProcessorObserver handler = new ProcessorObserver(
+                Executors.newSingleThreadScheduledExecutor(),//FIXME: close executor
+                metrics,
+                processorService::processMessage,
+                this::nextInterval,
+                this::storeState
+        );
+        handler.start();
+        return handler;
+    }
+
     private void prepare() {
         if (!floatingToTime && Duration.between(from, to).abs().compareTo(defaultIntervalLength) < 0) {
             throw new IllegalArgumentException("Distance between \"from\" and \"to\" parameters cannot be less" +
@@ -149,9 +170,54 @@ public class Crawler {
         }
     }
 
+    private Duration nextInterval(String dataProcessorName, String dataProcessorVersion) {
+        try {
+            FetchIntervalReport fetchIntervalReport = getOrCreateInterval(dataProcessorName, dataProcessorVersion, crawlerType);
+            Interval interval = fetchIntervalReport.interval;
+
+            if (interval != null) {
+                metrics.currentInterval(interval);
+
+                reachedTo = !floatingToTime && interval.getEndTime().equals(to);
+
+                DataType crawlerType = DataType.byTypeName(interval.getCrawlerType());
+                if (crawlerType != this.crawlerType) {
+                    throw new IllegalStateException("Unexpected data type in state: " + crawlerType + ". Expected type is " + this.crawlerType);
+                }
+
+                InternalInterval currentInt = new InternalInterval(stateService, interval);
+                intervalStartForProcessor(currentInt);
+
+                DataParameters parameters = new DataParameters(crawlerId, sessionAliases);
+                Timestamp startTime = toTimestamp(interval.getStartTime());
+                Timestamp endTime = toTimestamp(interval.getEndTime());
+                LOGGER.trace("Requesting data for interval");
+
+                typeStrategy.loadData(processorObserver, startTime, endTime, parameters); //FIXME: provide event support
+                return Duration.ZERO;
+            }
+
+            long sleepTime = fetchIntervalReport.sleepTime;
+
+            return Duration.of(sleepTime, ChronoUnit.MILLIS);
+        } catch (IOException e) {
+            throw new RuntimeException(e); //FIXME: throw from method
+        }
+    }
+
+    private Unit storeState(InternalInterval interval, Continuation checkpoint) {
+        try {
+            RecoveryState state = typeStrategy.continuationToState(interval.getState(), checkpoint, 0);
+            interval.updateState(state, intervalsWorker);
+        } catch (IOException e) {
+            throw new RuntimeException(e); //FIXME: throw original exception
+        }
+        return Unit.INSTANCE; //FIXME: find another way
+    }
+
     private Duration internalProcess() throws IOException, UnexpectedDataProcessorException {
-        String dataProcessorName = info.getName();
-        String dataProcessorVersion = info.getVersion();
+        String dataProcessorName = ""; // FIXME: these changes have been done for PoC
+        String dataProcessorVersion = "";
 
         FetchIntervalReport fetchIntervalReport = getOrCreateInterval(dataProcessorName, dataProcessorVersion, crawlerType);
 
@@ -251,6 +317,11 @@ public class Crawler {
 
     private CrawlerData<Continuation, DataPart> requestData(Timestamp startTime, Timestamp endTime, Continuation continuation, DataParameters parameters) {
         return typeStrategy.requestData(startTime, endTime, parameters, continuation);
+    }
+
+    private void intervalStartForProcessor(InternalInterval interval) {
+        LOGGER.trace("Notifying about interval start (from {} to {})", interval.getOriginal().getStartTime(), interval.getOriginal().getEndTime());
+        processorObserver.onStartInterval(interval);
     }
 
     private void intervalStartForProcessor(DataProcessorService dataProcessor, Interval interval, RecoveryState state) {

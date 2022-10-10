@@ -14,25 +14,23 @@
  * limitations under the License.
  */
 
-package com.exactpro.th2.crawler.messages.strategy;
-
-import org.jetbrains.annotations.NotNull;
+package com.exactpro.th2.crawler.messages.strategy.load;
 
 import com.exactpro.cradle.intervals.IntervalsWorker;
 import com.exactpro.th2.crawler.CrawlerConfiguration;
 import com.exactpro.th2.crawler.DataType;
 import com.exactpro.th2.crawler.DataTypeStrategy;
 import com.exactpro.th2.crawler.DataTypeStrategyFactory;
-import com.exactpro.th2.crawler.events.strategy.EventsStrategy;
-import com.exactpro.th2.crawler.messages.strategy.MessagesCrawlerData.MessagePart;
-import com.exactpro.th2.crawler.messages.strategy.MessagesCrawlerData.ResumeMessageIDs;
+import com.exactpro.th2.crawler.messages.strategy.load.MessagesCrawlerData.MessagePart;
+import com.exactpro.th2.crawler.messages.strategy.load.MessagesCrawlerData.ResumeMessageIDs;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
 import com.exactpro.th2.crawler.state.StateService;
 import com.exactpro.th2.crawler.state.v1.RecoveryState;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
 import com.google.auto.service.AutoService;
+import org.jetbrains.annotations.NotNull;
 
-//@AutoService(DataTypeStrategyFactory.class)
+@AutoService(DataTypeStrategyFactory.class)
 public class MessagesStrategyFactory implements DataTypeStrategyFactory<ResumeMessageIDs, MessagePart> {
     @NotNull
     @Override

@@ -23,6 +23,8 @@ import com.exactpro.th2.crawler.CrawlerContext
 import com.exactpro.th2.dataprovider.grpc.AsyncDataProviderService
 import com.exactpro.th2.dataprovider.grpc.BulkEventRequest
 import com.exactpro.th2.dataprovider.grpc.BulkEventResponse
+import com.exactpro.th2.dataprovider.grpc.CradleMessageGroupsRequest
+import com.exactpro.th2.dataprovider.grpc.CradleMessageGroupsResponse
 import com.exactpro.th2.dataprovider.grpc.DataProviderService
 import com.exactpro.th2.dataprovider.grpc.EventFiltersRequest
 import com.exactpro.th2.dataprovider.grpc.EventMatchRequest
@@ -76,6 +78,10 @@ class BlockingService(
 
     override fun searchEvents(input: EventSearchRequest?): Iterator<EventSearchResponse> {
         return responses(input, asyncDataProviderService::searchEvents, context.metrics::setBackpressureBufferSize)
+    }
+
+    override fun loadCradleMessageGroups(input: CradleMessageGroupsRequest?): CradleMessageGroupsResponse {
+        return response(input, asyncDataProviderService::loadCradleMessageGroups)
     }
 
     override fun searchMessageGroups(input: MessageGroupsSearchRequest?): Iterator<MessageGroupsSearchResponse> {

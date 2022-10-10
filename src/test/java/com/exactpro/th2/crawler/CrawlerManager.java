@@ -30,6 +30,7 @@ import com.exactpro.cradle.intervals.Interval;
 import com.exactpro.cradle.intervals.IntervalsWorker;
 import com.exactpro.cradle.utils.UpdateNotAppliedException;
 import com.exactpro.th2.common.grpc.EventID;
+import com.exactpro.th2.crawler.dataprocessor.grpc.AsyncProcessorService;
 import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerInfo;
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorInfo;
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService;
@@ -63,6 +64,7 @@ public class CrawlerManager {
     public static final String NAME = "test_crawler";
     public static final String VERSION = "1";
 
+    private final AsyncProcessorService processorServiceMock = mock(AsyncProcessorService.class);
     private final DataProcessorService dataServiceMock = mock(DataProcessorService.class);
     private final DataProviderService dataProviderMock = mock(DataProviderService.class);
     private final CradleStorage storageMock = mock(CradleStorage.class);
@@ -117,7 +119,7 @@ public class CrawlerManager {
         when(metrics.measureTimeWithException(any(DataType.class), any(Method.class), any())).then(invk ->
                 invk.<CrawlerDataOperationWithException<?>>getArgument(2).call());
         CrawlerContext crawlerContext = new CrawlerContext(crawlerTime, metrics, configuration);
-        return new Crawler(stateService, storageMock, dataServiceMock, dataProviderMock, crawlerContext);
+        return new Crawler(stateService, storageMock, processorServiceMock, dataServiceMock, dataProviderMock, crawlerContext);
     }
 
     public static CrawlerConfiguration createConfig(String from, DataType dataType, Set<String> sessions) {

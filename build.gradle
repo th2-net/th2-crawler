@@ -26,7 +26,8 @@ compileTestKotlin {
 
 ext {
     cradleVersion = '3.2.2-TH2-3789-2508815656-SNAPSHOT'
-    grpcCrawlerVersion = '0.3.0-th2-3661-SNAPSHOT'
+    grpcCrawlerVersion = '0.3.0-TH2-4262-reduce-load-on-a-separate-boxes-in-crawler-schema-SNAPSHOT'
+//    grpcCrawlerVersion = '0.3.0'
     sharedDir = file("${project.rootDir}/shared")
 }
 
@@ -42,11 +43,18 @@ dependencies {
     implementation 'com.exactpro.th2:common:3.41.0-TH2-4188-100-msg-sec-throughput-in-end-to-end-test-3133763167-SNAPSHOT'
 
     implementation "com.exactpro.th2:grpc-crawler-data-processor:${grpcCrawlerVersion}"
+
+//    implementation ('com.exactpro.th2:grpc-crawler-data-processor') {
+//        version {//FIXME: remove after encapsulate into grpc-crawler-data-processor
+//            strictly '0.3.0-TH2-4262-reduce-load-on-a-separate-boxes-in-crawler-schema-SNAPSHOT'
+//        }
+//    }
+
+    //    implementation ('com.exactpro.th2:grpc-data-provider:1.1.0')
     implementation ('com.exactpro.th2:grpc-data-provider') {
         version {//FIXME: remove after encapsulate into grpc-crawler-data-processor
-            strictly '1.1.0-TH2-4188-100-msg-sec-throughput-in-end-to-end-test-3081021490-SNAPSHOT'
+            strictly '1.1.0-TH2-4262-reduce-load-on-a-separate-boxes-in-crawler-schema-3218351603-SNAPSHOT'
         }
-
     }
 
     implementation ("com.exactpro.th2:grpc-service-generator") {

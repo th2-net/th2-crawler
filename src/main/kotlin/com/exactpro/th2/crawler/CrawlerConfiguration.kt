@@ -17,7 +17,6 @@
 package com.exactpro.th2.crawler
 
 import com.exactpro.th2.crawler.filters.NameFilter
-import com.fasterxml.jackson.annotation.JsonProperty
 import io.grpc.internal.GrpcUtil
 import java.time.temporal.ChronoUnit
 import java.util.concurrent.TimeUnit
@@ -45,6 +44,9 @@ class CrawlerConfiguration @JvmOverloads constructor(
     val useGroupsForRequest: Boolean = false,
     val initialGrpcRequest: Int = 1000, //TODO: add to readme
     val periodicalGrpcRequest: Int = 300, //TODO: add to readme
+
+    val routingPropertyName: String = "crawler-routing",
+    val routingPropertyValue: String? = null,
 
     val debug: DebugConfiguration = DebugConfiguration() //TODO: add to readme
 )

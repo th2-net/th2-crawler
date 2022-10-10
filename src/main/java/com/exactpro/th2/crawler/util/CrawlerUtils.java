@@ -28,6 +28,9 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import com.exactpro.th2.crawler.DataType;
+import com.exactpro.th2.dataprovider.grpc.CradleMessageGroupsRequest;
+import com.exactpro.th2.dataprovider.grpc.CradleMessageGroupsResponse;
+import com.exactpro.th2.dataprovider.grpc.Group;
 import com.exactpro.th2.dataprovider.grpc.MessageGroupResponse;
 import com.exactpro.th2.dataprovider.grpc.MessageGroupsSearchResponse;
 import com.google.common.collect.AbstractIterator;
@@ -54,7 +57,6 @@ import com.exactpro.th2.dataprovider.grpc.EventSearchRequest;
 import com.exactpro.th2.dataprovider.grpc.EventSearchResponse;
 import com.exactpro.th2.dataprovider.grpc.MessageGroupsSearchRequest;
 import com.exactpro.th2.dataprovider.grpc.MessageGroupsSearchRequest.Builder;
-import com.exactpro.th2.dataprovider.grpc.MessageGroupsSearchRequest.Group;
 import com.exactpro.th2.dataprovider.grpc.MessageSearchRequest;
 import com.exactpro.th2.dataprovider.grpc.MessageSearchResponse;
 import com.exactpro.th2.dataprovider.grpc.MessageStream;
@@ -117,6 +119,23 @@ public class CrawlerUtils {
         return info.isUseGroups()
                 ? searchByGroups(dataProviderService, info, metrics)
                 : searchByAliases(dataProviderService, info, metrics);
+    }
+
+    public static CradleMessageGroupsResponse loadMessages(DataProviderService dataProviderService,
+                                                           MessagesSearchParameters info, CrawlerMetrics metrics) {
+        var request = CradleMessageGroupsRequest.newBuilder()
+                .setStartTimestamp(info.getFrom())
+                .setEndTimestamp(info.getTo())
+                .addAllMessageGroup(requireNonNull(info.getAliases()).stream()
+                        .map(it -> Group.newBuilder().setName(it).build())
+                        .collect(Collectors.toUnmodifiableList()))
+                .setSort(GROUP_SORT);
+        metrics.providerMethodInvoked(ProviderMethod.SEARCH_MESSAGES);
+
+        return metrics.measureTime(
+                DataType.MESSAGES,
+                CrawlerMetrics.Method.REQUEST_DATA,
+                () -> dataProviderService.loadCradleMessageGroups(request.build()));
     }
 
     private static Iterator<MessageSearchResponse> searchByGroups(

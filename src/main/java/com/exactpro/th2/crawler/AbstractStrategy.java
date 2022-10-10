@@ -18,10 +18,13 @@ package com.exactpro.th2.crawler;
 
 import com.exactpro.th2.crawler.AbstractStrategy.AbstractCrawlerData.SizableDataPart;
 import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId;
+import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService;
+import com.exactpro.th2.crawler.handler.ProcessorObserver;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics.CrawlerDataOperation;
 import com.google.common.collect.AbstractIterator;
 import com.google.protobuf.Message;
+import com.google.protobuf.Timestamp;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -189,5 +192,16 @@ public abstract class AbstractStrategy<C extends Continuation, P extends DataPar
 
             @Nullable T pullLast();
         }
+    }
+
+    @Override
+    public void loadData(@NotNull ProcessorObserver observer, @NotNull Timestamp start, @NotNull Timestamp end, @NotNull DataParameters parameters) {
+        throw new UnsupportedOperationException("The class " + getClass().getName() + " doesn't support the loadData operation");
+    }
+
+    @NotNull
+    @Override
+    public Report<C> processData(@NotNull DataProcessorService processor, @NotNull InternalInterval interval, @NotNull DataParameters parameters, @NotNull P data, @Nullable C prevCheckpoint) {
+        throw new UnsupportedOperationException("The class " + getClass().getName() + " doesn't support the processData operation");
     }
 }

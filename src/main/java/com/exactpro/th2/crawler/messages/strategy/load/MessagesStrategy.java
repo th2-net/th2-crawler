@@ -14,15 +14,13 @@
  * limitations under the License.
  */
 
-package com.exactpro.th2.crawler.messages.strategy;
+package com.exactpro.th2.crawler.messages.strategy.load;
 
-import com.exactpro.cradle.intervals.Interval;
 import com.exactpro.th2.common.grpc.ConnectionID;
 import com.exactpro.th2.common.grpc.Direction;
 import com.exactpro.th2.common.grpc.MessageID;
 import com.exactpro.th2.common.message.MessageUtils;
 import com.exactpro.th2.crawler.AbstractStrategy;
-import com.exactpro.th2.crawler.Action;
 import com.exactpro.th2.crawler.CrawlerConfiguration;
 import com.exactpro.th2.crawler.CrawlerData;
 import com.exactpro.th2.crawler.DataParameters;
@@ -36,8 +34,8 @@ import com.exactpro.th2.crawler.dataprocessor.grpc.MessageIDs;
 import com.exactpro.th2.crawler.dataprocessor.grpc.MessageResponse;
 import com.exactpro.th2.crawler.filters.NameFilter;
 import com.exactpro.th2.crawler.handler.ProcessorObserver;
-import com.exactpro.th2.crawler.messages.strategy.MessagesCrawlerData.MessagePart;
-import com.exactpro.th2.crawler.messages.strategy.MessagesCrawlerData.ResumeMessageIDs;
+import com.exactpro.th2.crawler.messages.strategy.load.MessagesCrawlerData.MessagePart;
+import com.exactpro.th2.crawler.messages.strategy.load.MessagesCrawlerData.ResumeMessageIDs;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics.Method;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics.ProcessorMethod;
@@ -46,7 +44,10 @@ import com.exactpro.th2.crawler.state.v1.RecoveryState;
 import com.exactpro.th2.crawler.state.v1.StreamKey;
 import com.exactpro.th2.crawler.util.CrawlerUtils;
 import com.exactpro.th2.crawler.util.MessagesSearchParameters;
+import com.exactpro.th2.dataprovider.grpc.CradleMessageGroupsRequest;
+import com.exactpro.th2.dataprovider.grpc.CradleMessageGroupsResponse;
 import com.exactpro.th2.dataprovider.grpc.DataProviderService;
+import com.exactpro.th2.dataprovider.grpc.Group;
 import com.exactpro.th2.dataprovider.grpc.MessageGroupResponse;
 import com.exactpro.th2.dataprovider.grpc.MessageSearchResponse;
 import com.exactpro.th2.dataprovider.grpc.MessageStream;
@@ -159,7 +160,7 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
         return new MessagesCrawlerData(
                 metrics,
                 config,
-                CrawlerUtils.searchMessages(provider, searchParams, metrics),
+                CrawlerUtils.loadMessages(provider, searchParams, metrics),
                 startIDs,
                 parameters.getCrawlerId(),
                 msg -> filter == null || filter.accept(msg.getMetadata().getMessageType())
@@ -174,57 +175,7 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
             @NotNull DataParameters parameters,
             @NotNull MessagePart data,
             @Nullable ResumeMessageIDs prevCheckpoint) {
-        requireNonNull(processor, "'processor' parameter");
-        requireNonNull(interval, "'interval' parameter");
-        requireNonNull(parameters, "'parameters' parameter");
-        requireNonNull(data, "'data' parameter");
-
-        Interval original = interval.getOriginal();
-
-        MessageDataRequest request = data.getRequest();
-        if (LOGGER.isTraceEnabled()) {
-            LOGGER.trace("Sending request with messages: {}", request.getMessageDataList().stream()
-                    .map(MessagesStrategy::formatMessageId)
-                    .collect(Collectors.joining(",")));
-        }
-        List<MessageGroupResponse> messages = request.getMessageDataList();
-
-        if (messages.isEmpty()) {
-            LOGGER.info("No more messages in interval from: {}, to: {}", original.getStartTime(), original.getEndTime());
-            return Report.empty();
-        }
-
-        // TODO: Extract to separate method
-
-        MessageResponse response = sendMessagesToProcessor(processor, request);
-
-        if (response.hasStatus()) {
-            if (response.getStatus().getHandshakeRequired()) {
-                return Report.handshake();
-            }
-        }
-
-        List<MessageID> responseIds = response.getIdsList();
-
-        Entry<Integer, Map<StreamKey, MessageID>> processedResult = processServiceResponse(responseIds, messages);
-
-        int processedMessagesCount = processedResult == null ? messages.size() : processedResult.getKey();
-        long remaining = messages.size() - processedMessagesCount;
-
-        ResumeMessageIDs continuation = null;
-        if (!responseIds.isEmpty()) {
-            requireNonNull(processedResult, () -> "processServiceResponse cannot be null for not empty IDs in response: " + responseIds);
-            Map<StreamKey, MessageID> checkpoints = processedResult.getValue();
-
-            if (!checkpoints.isEmpty()) {
-
-                Map<StreamKey, MessageID> grouped = new HashMap<>(prevCheckpoint == null ? data.getStartIDs() : prevCheckpoint.getIds());
-                putAndCheck(checkpoints, grouped, "creating continuation from processor response");
-                continuation = new ResumeMessageIDs(data.getStartIDs(), grouped);
-            }
-        }
-
-        return new Report<>(Action.CONTINUE, processedMessagesCount, remaining, continuation);
+        return super.processData(processor, interval, parameters, data, prevCheckpoint);
     }
 
     @NotNull
@@ -387,6 +338,25 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
                 Function.identity(),
                 mergeFunction
         ));
+    }
+
+    @Override
+    public void loadData(ProcessorObserver observer,
+                         @NotNull Timestamp start,
+                         @NotNull Timestamp end,
+                         @NotNull DataParameters parameters) {
+        CradleMessageGroupsRequest.Builder builder = CradleMessageGroupsRequest.newBuilder()
+                        .setStartTimestamp(start)
+                        .setEndTimestamp(end)
+                        .setRoutingPropertyName(config.getRoutingPropertyName())
+                        .setRoutingPropertyValue(config.getRoutingPropertyValue());
+
+        parameters.getSessionAliases().stream()
+                .map(groupName -> Group.newBuilder().setName(groupName).build())
+                        .forEach(builder::addMessageGroup);
+
+        CradleMessageGroupsResponse info = provider.loadCradleMessageGroups(builder.build());
+        observer.onProviderResponse(info);
     }
 
     @NotNull
