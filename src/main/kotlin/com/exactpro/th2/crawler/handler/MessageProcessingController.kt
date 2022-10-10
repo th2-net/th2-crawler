@@ -19,6 +19,7 @@ package com.exactpro.th2.crawler.handler
 import com.exactpro.th2.crawler.state.v1.StreamKey
 import com.exactpro.th2.dataprovider.grpc.MessageIntervalInfo
 import com.exactpro.th2.dataprovider.grpc.MessageStreamInfo
+import mu.KotlinLogging
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import javax.annotation.concurrent.ThreadSafe
 import kotlin.concurrent.read
@@ -51,7 +52,9 @@ class MessageProcessingController {
                 }
             }
 
-        isComplete
+        isComplete.also {
+            LOGGER.debug { "Complete status is $it after decrement $remaining" }
+        }
     }
 
     fun onProviderResponse(intervalInfo: MessageIntervalInfo): Boolean = lock.write {
@@ -67,11 +70,13 @@ class MessageProcessingController {
         }
 
         initialised = true
-        isComplete
+        isComplete.also {
+            LOGGER.debug { "Complete status is $it after provider response $remaining" }
+        }
     }
 
-    override fun toString(): String {
-        TODO()
+    companion object {
+        private val LOGGER = KotlinLogging.logger { }
     }
 }
 

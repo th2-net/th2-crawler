@@ -37,6 +37,7 @@ import com.exactpro.th2.dataprovider.grpc.AsyncDataProviderService
 import com.exactpro.th2.dataprovider.grpc.DataProviderService
 import mu.KotlinLogging
 import java.io.IOException
+import java.time.Duration
 import java.util.*
 import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.TimeUnit
@@ -114,7 +115,8 @@ fun main(args: Array<String>) {
         while (!Thread.currentThread().isInterrupted) {
             val sleepTime = try {
                 if (state.compareAndSet(State.WAIT, State.WORK)) {
-                    crawler.process()
+                    Duration.ofSeconds(10) //FIXME: hard coded for test
+//                    crawler.process()
                 } else {
                     LOGGER.info { "Crawler has state ${state.get()} that does not allow to start processing" }
                     return

@@ -98,16 +98,16 @@ class ProcessorObserver(
         when (value.kindCase) {
             HANDSHAKE -> lock.withLock {
                 metrics.processorMethodInvoked(ProcessorMethod.CRAWLER_CONNECT)
+                LOGGER.info {"Handshake ${shortDebugString(value.handshake)}" }
                 check(state == WAIT_HANDSHAKE) {
                     "Process can't be switch to the $PROCESS state because previous state is $state instead of $WAIT_HANDSHAKE"
                 }
-
-                LOGGER.info("Handshake ${shortDebugString(value.handshake)}")
 
                 handshakeResponse = value.handshake
                 requestNextInterval()
             }
             HANDLE_REPORT -> lock.withLock {
+                LOGGER.debug {"Handle report ${shortDebugString(value.handleReport)}" }
                 check(state == PROCESS || state == WAIT_INTERVAL) {
                     "Report from processor can't be handled, expected $PROCESS or $WAIT_INTERVAL state but actual $state"
                 }
@@ -117,6 +117,7 @@ class ProcessorObserver(
                 }
             }
             STORE_STATE -> lock.withLock {
+                LOGGER.debug {"State storage ${shortDebugString(value.handleReport)}" }
                 check(state == PROCESS || state == WAIT_INTERVAL) {
                     "Store request from processor can't be handled, expected $PROCESS or $WAIT_INTERVAL state but actual $state"
                 }
