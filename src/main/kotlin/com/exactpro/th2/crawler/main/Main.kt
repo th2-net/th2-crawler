@@ -78,11 +78,12 @@ fun main(args: Array<String>) {
         val grpcRouter = factory.grpcRouter
         val processorService = grpcRouter.getService(AsyncProcessorService::class.java)
         val dataProcessor = grpcRouter.getService(DataProcessorService::class.java)
-        val dataProviderService = if(configuration.debug.enableBackpressure) {
-            BlockingService(context, grpcRouter.getService(AsyncDataProviderService::class.java))
-        } else {
-            grpcRouter.getService(DataProviderService::class.java)
-        }
+        val dataProviderService = grpcRouter.getService(DataProviderService::class.java)
+//            if(configuration.debug.enableBackpressure) {
+//            BlockingService(context, grpcRouter.getService(AsyncDataProviderService::class.java))
+//        } else {
+//            grpcRouter.getService(DataProviderService::class.java)
+//        }
 
         // The BOX is alive
         LIVENESS_MONITOR.enable()

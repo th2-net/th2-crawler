@@ -20,6 +20,7 @@ import com.exactpro.th2.crawler.state.v1.StreamKey
 import com.exactpro.th2.dataprovider.grpc.MessageIntervalInfo
 import com.exactpro.th2.dataprovider.grpc.MessageStreamInfo
 import mu.KotlinLogging
+import org.apache.commons.lang3.StringUtils
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import javax.annotation.concurrent.ThreadSafe
 import kotlin.concurrent.read
@@ -58,7 +59,9 @@ class MessageProcessingController {
     }
 
     fun onProviderResponse(intervalInfo: MessageIntervalInfo): Boolean = lock.write {
-        intervalInfo.messagesInfoList.forEach { streamInfo ->
+        intervalInfo.messagesInfoList.asSequence()
+            .filterNot { StringUtils.isBlank(it.sessionAlias) }
+            .forEach { streamInfo ->
             remaining.compute(StreamKey(streamInfo.sessionAlias, streamInfo.direction)) { streamId, previous ->
                 val result = (previous ?: 0L) + streamInfo.numberOfMessages
                 when {

@@ -44,6 +44,8 @@ import com.exactpro.th2.dataprovider.grpc.MessageSearchRequest
 import com.exactpro.th2.dataprovider.grpc.MessageSearchResponse
 import com.exactpro.th2.dataprovider.grpc.MessageStreamsRequest
 import com.exactpro.th2.dataprovider.grpc.MessageStreamsResponse
+import com.google.protobuf.MessageOrBuilder
+import com.google.protobuf.TextFormat
 import io.grpc.stub.ClientCallStreamObserver
 import io.grpc.stub.ClientResponseObserver
 import io.grpc.stub.StreamObserver
@@ -56,67 +58,67 @@ class BlockingService(
     private val asyncDataProviderService: AsyncDataProviderService,
 ) : DataProviderService {
 
-    override fun getEvent(input: EventID?): EventResponse {
+    override fun getEvent(input: EventID): EventResponse {
         return response(input, asyncDataProviderService::getEvent)
     }
 
-    override fun getEvents(input: BulkEventRequest?): BulkEventResponse {
+    override fun getEvents(input: BulkEventRequest): BulkEventResponse {
         return response(input, asyncDataProviderService::getEvents)
     }
 
-    override fun getMessage(input: MessageID?): MessageGroupResponse {
+    override fun getMessage(input: MessageID): MessageGroupResponse {
         return response(input, asyncDataProviderService::getMessage)
     }
 
-    override fun getMessageStreams(input: MessageStreamsRequest?): MessageStreamsResponse {
+    override fun getMessageStreams(input: MessageStreamsRequest): MessageStreamsResponse {
         return response(input, asyncDataProviderService::getMessageStreams)
     }
 
-    override fun searchMessages(input: MessageSearchRequest?): Iterator<MessageSearchResponse> {
+    override fun searchMessages(input: MessageSearchRequest): Iterator<MessageSearchResponse> {
         return responses(input, asyncDataProviderService::searchMessages, context.metrics::setBackpressureBufferSize)
     }
 
-    override fun searchEvents(input: EventSearchRequest?): Iterator<EventSearchResponse> {
+    override fun searchEvents(input: EventSearchRequest): Iterator<EventSearchResponse> {
         return responses(input, asyncDataProviderService::searchEvents, context.metrics::setBackpressureBufferSize)
     }
 
-    override fun loadCradleMessageGroups(input: CradleMessageGroupsRequest?): CradleMessageGroupsResponse {
+    override fun loadCradleMessageGroups(input: CradleMessageGroupsRequest): CradleMessageGroupsResponse {
         return response(input, asyncDataProviderService::loadCradleMessageGroups)
     }
 
-    override fun searchMessageGroups(input: MessageGroupsSearchRequest?): Iterator<MessageGroupsSearchResponse> {
+    override fun searchMessageGroups(input: MessageGroupsSearchRequest): Iterator<MessageGroupsSearchResponse> {
         return responses(input, asyncDataProviderService::searchMessageGroups, context.metrics::setBackpressureBufferSize)
     }
 
-    override fun getMessagesFilters(input: MessageFiltersRequest?): FilterNamesResponse {
+    override fun getMessagesFilters(input: MessageFiltersRequest): FilterNamesResponse {
         return response(input, asyncDataProviderService::getMessagesFilters)
     }
 
-    override fun getEventsFilters(input: EventFiltersRequest?): FilterNamesResponse {
+    override fun getEventsFilters(input: EventFiltersRequest): FilterNamesResponse {
         return response(input, asyncDataProviderService::getEventsFilters)
     }
 
-    override fun getEventFilterInfo(input: FilterInfoRequest?): FilterInfoResponse {
+    override fun getEventFilterInfo(input: FilterInfoRequest): FilterInfoResponse {
         return response(input, asyncDataProviderService::getEventFilterInfo)
     }
 
-    override fun getMessageFilterInfo(input: FilterInfoRequest?): FilterInfoResponse {
+    override fun getMessageFilterInfo(input: FilterInfoRequest): FilterInfoResponse {
         return response(input, asyncDataProviderService::getMessageFilterInfo)
     }
 
-    override fun matchEvent(input: EventMatchRequest?): MatchResponse {
+    override fun matchEvent(input: EventMatchRequest): MatchResponse {
         return response(input, asyncDataProviderService::matchEvent, )
     }
 
-    override fun matchMessage(input: MessageMatchRequest?): MatchResponse {
+    override fun matchMessage(input: MessageMatchRequest): MatchResponse {
         return response(input, asyncDataProviderService::matchMessage)
     }
 
-    private fun <ReqT, RespT> response(request: ReqT, function: (ReqT, StreamObserver<RespT>) -> Unit): RespT {
+    private fun <ReqT : MessageOrBuilder, RespT : MessageOrBuilder> response(request: ReqT, function: (ReqT, StreamObserver<RespT>) -> Unit): RespT {
         return responses(request, function).next()
     }
 
-    private fun <ReqT, RespT> responses(request: ReqT, function: (ReqT, StreamObserver<RespT>) -> Unit, setMetric: (Int) -> Unit = {}): Iterator<RespT> {
+    private fun <ReqT : MessageOrBuilder, RespT : MessageOrBuilder> responses(request: ReqT, function: (ReqT, StreamObserver<RespT>) -> Unit, setMetric: (Int) -> Unit = {}): Iterator<RespT> {
         ClientObserver<ReqT, RespT>(
             context.configuration,
             setMetric
@@ -126,7 +128,7 @@ class BlockingService(
         }
     }
 
-    private class ClientObserver<ReqT, RespT>(
+    private class ClientObserver<ReqT : MessageOrBuilder, RespT: MessageOrBuilder>(
         val config: CrawlerConfiguration,
         setMetric: (Int) -> Unit,
     ) : ClientResponseObserver<ReqT, RespT> {
@@ -145,7 +147,7 @@ class BlockingService(
         }
 
         override fun onNext(value: RespT) {
-            LOGGER.debug { "onNext has been called $value" }
+            LOGGER.debug { "onNext has been called ${TextFormat.shortDebugString(value)}" }
             if (config.debug.enablePeriodicalGrpcRequest) {
                 if (counter.incrementAndGet() % config.periodicalGrpcRequest == 0) {
                     requestStream.request(config.periodicalGrpcRequest)

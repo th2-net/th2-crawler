@@ -53,6 +53,7 @@ import com.exactpro.th2.dataprovider.grpc.MessageSearchResponse;
 import com.exactpro.th2.dataprovider.grpc.MessageStream;
 import com.exactpro.th2.dataprovider.grpc.MessageStreamPointer;
 import com.exactpro.th2.dataprovider.grpc.MessageStreamPointers;
+import com.google.protobuf.TextFormat;
 import com.google.protobuf.Timestamp;
 import kotlin.Pair;
 import org.jetbrains.annotations.NotNull;
@@ -76,6 +77,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static com.google.protobuf.TextFormat.shortDebugString;
 import static java.util.Objects.requireNonNull;
 import static java.util.Objects.requireNonNullElse;
 import static java.util.stream.Collectors.toMap;
@@ -356,6 +358,7 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
                         .forEach(builder::addMessageGroup);
 
         CradleMessageGroupsResponse info = provider.loadCradleMessageGroups(builder.build());
+        LOGGER.info("Load interval " + shortDebugString(builder));
         observer.onProviderResponse(info);
     }
 

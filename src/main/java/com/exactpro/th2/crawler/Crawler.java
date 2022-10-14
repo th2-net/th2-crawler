@@ -29,7 +29,6 @@ import com.exactpro.th2.crawler.dataprocessor.grpc.IntervalInfo;
 import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException;
 import com.exactpro.th2.crawler.exception.UnsupportedRecoveryStateException;
 import com.exactpro.th2.crawler.handler.ProcessorObserver;
-import com.exactpro.th2.crawler.messages.strategy.load.MessagesStrategyFactory;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics.Method;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics.ProcessorMethod;
@@ -44,7 +43,7 @@ import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.xml.crypto.Data;
+import java.io.Closeable;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
@@ -61,7 +60,7 @@ import static java.util.Objects.requireNonNull;
 import static java.util.Objects.requireNonNullElseGet;
 import static java.util.stream.Collectors.toUnmodifiableMap;
 
-public class Crawler {
+public class Crawler implements Closeable {
     private static final Logger LOGGER = LoggerFactory.getLogger(Crawler.class);
 
     public static final BinaryOperator<MessageID> LATEST_SEQUENCE = (first, second) -> first.getSequence() < second.getSequence() ? second : first;
@@ -124,6 +123,11 @@ public class Crawler {
         prepare();
     }
 
+    @Override
+    public void close() {
+        processorObserver.stop();
+    }
+
     @SuppressWarnings("unchecked")
     @NotNull
     private Map<DataType, DataTypeStrategyFactory<Continuation, DataPart>> loadStrategies() {
@@ -146,7 +150,8 @@ public class Crawler {
                 metrics,
                 processorService::processMessage,
                 this::nextInterval,
-                this::storeState
+                this::completeState,
+                this::updateState
         );
         handler.start();
         return handler;
@@ -205,7 +210,16 @@ public class Crawler {
         }
     }
 
-    private Unit storeState(InternalInterval interval, Continuation checkpoint) {
+    private Unit completeState(InternalInterval interval) {
+        try {
+            interval.processed(true, intervalsWorker);
+        } catch (IOException e) {
+            throw new RuntimeException(e); //FIXME: throw original exception
+        }
+        return Unit.INSTANCE; //FIXME: find another way
+    }
+
+    private Unit updateState(InternalInterval interval, Continuation checkpoint) {
         try {
             RecoveryState state = typeStrategy.continuationToState(interval.getState(), checkpoint, 0);
             interval.updateState(state, intervalsWorker);

@@ -51,7 +51,8 @@ class ProcessorObserver(
     private val metrics: CrawlerMetrics,
     private val initProcessing: (StreamObserver<ProcessorResponse>) -> StreamObserver<CrawlerRequest>,
     private val nextInterval: (name: String, version: String) -> Duration,
-    private val storeState: (InternalInterval, Continuation) -> Unit,
+    private val completeState: (InternalInterval) -> Unit,
+    private val updateState: (InternalInterval, Continuation) -> Unit,
 ) : StreamObserver<ProcessorResponse> {
 
     private val lock = ReentrantLock()
@@ -92,13 +93,23 @@ class ProcessorObserver(
 
         requestObserver.onCompleted()
         state = COMPLETE
+
+        try {
+            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                LOGGER.warn { "Failed to shutdown executor service $executor in 5 ms. Forcing shutdown..." }
+                executor.shutdownNow()
+            }
+        } catch (e: Exception) {
+            LOGGER.error(e) {"Failed to shutdown executor service $executor" }
+        }
     }
 
     override fun onNext(value: ProcessorResponse) {
+        LOGGER.debug { "onNext call ${shortDebugString(value)}" }
         when (value.kindCase) {
             HANDSHAKE -> lock.withLock {
-                metrics.processorMethodInvoked(ProcessorMethod.CRAWLER_CONNECT)
                 LOGGER.info {"Handshake ${shortDebugString(value.handshake)}" }
+                metrics.processorMethodInvoked(ProcessorMethod.CRAWLER_CONNECT)
                 check(state == WAIT_HANDSHAKE) {
                     "Process can't be switch to the $PROCESS state because previous state is $state instead of $WAIT_HANDSHAKE"
                 }
@@ -141,6 +152,7 @@ class ProcessorObserver(
     fun onProviderResponse(response: CradleMessageGroupsResponse) {
         if (response.hasMessageIntervalInfo()) {
             lock.withLock {
+                LOGGER.debug { "Process interval info from data-provider ${shortDebugString(response.messageIntervalInfo)}" }
                 check(state == WAIT_INTERVAL) {
                     "Process can't be started because current state is $state instead of $WAIT_INTERVAL"
                 }
@@ -155,6 +167,7 @@ class ProcessorObserver(
     }
 
     fun onStartInterval(interval: InternalInterval) = lock.withLock {
+        LOGGER.debug { "Interval from ${interval.original.startTime} to ${interval.original.endTime} has started" }
         metrics.processorMethodInvoked(ProcessorMethod.INTERVAL_START)
         check(state == NEXT_INTERVAL) {
             "Interval can not be started because state is $state instead of $NEXT_INTERVAL"
@@ -181,6 +194,7 @@ class ProcessorObserver(
         }
 
         if (::processingController.isInitialized) {
+            completeState(currentInterval)
             requestObserver.onNext(CrawlerRequest.newBuilder().apply {
                 intervalEndBuilder.apply {
                     startTime = startTimestamp
@@ -195,15 +209,22 @@ class ProcessorObserver(
     }
 
     private fun nextIntervalTask() {
-        lock.withLock {
-            check(state != NEXT_INTERVAL) {
-                "Observer can not request new interval because current state is $state instead of $NEXT_INTERVAL"
+        try {
+            val handshake = lock.withLock {
+                LOGGER.debug { "next Interval task has acquired lock" }
+                check(state == NEXT_INTERVAL) {
+                    "Observer can not request new interval because current state is $state instead of $NEXT_INTERVAL"
+                }
+
+                handshakeResponse
             }
 
-            val duration = nextInterval(handshakeResponse.name, handshakeResponse.version)
+            val duration = nextInterval(handshake.name, handshake.version)
             if (duration != Duration.ZERO) {
                 executor.schedule(::nextIntervalTask, duration.toMillis(), TimeUnit.MILLISECONDS)
             }
+        } catch (e: RuntimeException) {
+            LOGGER.error(e) { "The next interval task failure" }
         }
     }
 

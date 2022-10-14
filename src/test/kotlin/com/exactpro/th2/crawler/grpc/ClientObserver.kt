@@ -16,18 +16,20 @@
 
 package com.exactpro.th2.crawler.grpc
 
+import com.google.protobuf.MessageOrBuilder
+import com.google.protobuf.TextFormat.shortDebugString
 import io.grpc.stub.StreamObserver
 import mu.KotlinLogging
 import java.util.concurrent.CountDownLatch
 
-class ClientObserver<T>(
+class ClientObserver<T : MessageOrBuilder>(
     private val sampler: Sampler,
     private val step: Int,
 ) : StreamObserver<T> {
     private val done = CountDownLatch(1)
 
     override fun onNext(value: T) {
-        LOGGER.debug { "onNext has been called $value" }
+        LOGGER.debug { "onNext has been called ${shortDebugString(value)}" }
         sampler.inc(step)
     }
 
