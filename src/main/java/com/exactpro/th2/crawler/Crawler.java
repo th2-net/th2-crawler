@@ -53,6 +53,7 @@ import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.function.BinaryOperator;
+import java.util.function.Consumer;
 
 import static com.exactpro.th2.common.message.MessageUtils.toTimestamp;
 import static java.lang.String.format;
@@ -82,6 +83,7 @@ public class Crawler implements Closeable {
     private final StateService<RecoveryState> stateService;
     private final CrawlerMetrics metrics;
     private final DataTypeStrategy<Continuation, DataPart> typeStrategy;
+    private final Runnable shutdown;
 
     private final Instant from;
     private Instant to;
@@ -94,9 +96,11 @@ public class Crawler implements Closeable {
             @NotNull AsyncProcessorService processorService,
             @NotNull DataProcessorService dataProcessor,
             @NotNull DataProviderService dataProviderService,
-            @NotNull CrawlerContext crawlerContext
-    ) {
+            @NotNull CrawlerContext crawlerContext,
+            @NotNull Runnable shutdown
+            ) {
         requireNonNull(crawlerContext, "'Crawler context' cannot be null");
+        this.shutdown = requireNonNull(shutdown, "'shutdown' cannot be null");
         this.configuration = crawlerContext.getConfiguration();
         this.stateService = requireNonNull(stateService, "'state service' cannot be null");
         this.intervalsWorker = requireNonNull(storage, "Cradle storage cannot be null").getIntervalsWorker();
@@ -151,7 +155,8 @@ public class Crawler implements Closeable {
                 processorService::processMessage,
                 this::nextInterval,
                 this::completeState,
-                this::updateState
+                this::updateState,
+                shutdown
         );
         handler.start();
         return handler;

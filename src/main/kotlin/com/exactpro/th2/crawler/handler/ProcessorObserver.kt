@@ -50,9 +50,10 @@ class ProcessorObserver(
     private val executor: ScheduledExecutorService,
     private val metrics: CrawlerMetrics,
     private val initProcessing: (StreamObserver<ProcessorResponse>) -> StreamObserver<CrawlerRequest>,
-    private val nextInterval: (name: String, version: String) -> Duration,
+    private val nextInterval: (String, String) -> Duration,
     private val completeState: (InternalInterval) -> Unit,
     private val updateState: (InternalInterval, Continuation) -> Unit,
+    private val shutdown: Runnable,
 ) : StreamObserver<ProcessorResponse> {
 
     private val lock = ReentrantLock()
@@ -142,11 +143,13 @@ class ProcessorObserver(
     override fun onError(t: Throwable) = lock.withLock {
         LOGGER.error(t) { "Processor throw error" }
         state = COMPLETE
+        shutdown.run()
     }
 
     override fun onCompleted() = lock.withLock {
         LOGGER.info("Processor complete interaction")
         state = COMPLETE
+        shutdown.run()
     }
 
     fun onProviderResponse(response: CradleMessageGroupsResponse) {
@@ -225,6 +228,7 @@ class ProcessorObserver(
             }
         } catch (e: RuntimeException) {
             LOGGER.error(e) { "The next interval task failure" }
+            shutdown.run()
         }
     }
 

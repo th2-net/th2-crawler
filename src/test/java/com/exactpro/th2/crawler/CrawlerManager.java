@@ -119,7 +119,7 @@ public class CrawlerManager {
         when(metrics.measureTimeWithException(any(DataType.class), any(Method.class), any())).then(invk ->
                 invk.<CrawlerDataOperationWithException<?>>getArgument(2).call());
         CrawlerContext crawlerContext = new CrawlerContext(crawlerTime, metrics, configuration);
-        return new Crawler(stateService, storageMock, processorServiceMock, dataServiceMock, dataProviderMock, crawlerContext);
+        return new Crawler(stateService, storageMock, processorServiceMock, dataServiceMock, dataProviderMock, crawlerContext, () -> {});
     }
 
     public static CrawlerConfiguration createConfig(String from, DataType dataType, Set<String> sessions) {

@@ -28,12 +28,10 @@ import com.exactpro.th2.crawler.CrawlerContext
 import com.exactpro.th2.crawler.dataprocessor.grpc.AsyncProcessorService
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService
 import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException
-import com.exactpro.th2.crawler.grpc.BlockingService
 import com.exactpro.th2.crawler.metrics.impl.PrometheusMetrics
 import com.exactpro.th2.crawler.state.StateService
 import com.exactpro.th2.crawler.state.v1.RecoveryState
 import com.exactpro.th2.crawler.util.impl.CrawlerTimeImpl
-import com.exactpro.th2.dataprovider.grpc.AsyncDataProviderService
 import com.exactpro.th2.dataprovider.grpc.DataProviderService
 import mu.KotlinLogging
 import java.io.IOException
@@ -99,7 +97,7 @@ fun main(args: Array<String>) {
             dataProcessor,
             dataProviderService,
             context
-        )
+        ) { exitProcess(2) }
 
         // The BOX is ready to work
         READINESS_MONITOR.enable()
