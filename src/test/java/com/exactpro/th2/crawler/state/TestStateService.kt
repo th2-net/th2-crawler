@@ -16,7 +16,7 @@
 
 package com.exactpro.th2.crawler.state
 
-import com.exactpro.th2.dataprovider.grpc.DataProviderService
+import com.exactpro.th2.dataprovider.lw.grpc.DataProviderService
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.MissingKotlinParameterException
 import org.junit.jupiter.api.Assertions

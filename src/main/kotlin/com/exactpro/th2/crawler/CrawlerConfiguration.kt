@@ -46,7 +46,9 @@ class CrawlerConfiguration @JvmOverloads constructor(
     @JsonProperty
     val workAlone: Boolean = false,
     @JsonProperty
-    val sessionAliases: Set<String> = emptySet(),
+    val bookToGroups: Map<String, Set<String>> = emptyMap(),
+    @JsonProperty
+    val bookToAliases: Map<String, Set<String>> = emptyMap(),
     @JsonProperty
     val maxOutgoingDataSize: Int = GrpcUtil.DEFAULT_MAX_MESSAGE_SIZE,
 
@@ -55,6 +57,4 @@ class CrawlerConfiguration @JvmOverloads constructor(
 
     val shutdownTimeout: Long = 10,
     val shutdownTimeoutUnit: TimeUnit = TimeUnit.SECONDS,
-
-    val useGroupsForRequest: Boolean = false,
 )

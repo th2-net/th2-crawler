@@ -18,6 +18,7 @@
 
 package com.exactpro.th2.crawler.main
 
+import com.exactpro.cradle.BookId
 import com.exactpro.cradle.utils.UpdateNotAppliedException
 import com.exactpro.th2.common.metrics.LIVENESS_MONITOR
 import com.exactpro.th2.common.metrics.READINESS_MONITOR
@@ -29,9 +30,9 @@ import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService
 import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException
 import com.exactpro.th2.crawler.metrics.impl.PrometheusMetrics
 import com.exactpro.th2.crawler.state.StateService
-import com.exactpro.th2.crawler.state.v1.RecoveryState
+import com.exactpro.th2.crawler.state.v2.RecoveryState
 import com.exactpro.th2.crawler.util.impl.CrawlerTimeImpl
-import com.exactpro.th2.dataprovider.grpc.DataProviderService
+import com.exactpro.th2.dataprovider.lw.grpc.DataProviderService
 import mu.KotlinLogging
 import java.io.IOException
 import java.util.Deque
@@ -51,7 +52,7 @@ fun main(args: Array<String>) {
     // Configure shutdown hook for closing all resources
     // and the lock condition to await termination.
     //
-    // If you use the logic that doesn't require additional threads
+    // If you use the logic that doesn't require additional threads,
     // and you can run everything on main thread
     // you can omit the part with locks (but please keep the resources queue)
     val resources: Deque<AutoCloseable> = ConcurrentLinkedDeque()
@@ -73,6 +74,7 @@ fun main(args: Array<String>) {
         val dataProviderService = grpcRouter.getService(DataProviderService::class.java)
 
         val configuration = factory.getCustomConfiguration(CrawlerConfiguration::class.java)
+        val bookId = BookId(factory.boxConfiguration.bookName)
 
         // The BOX is alive
         LIVENESS_MONITOR.enable()
@@ -90,7 +92,8 @@ fun main(args: Array<String>) {
             dataProcessor,
             dataProviderService,
             configuration,
-            context
+            context,
+            bookId
         )
 
         // The BOX is ready to work

@@ -134,7 +134,7 @@ spec:
         box: crawler
         pin: to_data_provider
       to:
-        service-class: com.exactpro.th2.dataprovider.grpc.DataProviderService
+        service-class: com.exactpro.th2.dataprovider.lw.grpc.DataProviderService
         strategy: robin
         box: data-provider
         pin: server
@@ -144,7 +144,7 @@ spec:
         box: crawler
         pin: to_data_processor
       to:
-        service-class: com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService
+        service-class: com.exactpro.th2.crawler.dataprocessor.lw.grpc.DataProcessorService
         strategy: robin
         box: data-service
         pin: server

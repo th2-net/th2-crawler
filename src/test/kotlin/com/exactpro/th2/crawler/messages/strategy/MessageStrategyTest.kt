@@ -20,7 +20,7 @@ import com.exactpro.th2.common.grpc.Direction.FIRST
 import com.exactpro.th2.common.grpc.Direction.SECOND
 import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.crawler.createMessageID
-import com.exactpro.th2.crawler.state.v1.StreamKey
+import com.exactpro.th2.crawler.state.v2.StreamKey
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertAll
@@ -44,12 +44,12 @@ class MessageStrategyTest {
             { messages[2].assertValue(resultLatest) },
         )
 
-        val resultEarlest: Map<StreamKey, MessageID> = MessagesStrategy.associateWithStreamKey(messages.stream(), MessagesStrategy.EARLIEST_SEQUENCE)
+        val resultEarliest: Map<StreamKey, MessageID> = MessagesStrategy.associateWithStreamKey(messages.stream(), MessagesStrategy.EARLIEST_SEQUENCE)
 
         assertAll(
-            { Assertions.assertEquals(2, resultEarlest.size) },
-            { messages[0].assertValue(resultEarlest) },
-//            { messages[3].assertValue(resultEarlest) }, //FIXME: the associateWithStreamKey must consider subsequence
+            { Assertions.assertEquals(2, resultEarliest.size) },
+            { messages[0].assertValue(resultEarliest) },
+//            { messages[3].assertValue(resultEarliest) }, //FIXME: the associateWithStreamKey must consider subsequence
         )
     }
 

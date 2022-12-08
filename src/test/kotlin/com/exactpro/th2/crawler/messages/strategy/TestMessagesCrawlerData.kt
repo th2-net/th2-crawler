@@ -19,19 +19,18 @@ import com.exactpro.th2.common.grpc.ConnectionID
 import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.Message
 import com.exactpro.th2.common.grpc.MessageID
-import com.exactpro.th2.common.message.toTimestamp
+import com.exactpro.th2.crawler.CrawlerManager.BOOK_NAME
 import com.exactpro.th2.crawler.createMessageID
 import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId
-import com.exactpro.th2.crawler.state.v1.StreamKey
-import com.exactpro.th2.dataprovider.grpc.MessageGroupItem
-import com.exactpro.th2.dataprovider.grpc.MessageGroupResponse
-import com.exactpro.th2.dataprovider.grpc.MessageSearchResponse
-import com.exactpro.th2.dataprovider.grpc.MessageStream
-import com.exactpro.th2.dataprovider.grpc.MessageStreamPointer
-import com.exactpro.th2.dataprovider.grpc.MessageStreamPointers
+import com.exactpro.th2.crawler.state.v2.StreamKey
+import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupItem
+import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupResponse
+import com.exactpro.th2.dataprovider.lw.grpc.MessageSearchResponse
+import com.exactpro.th2.dataprovider.lw.grpc.MessageStream
+import com.exactpro.th2.dataprovider.lw.grpc.MessageStreamPointer
+import com.exactpro.th2.dataprovider.lw.grpc.MessageStreamPointers
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
-import java.time.Instant
 
 class TestMessagesCrawlerData {
     private val responses: Collection<MessageSearchResponse> =
@@ -73,8 +72,9 @@ class TestMessagesCrawlerData {
         continuation!!
         Assertions.assertEquals(
             mapOf(
-                StreamKey("test", Direction.FIRST) to MessageID.newBuilder()
+                StreamKey(BOOK_NAME, "test", Direction.FIRST) to MessageID.newBuilder()
                     .setDirection(Direction.FIRST)
+                    .setBookName(BOOK_NAME)
                     .setSequence(9)
                     .setConnectionId(ConnectionID.newBuilder().setSessionAlias("test"))
                     .build()
@@ -109,7 +109,6 @@ class TestMessagesCrawlerData {
                             }
                         })
                     )
-                .setTimestamp(Instant.now().toTimestamp())
                 .build())
             .build()
     }

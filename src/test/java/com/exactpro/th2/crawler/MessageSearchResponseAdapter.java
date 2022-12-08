@@ -19,30 +19,31 @@ package com.exactpro.th2.crawler;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
+import java.util.stream.Collectors;
 
+import com.exactpro.th2.common.grpc.MessageOrBuilder;
 import org.jetbrains.annotations.NotNull;
 
 import com.exactpro.th2.common.grpc.Direction;
 import com.exactpro.th2.common.grpc.Message;
 import com.exactpro.th2.common.grpc.MessageID;
 import com.exactpro.th2.common.grpc.MessageMetadata;
-import com.exactpro.th2.dataprovider.grpc.MessageGroupItem;
-import com.exactpro.th2.dataprovider.grpc.MessageGroupResponse;
-import com.exactpro.th2.dataprovider.grpc.MessageSearchResponse;
-import com.exactpro.th2.dataprovider.grpc.MessageStream;
-import com.exactpro.th2.dataprovider.grpc.MessageStreamPointer;
-import com.exactpro.th2.dataprovider.grpc.MessageStreamPointers;
+import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupItem;
+import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupResponse;
+import com.exactpro.th2.dataprovider.lw.grpc.MessageSearchResponse;
+import com.exactpro.th2.dataprovider.lw.grpc.MessageStream;
+import com.exactpro.th2.dataprovider.lw.grpc.MessageStreamPointer;
+import com.exactpro.th2.dataprovider.lw.grpc.MessageStreamPointers;
 
 public class MessageSearchResponseAdapter implements Iterable<MessageSearchResponse> {
     private final Collection<MessageSearchResponse> response = new ArrayList<>();
 
     public MessageSearchResponseAdapter(Collection<Message> messages) {
-        Collection<MessageSearchResponse> messageResponse = new ArrayList<>();
-
         MessageStreamPointers.Builder streamInfo = MessageStreamPointers.newBuilder();
-        messages.stream()
+        Collection<MessageSearchResponse> messageResponse = messages.stream()
                 .peek(msg -> streamInfo.addMessageStreamPointer(createStream(msg)))
-                .forEach(msg -> messageResponse.add(createStreamResponse(msg)));
+                .map(MessageSearchResponseAdapter::createStreamResponse)
+                .collect(Collectors.toList());
 
         response.add(createStreamResponse(streamInfo.build()));
         response.addAll(messageResponse);
@@ -54,7 +55,7 @@ public class MessageSearchResponseAdapter implements Iterable<MessageSearchRespo
         return response.iterator();
     }
 
-    private static MessageStreamPointer createStream(Message msg) {
+    private static MessageStreamPointer createStream(MessageOrBuilder msg) {
         MessageMetadata metadata = msg.getMetadata();
         MessageID id = metadata.getId();
         Direction direction = id.getDirection();
@@ -76,9 +77,8 @@ public class MessageSearchResponseAdapter implements Iterable<MessageSearchRespo
 
     @NotNull
     public static MessageGroupResponse.Builder createMessageGroupResponse(Message msg) {
-        return MessageGroupResponse.newBuilder()
+            return MessageGroupResponse.newBuilder()
                 .setMessageId(msg.getMetadata().getId())
-                .setTimestamp(msg.getMetadata().getTimestamp())
                 .addMessageItem(MessageGroupItem.newBuilder().setMessage(msg).build());
     }
 }

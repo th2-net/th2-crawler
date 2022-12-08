@@ -16,14 +16,13 @@
 
 package com.exactpro.th2.crawler.metrics;
 
-import java.io.IOException;
-
 import com.exactpro.cradle.intervals.Interval;
+import com.exactpro.cradle.utils.CradleStorageException;
 import com.exactpro.th2.common.grpc.Direction;
 import com.exactpro.th2.crawler.DataType;
 import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException;
-import com.exactpro.th2.dataprovider.grpc.EventResponse;
-import com.exactpro.th2.dataprovider.grpc.MessageGroupResponse;
+import com.exactpro.th2.dataprovider.lw.grpc.EventResponse;
+import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupResponse;
 
 public interface CrawlerMetrics {
 
@@ -39,11 +38,11 @@ public interface CrawlerMetrics {
 
     <T> T measureTime(DataType dataType, Method method, CrawlerDataOperation<T> function);
 
-    <T> T measureTimeWithException(DataType dataType, Method method, CrawlerDataOperationWithException<T> function) throws IOException, UnexpectedDataProcessorException;
+    <T> T measureTimeWithException(DataType dataType, Method method, CrawlerDataOperationWithException<T> function) throws UnexpectedDataProcessorException, CradleStorageException;
 
     void updateProcessedData(DataType dataType, long count);
 
-    enum Method { REQUEST_DATA, PROCESS_DATA, HANDLE_INTERVAL }
+    enum Method {PROCESS_DATA, HANDLE_INTERVAL }
 
     enum ProcessorMethod { CRAWLER_CONNECT, INTERVAL_START, SEND_EVENT, SEND_MESSAGE }
 
@@ -66,6 +65,6 @@ public interface CrawlerMetrics {
     @FunctionalInterface
     interface CrawlerDataOperationWithException<T> {
         // the 'throws' statement can be extended or changed to Exception
-        T call() throws IOException, UnexpectedDataProcessorException;
+        T call() throws UnexpectedDataProcessorException, CradleStorageException;
     }
 }

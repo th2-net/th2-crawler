@@ -16,45 +16,41 @@
 
 package com.exactpro.th2.crawler.util;
 
+import com.exactpro.th2.common.grpc.MessageID;
+import com.exactpro.th2.crawler.state.v2.StreamKey;
+import com.exactpro.th2.dataprovider.lw.grpc.TimeRelation;
+import com.google.protobuf.Timestamp;
+import org.apache.commons.lang3.StringUtils;
+import org.jetbrains.annotations.Nullable;
+
 import java.util.Collection;
 import java.util.Map;
 import java.util.Objects;
 
-import com.exactpro.th2.common.grpc.MessageID;
-import com.exactpro.th2.crawler.state.v1.StreamKey;
-import com.exactpro.th2.dataprovider.grpc.TimeRelation;
-import com.google.protobuf.Timestamp;
-import org.jetbrains.annotations.Nullable;
-
 public class MessagesSearchParameters {
     private final Timestamp from;
     private final Timestamp to;
-    private final Integer batchSize;
     private final Map<StreamKey, MessageID> resumeIds;
-    private final Collection<String> aliases;
-    private final TimeRelation timeRelation;
-
-    private final boolean useGroups;
+    private final Collection<String> streamIds;
+    private final String book;
+    private final TimeRelation timeRelation = TimeRelation.NEXT;
 
     private MessagesSearchParameters(
             Timestamp from,
             Timestamp to,
-            Integer batchSize,
             Map<StreamKey, MessageID> resumeIds,
-            Collection<String> aliases,
-            TimeRelation timeRelation,
-            boolean useGroups
+            Collection<String> streamIds,
+            String book
     ) {
-        if ((aliases == null || aliases.isEmpty()) && (resumeIds == null || resumeIds.isEmpty())) {
-            throw new IllegalArgumentException("either aliases or resumeIds must be set");
+        if ((streamIds == null || streamIds.isEmpty()) && (resumeIds == null || resumeIds.isEmpty())) {
+            throw new IllegalArgumentException("either streamIds or resumeIds must be set");
         }
+        if (StringUtils.isBlank(book)) { throw new IllegalArgumentException("'book' can't be blank"); }
         this.from = Objects.requireNonNull(from, "Timestamp 'from' must not be null");
         this.to = to;
-        this.batchSize = batchSize;
+        this.book = book;
         this.resumeIds = resumeIds;
-        this.aliases = aliases;
-        this.timeRelation = Objects.requireNonNull(timeRelation, "'Time relation' parameter");
-        this.useGroups = useGroups;
+        this.streamIds = streamIds;
     }
 
     public Timestamp getFrom() {
@@ -66,26 +62,21 @@ public class MessagesSearchParameters {
         return to;
     }
 
-    public Integer getBatchSize() {
-        return batchSize;
-    }
-
     @Nullable
     public Map<StreamKey, MessageID> getResumeIds() {
         return resumeIds;
     }
 
-    @Nullable
-    public Collection<String> getAliases() {
-        return aliases;
+    public String getBook() {
+        return book;
+    }
+
+    public Collection<String> getStreamIds() {
+        return streamIds;
     }
 
     public TimeRelation getTimeRelation() {
         return timeRelation;
-    }
-
-    public boolean isUseGroups() {
-        return useGroups;
     }
 
     public static Builder builder() {
@@ -95,11 +86,9 @@ public class MessagesSearchParameters {
     public static class Builder {
         private Timestamp from;
         private Timestamp to;
-        private Integer batchSize;
         private Map<StreamKey, MessageID> resumeIds;
-        private Collection<String> aliases;
-        private TimeRelation timeRelation = TimeRelation.NEXT;
-        private boolean useGroups;
+        private Collection<String> streamIds;
+        private String book;
 
         private Builder() {
         }
@@ -114,33 +103,23 @@ public class MessagesSearchParameters {
             return this;
         }
 
-        public Builder setBatchSize(int batchSize) {
-            this.batchSize = batchSize;
-            return this;
-        }
-
         public Builder setResumeIds(Map<StreamKey, MessageID> resumeIds) {
             this.resumeIds = resumeIds;
             return this;
         }
 
-        public Builder setAliases(Collection<String> aliases) {
-            this.aliases = aliases;
+        public Builder setStreamIds(Collection<String> streamIds) {
+            this.streamIds = streamIds;
             return this;
         }
 
-        public Builder setTimeRelation(TimeRelation timeRelation) {
-            this.timeRelation = timeRelation;
-            return this;
-        }
-
-        public Builder setUseGroups(boolean useGroups) {
-            this.useGroups = useGroups;
+        public Builder setBook(String book) {
+            this.book = book;
             return this;
         }
 
         public MessagesSearchParameters build() {
-            return new MessagesSearchParameters(from, to, batchSize, resumeIds, aliases, timeRelation, useGroups);
+            return new MessagesSearchParameters(from, to, resumeIds, streamIds, book);
         }
     }
 }

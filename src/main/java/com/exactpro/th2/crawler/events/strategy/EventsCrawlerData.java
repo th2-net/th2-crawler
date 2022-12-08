@@ -34,8 +34,8 @@ import com.exactpro.th2.crawler.dataprocessor.grpc.EventDataRequest;
 import com.exactpro.th2.crawler.events.strategy.EventsCrawlerData.EventPart;
 import com.exactpro.th2.crawler.events.strategy.EventsCrawlerData.ResumeEventId;
 import com.exactpro.th2.crawler.util.CrawlerUtils;
-import com.exactpro.th2.dataprovider.grpc.EventResponse;
-import com.exactpro.th2.dataprovider.grpc.EventSearchResponse;
+import com.exactpro.th2.dataprovider.lw.grpc.EventResponse;
+import com.exactpro.th2.dataprovider.lw.grpc.EventSearchResponse;
 
 public class EventsCrawlerData extends AbstractCrawlerData<EventSearchResponse, ResumeEventId, EventPart, EventResponse> {
     private EventResponse lastEvent;

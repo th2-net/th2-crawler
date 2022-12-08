@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2022 Exactpro (Exactpro Systems Limited)
+ * Copyright 2022 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,23 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package com.exactpro.th2.crawler.state.v2
 
-package com.exactpro.th2.crawler.util;
+import com.fasterxml.jackson.annotation.JsonCreator
+import com.fasterxml.jackson.annotation.JsonProperty
+import java.time.Instant
+import java.util.*
 
-import com.google.protobuf.MessageOrBuilder;
-
-import java.util.List;
-import java.util.Objects;
-
-public class SearchResult<T extends MessageOrBuilder> {
-    private final List<T> data;
-
-    public SearchResult(List<T> data) {
-        this.data = Objects.requireNonNull(data, "'Data' parameter");
-    }
-
-    public List<T> getData() {
-        return data;
-    }
-
-}
+data class InnerMessageId @JsonCreator constructor(
+    @param:JsonProperty("timestamp") val timestamp: Instant,
+    @param:JsonProperty("sequence") val sequence: Long
+)

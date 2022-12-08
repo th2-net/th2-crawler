@@ -47,12 +47,12 @@ import com.exactpro.th2.crawler.events.strategy.EventsCrawlerData.ResumeEventId;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics.Method;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics.ProcessorMethod;
-import com.exactpro.th2.crawler.state.v1.InnerEventId;
-import com.exactpro.th2.crawler.state.v1.RecoveryState;
+import com.exactpro.th2.crawler.state.v2.InnerEventId;
+import com.exactpro.th2.crawler.state.v2.RecoveryState;
 import com.exactpro.th2.crawler.util.CrawlerUtils;
 import com.exactpro.th2.crawler.util.CrawlerUtils.EventsSearchParameters;
-import com.exactpro.th2.dataprovider.grpc.DataProviderService;
-import com.exactpro.th2.dataprovider.grpc.EventResponse;
+import com.exactpro.th2.dataprovider.lw.grpc.DataProviderService;
+import com.exactpro.th2.dataprovider.lw.grpc.EventResponse;
 import com.google.protobuf.Timestamp;
 
 import kotlin.Pair;
@@ -78,7 +78,12 @@ public class EventsStrategy extends AbstractStrategy<ResumeEventId, EventPart> {
         requireNonNull(info, "'info' parameter");
         InnerEventId lastProcessedEvent = state == null ? null : state.getLastProcessedEvent();
         if (lastProcessedEvent != null) {
-            info.setLastEventId(EventUtils.toEventID(lastProcessedEvent.getId()));
+            info.setLastEventId(EventUtils.toEventID(
+                    lastProcessedEvent.getStartTimestamp(),
+                    lastProcessedEvent.getBook(),
+                    lastProcessedEvent.getScope(),
+                    lastProcessedEvent.getId())
+            );
         }
     }
 
@@ -117,7 +122,7 @@ public class EventsStrategy extends AbstractStrategy<ResumeEventId, EventPart> {
 
         List<EventResponse> events = eventRequest.getEventDataList();
         if (events.isEmpty()) {
-            LOGGER.info("No more events in interval from: {}, to: {}", original.getStartTime(), original.getEndTime());
+            LOGGER.info("No more events in interval from: {}, to: {}", original.getStart(), original.getEnd());
             return Report.empty();
         }
 
@@ -153,7 +158,12 @@ public class EventsStrategy extends AbstractStrategy<ResumeEventId, EventPart> {
         requireNonNull(state, "'state' parameter");
         InnerEventId innerId = state.getLastProcessedEvent();
         return innerId == null ? null : new ResumeEventId(
-                EventUtils.toEventID(innerId.getId()),
+                EventUtils.toEventID(
+                    innerId.getStartTimestamp(),
+                    innerId.getBook(),
+                    innerId.getScope(),
+                    innerId.getId()
+                ),
                 innerId.getStartTimestamp()
         );
     }
@@ -163,7 +173,12 @@ public class EventsStrategy extends AbstractStrategy<ResumeEventId, EventPart> {
     public RecoveryState continuationToState(@Nullable RecoveryState current, @NotNull EventsCrawlerData.ResumeEventId continuation, long processedData) {
         requireNonNull(continuation, "'continuation' parameter");
         Function<ResumeEventId, InnerEventId> toInnerId = cont ->
-                new InnerEventId(cont.getTimestamp(), cont.getResumeId().getId());
+                new InnerEventId(
+                        cont.getResumeId().getBookName(),
+                        cont.getResumeId().getScope(),
+                        cont.getTimestamp(),
+                        cont.getResumeId().getId()
+                );
         if (current == null) {
             return new RecoveryState(
                     toInnerId.apply(continuation),

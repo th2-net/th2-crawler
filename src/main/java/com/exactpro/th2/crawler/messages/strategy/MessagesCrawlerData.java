@@ -26,6 +26,9 @@ import java.util.Map;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
+import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupItem;
+import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupResponse;
+import com.exactpro.th2.dataprovider.lw.grpc.MessageSearchResponse;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -40,10 +43,7 @@ import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId;
 import com.exactpro.th2.crawler.dataprocessor.grpc.MessageDataRequest;
 import com.exactpro.th2.crawler.messages.strategy.MessagesCrawlerData.MessagePart;
 import com.exactpro.th2.crawler.messages.strategy.MessagesCrawlerData.ResumeMessageIDs;
-import com.exactpro.th2.crawler.state.v1.StreamKey;
-import com.exactpro.th2.dataprovider.grpc.MessageGroupItem;
-import com.exactpro.th2.dataprovider.grpc.MessageGroupResponse;
-import com.exactpro.th2.dataprovider.grpc.MessageSearchResponse;
+import com.exactpro.th2.crawler.state.v2.StreamKey;
 
 public class MessagesCrawlerData extends AbstractCrawlerData<MessageSearchResponse, ResumeMessageIDs, MessagePart, MessageGroupResponse> {
     private static final Logger LOGGER = LoggerFactory.getLogger(MessagesCrawlerData.class);
@@ -51,8 +51,13 @@ public class MessagesCrawlerData extends AbstractCrawlerData<MessageSearchRespon
     private final Predicate<Message> acceptMessages;
     private ResumeMessageIDs resumeMessageIDs;
 
-    public MessagesCrawlerData(Iterator<MessageSearchResponse> data, Map<StreamKey, MessageID> startIDs, CrawlerId id, int maxSize,
-                               Predicate<Message> acceptMessages) {
+    public MessagesCrawlerData(
+            Iterator<MessageSearchResponse> data,
+            Map<StreamKey, MessageID> startIDs,
+            CrawlerId id,
+            int maxSize,
+            Predicate<Message> acceptMessages
+    ) {
         super(data, id, maxSize);
         this.startIDs = requireNonNull(startIDs, "'Start ids' parameter");
         this.acceptMessages = requireNonNull(acceptMessages, "'Accept messages' parameter");

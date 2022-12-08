@@ -16,7 +16,7 @@
 
 package com.exactpro.th2.crawler.state
 
-import com.exactpro.th2.dataprovider.grpc.DataProviderService
+import com.exactpro.th2.dataprovider.lw.grpc.DataProviderService
 
 abstract class StdStateConverter<IN : BaseState, OUT>(
     private val inputClass: Class<IN>,

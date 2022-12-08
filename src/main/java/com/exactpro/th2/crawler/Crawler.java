@@ -16,29 +16,11 @@
 
 package com.exactpro.th2.crawler;
 
-import static com.exactpro.th2.common.message.MessageUtils.toTimestamp;
-import static java.lang.String.format;
-import static java.util.Objects.requireNonNull;
-import static java.util.Objects.requireNonNullElse;
-import static java.util.stream.Collectors.toUnmodifiableMap;
-
-import java.io.IOException;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import java.util.Map;
-import java.util.ServiceLoader;
-import java.util.Set;
-import java.util.function.BinaryOperator;
-
-import org.jetbrains.annotations.NotNull;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import com.exactpro.cradle.BookId;
 import com.exactpro.cradle.CradleStorage;
 import com.exactpro.cradle.intervals.Interval;
 import com.exactpro.cradle.intervals.IntervalsWorker;
-import com.exactpro.th2.common.grpc.MessageID;
+import com.exactpro.cradle.utils.CradleStorageException;
 import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId;
 import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerInfo;
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorInfo;
@@ -50,25 +32,36 @@ import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics.Method;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics.ProcessorMethod;
 import com.exactpro.th2.crawler.state.StateService;
-import com.exactpro.th2.crawler.state.v1.RecoveryState;
+import com.exactpro.th2.crawler.state.v2.RecoveryState;
 import com.exactpro.th2.crawler.util.CrawlerTime;
 import com.exactpro.th2.crawler.util.CrawlerUtils;
-import com.exactpro.th2.dataprovider.grpc.DataProviderService;
+import com.exactpro.th2.dataprovider.lw.grpc.DataProviderService;
 import com.google.protobuf.Timestamp;
+import org.jetbrains.annotations.NotNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.Map;
+import java.util.ServiceLoader;
+
+import static com.exactpro.th2.common.message.MessageUtils.toTimestamp;
+import static java.lang.String.format;
+import static java.util.Objects.requireNonNull;
+import static java.util.Objects.requireNonNullElse;
+import static java.util.stream.Collectors.toUnmodifiableMap;
 
 public class Crawler {
     private static final Logger LOGGER = LoggerFactory.getLogger(Crawler.class);
 
-    public static final BinaryOperator<MessageID> LATEST_SEQUENCE = (first, second) -> first.getSequence() < second.getSequence() ? second : first;
-
     private final DataProcessorService dataProcessor;
-    private final DataProviderService dataProviderService;
     private final IntervalsWorker intervalsWorker;
     private final CrawlerConfiguration configuration;
     private final CrawlerTime crawlerTime;
     private final Duration defaultIntervalLength;
     private final long defaultSleepTime;
-    private final Set<String> sessionAliases;
     private final boolean floatingToTime;
     private final boolean workAlone;
     private final DataType crawlerType;
@@ -77,6 +70,8 @@ public class Crawler {
     private final StateService<RecoveryState> stateService;
     private final CrawlerMetrics metrics;
     private final DataTypeStrategy<Continuation, DataPart> typeStrategy;
+
+    private final BookId bookId;
 
     private final Instant from;
     private Instant to;
@@ -89,23 +84,24 @@ public class Crawler {
             @NotNull DataProcessorService dataProcessor,
             @NotNull DataProviderService dataProviderService,
             @NotNull CrawlerConfiguration configuration,
-            @NotNull CrawlerContext crawlerContext
+            @NotNull CrawlerContext crawlerContext,
+            @NotNull BookId bookId
     ) {
         this.stateService = requireNonNull(stateService, "'state service' cannot be null");
         this.intervalsWorker = requireNonNull(storage, "Cradle storage cannot be null").getIntervalsWorker();
         this.dataProcessor = requireNonNull(dataProcessor, "Data service cannot be null");
-        this.dataProviderService = requireNonNull(dataProviderService, "Data provider service cannot be null");
+        requireNonNull(dataProviderService, "Data provider service cannot be null");
         this.configuration = requireNonNull(configuration, "Crawler configuration cannot be null");
         this.from = Instant.parse(configuration.getFrom());
         this.floatingToTime = configuration.getTo() == null;
         this.workAlone = configuration.getWorkAlone();
         this.crawlerTime = requireNonNull(crawlerContext.getCrawlerTime(), "Crawler time cannot be null");
+        this.bookId = requireNonNull(bookId, "Book id cannot be null");
         this.to = floatingToTime ? crawlerTime.now() : Instant.parse(configuration.getTo());
         this.defaultIntervalLength = Duration.parse(configuration.getDefaultLength());
         this.defaultSleepTime = configuration.getDelay() * 1000;
         this.crawlerType = configuration.getType();
         this.crawlerId = CrawlerId.newBuilder().setName(configuration.getName()).build();
-        this.sessionAliases = configuration.getSessionAliases();
         metrics = requireNonNull(crawlerContext.getMetrics(), "'metrics' must not be null");
         info = crawlerConnect(dataProcessor, CrawlerInfo.newBuilder().setId(crawlerId).build());
         // TODO: overrides value of configuration.maxOutgoingDataSize by info.maxOutgoingDataSize if the info's value is less than configuration
@@ -141,7 +137,7 @@ public class Crawler {
         LOGGER.info("Crawler started working");
     }
 
-    public Duration process() throws IOException, UnexpectedDataProcessorException {
+    public Duration process() throws UnexpectedDataProcessorException, CradleStorageException {
         long start = System.currentTimeMillis();
         try {
             return metrics.measureTimeWithException(crawlerType, Method.HANDLE_INTERVAL, this::internalProcess);
@@ -150,7 +146,7 @@ public class Crawler {
         }
     }
 
-    private Duration internalProcess() throws IOException, UnexpectedDataProcessorException {
+    private Duration internalProcess() throws UnexpectedDataProcessorException, CradleStorageException {
         String dataProcessorName = info.getName();
         String dataProcessorVersion = info.getVersion();
 
@@ -161,7 +157,7 @@ public class Crawler {
         if (interval != null) {
             metrics.currentInterval(interval);
 
-            reachedTo = !floatingToTime && interval.getEndTime().equals(to);
+            reachedTo = !floatingToTime && interval.getEnd().equals(to);
 
             DataType crawlerType = DataType.byTypeName(interval.getCrawlerType());
             if (crawlerType != this.crawlerType) {
@@ -173,11 +169,11 @@ public class Crawler {
             intervalStartForProcessor(dataProcessor, interval, state);
 
             Continuation continuation = state == null ? null : typeStrategy.continuationFromState(state);
-            DataParameters parameters = new DataParameters(crawlerId, sessionAliases);
+            DataParameters parameters = new DataParameters(crawlerId);
             Report<Continuation> sendingReport = null;
             long processedElements = 0L;
-            Timestamp startTime = toTimestamp(interval.getStartTime());
-            Timestamp endTime = toTimestamp(interval.getEndTime());
+            Timestamp startTime = toTimestamp(interval.getStart());
+            Timestamp endTime = toTimestamp(interval.getEnd());
             LOGGER.trace("Requesting data for interval");
             CrawlerData<Continuation, DataPart> data = requestData(startTime, endTime, continuation, parameters);
             long remaining = 0;
@@ -209,7 +205,7 @@ public class Crawler {
                     LOGGER.info("Finishing data iterator because of handshake");
                     int parts = 0;
                     while (data.hasNext()) {
-                        DataPart dataPart = data.next();
+                        data.next();
                         parts++;
                     }
                     LOGGER.info("Remaining parts in data iterator: {}", parts);
@@ -237,7 +233,7 @@ public class Crawler {
                                 : new RecoveryState(state.getLastProcessedEvent(), state.getLastProcessedMessages(), lastNumberOfEvents, lastNumberOfMessages),
                         intervalsWorker
                 );
-                LOGGER.info("Interval from {}, to {} was processed successfully", interval.getStartTime(), interval.getEndTime());
+                LOGGER.info("Interval from {}, to {} was processed successfully", interval.getStart(), interval.getEnd());
                 break;
             default:
                 throw new IllegalStateException("Unsupported report action: " + action);
@@ -255,42 +251,41 @@ public class Crawler {
     }
 
     private void intervalStartForProcessor(DataProcessorService dataProcessor, Interval interval, RecoveryState state) {
-        LOGGER.trace("Notifying about interval start (from {} to {})", interval.getStartTime(), interval.getEndTime());
+        LOGGER.trace("Notifying about interval start (from {} to {})", interval.getStart(), interval.getEnd());
         var intervalInfoBuilder = IntervalInfo.newBuilder()
-                .setStartTime(toTimestamp(interval.getStartTime()))
-                .setEndTime(toTimestamp(interval.getEndTime()));
+                .setStartTime(toTimestamp(interval.getStart()))
+                .setEndTime(toTimestamp(interval.getEnd()));
         typeStrategy.setupIntervalInfo(intervalInfoBuilder, state);
         dataProcessor.intervalStart(intervalInfoBuilder.build());
         metrics.processorMethodInvoked(ProcessorMethod.INTERVAL_START);
     }
 
-    private GetIntervalReport getInterval(Iterable<Interval> intervals) throws IOException {
+    private GetIntervalReport getInterval(Iterable<Interval> intervals) throws CradleStorageException {
         Interval lastInterval = null;
         Interval foundInterval = null;
         long intervalsNumber = 0;
-        boolean processFromStart = true;
 
         for (Interval interval : intervals) {
-            boolean lastUpdateCheck = interval.getLastUpdateDateTime()
+            boolean lastUpdateCheck = interval.getLastUpdate()
                     .isBefore(crawlerTime.now().minus(configuration.getLastUpdateOffset(), configuration.getLastUpdateOffsetUnit()));
 
             intervalsNumber++;
 
             if (compatibilityCheckRequired(interval)) {
-                LOGGER.debug("Checking compatibility for interval from {} to {}", interval.getStartTime(), interval.getEndTime());
+                LOGGER.debug("Checking compatibility for interval from {} to {}", interval.getStart(), interval.getEnd());
                 try {
                     stateService.checkStateCompatibility(interval.getRecoveryState());
                     lastIntervalCompatibilityChecked = getTimeForLastCompatibilityCheck(interval);
                 } catch (Exception ex) {
                     throw new UnsupportedRecoveryStateException(
                             format("The recovery state on interval from %s to %s incompatible: %s",
-                                    interval.getStartTime(), interval.getEndTime(), interval.getRecoveryState()),
+                                    interval.getStart(), interval.getEnd(), interval.getRecoveryState()),
                             ex
                     );
                 }
             }
 
-            LOGGER.trace("Interval from Cassandra from {}, to {}", interval.getStartTime(), interval.getEndTime());
+            LOGGER.trace("Interval from Cassandra from {}, to {}", interval.getStart(), interval.getEnd());
 
             boolean floatingAndMultiple = floatingToTime && !workAlone && !interval.isProcessed() && lastUpdateCheck;
             boolean floatingAndAlone = floatingToTime && workAlone && !interval.isProcessed();
@@ -298,19 +293,17 @@ public class Crawler {
             boolean fixedAndAlone = !floatingToTime && workAlone && (!interval.isProcessed() || lastUpdateCheck);
 
             if (!reachedTo && !floatingToTime) {
-                LOGGER.info("Reached the end of specified time interval: {}", interval.getEndTime());
-                reachedTo = interval.getEndTime().equals(to);
+                LOGGER.info("Reached the end of specified time interval: {}", interval.getEnd());
+                reachedTo = interval.getEnd().equals(to);
             }
 
             if (foundInterval == null && (reachedTo || floatingToTime) && (floatingAndMultiple || floatingAndAlone || fixedAndMultiple || fixedAndAlone)) {
-                processFromStart = interval.isProcessed();
-
                 if (interval.isProcessed()) {
                     interval = intervalsWorker.setIntervalProcessed(interval, false);
                 }
 
                 LOGGER.info("Crawler got interval from: {}, to: {} with Recovery state {}",
-                        interval.getStartTime(), interval.getEndTime(), interval.getRecoveryState());
+                        interval.getStart(), interval.getEnd(), interval.getRecoveryState());
 
                 foundInterval = interval;
             }
@@ -320,10 +313,10 @@ public class Crawler {
 
         LOGGER.info("Crawler retrieved {} intervals from {} to {}", intervalsNumber, from, to);
         if (lastInterval != null) {
-            LOGGER.info("Last interval: {} - {}; state={}", lastInterval.getStartTime(), lastInterval.getEndTime(), lastInterval.getRecoveryState());
+            LOGGER.info("Last interval: {} - {}; state={}", lastInterval.getStart(), lastInterval.getEnd(), lastInterval.getRecoveryState());
         }
 
-        return new GetIntervalReport(foundInterval, lastInterval, processFromStart);
+        return new GetIntervalReport(foundInterval, lastInterval);
     }
 
     private boolean compatibilityCheckRequired(Interval interval) {
@@ -332,10 +325,10 @@ public class Crawler {
     }
 
     private Instant getTimeForLastCompatibilityCheck(Interval interval) {
-        return interval.getStartTime();
+        return interval.getStart();
     }
 
-    private FetchIntervalReport getOrCreateInterval(String name, String version, DataType type) throws IOException {
+    private FetchIntervalReport getOrCreateInterval(String name, String version, DataType type) throws CradleStorageException {
 
         Instant lagNow = crawlerTime.now().minus(configuration.getToLag(), configuration.getToLagOffsetUnit());
 
@@ -345,11 +338,11 @@ public class Crawler {
 
         if (lagNow.isBefore(from)) {
             LOGGER.info("Waiting for start of work. Current time with lag: {} is before \"from\" time of Crawler: {}", lagNow, from);
-            return new FetchIntervalReport(null, getSleepTime(lagNow, from), true);
+            return new FetchIntervalReport(null, getSleepTime(lagNow, from));
         }
 
         LOGGER.trace("Requesting intervals from {} to {} for name {} and version {}", from, to, name, version);
-        Iterable<Interval> intervals = intervalsWorker.getIntervals(from, to, name, version, type.getTypeName());
+        Iterable<Interval> intervals = intervalsWorker.getIntervals(bookId, from, to, name, version, type.getTypeName());
 
         Duration length = defaultIntervalLength;
 
@@ -357,7 +350,7 @@ public class Crawler {
         GetIntervalReport getReport = getInterval(intervals);
 
         if (getReport.foundInterval != null) {
-            return new FetchIntervalReport(getReport.foundInterval, defaultSleepTime, getReport.processFromStart);
+            return new FetchIntervalReport(getReport.foundInterval, defaultSleepTime);
         }
 
         Interval lastInterval = getReport.lastInterval;
@@ -367,7 +360,7 @@ public class Crawler {
         if (lastInterval == null) {
             return createAndStoreInterval(from, from.plus(length), name, version, type, lagNow);
         }
-        Instant lastIntervalEnd = lastInterval.getEndTime();
+        Instant lastIntervalEnd = lastInterval.getEnd();
 
         Instant expectedEnd = lastIntervalEnd.plus(length);
         if (lastIntervalEnd.isBefore(to)) {
@@ -392,7 +385,7 @@ public class Crawler {
                                 Duration.ofMillis(sleepTime));
                     }
 
-                    return new FetchIntervalReport(null, sleepTime, true);
+                    return new FetchIntervalReport(null, sleepTime);
                 }
             }
 
@@ -402,18 +395,18 @@ public class Crawler {
         if (!floatingToTime) {
             LOGGER.info("All intervals between {} and {} were fully processed less than {} {} ago",
                     from, to, configuration.getLastUpdateOffset(), configuration.getLastUpdateOffsetUnit());
-            return new FetchIntervalReport(null, defaultSleepTime, true);
+            return new FetchIntervalReport(null, defaultSleepTime);
         }
 
         LOGGER.info("Failed to create new interval from: {}, to: {} as the end of the last interval is after " +
                         "end time of Crawler: {}",
                 lastIntervalEnd, expectedEnd, to);
 
-        return new FetchIntervalReport(null, getSleepTime(expectedEnd, lagNow),
-                true); // TODO: we need to start from the beginning I guess
+        return new FetchIntervalReport(null, getSleepTime(expectedEnd, lagNow)
+        ); // TODO: we need to start from the beginning I guess
     }
 
-    private FetchIntervalReport createAndStoreInterval(Instant from, Instant to, String name, String version, DataType type, Instant lagTime) throws IOException {
+    private FetchIntervalReport createAndStoreInterval(Instant from, Instant to, String name, String version, DataType type, Instant lagTime) throws CradleStorageException {
 
         long sleepTime = defaultSleepTime;
 
@@ -423,18 +416,19 @@ public class Crawler {
             LOGGER.info("It is too early now to create new interval from: {}, to: {}. " +
                     "Falling asleep for {} millis", from, to, sleepTime);
 
-            return new FetchIntervalReport(null, sleepTime, true);
+            return new FetchIntervalReport(null, sleepTime);
         }
 
         Interval newInterval = Interval.builder()
-                .startTime(from)
-                .endTime(to)
-                .lastUpdateTime(crawlerTime.now())
-                .crawlerName(name)
-                .crawlerVersion(version)
-                .crawlerType(type.getTypeName())
-                .processed(false)
-                .recoveryState(stateService.serialize(
+                .setBookId(bookId)
+                .setStart(from)
+                .setEnd(to)
+                .setLastUpdate(crawlerTime.now())
+                .setCrawlerName(name)
+                .setCrawlerVersion(version)
+                .setCrawlerType(type.getTypeName())
+                .setProcessed(false)
+                .setRecoveryState(stateService.serialize(
                         new RecoveryState(null, null, 0, 0)
                 ))
                 .build();
@@ -445,12 +439,12 @@ public class Crawler {
             LOGGER.info("Failed to store new interval from {} to {}. Trying to get or create an interval again.",
                     from, to);
 
-            return new FetchIntervalReport(null, 0L, true); // setting sleepTime to 0 in order to try again immediately
+            return new FetchIntervalReport(null, 0L); // setting sleepTime to 0 in order to try again immediately
         }
 
-        LOGGER.info("Crawler created interval from: {}, to: {}", newInterval.getStartTime(), newInterval.getEndTime());
+        LOGGER.info("Crawler created interval from: {}, to: {}", newInterval.getStart(), newInterval.getEnd());
 
-        return new FetchIntervalReport(newInterval, sleepTime, true);
+        return new FetchIntervalReport(newInterval, sleepTime);
     }
 
     private long getSleepTime(Instant from, Instant to) {
@@ -460,24 +454,20 @@ public class Crawler {
     private static class GetIntervalReport {
         private final Interval foundInterval;
         private final Interval lastInterval;
-        private final boolean processFromStart;
 
-        private GetIntervalReport(Interval foundInterval, Interval lastInterval, boolean processFromStart) {
+        private GetIntervalReport(Interval foundInterval, Interval lastInterval) {
             this.foundInterval = foundInterval;
             this.lastInterval = lastInterval;
-            this.processFromStart = processFromStart;
         }
     }
 
     private static class FetchIntervalReport {
         private final Interval interval;
         private final long sleepTime;
-        private final boolean processFromStart;
 
-        private FetchIntervalReport(Interval interval, long sleepTime, boolean processFromStart) {
+        private FetchIntervalReport(Interval interval, long sleepTime) {
             this.interval = interval;
             this.sleepTime = sleepTime;
-            this.processFromStart = processFromStart;
         }
     }
 }
