@@ -26,6 +26,7 @@ compileTestKotlin {
 
 ext {
     cradleVersion = '5.0.0-dev-version-5-3647077177-ccc371b-SNAPSHOT'
+    grpcCrawlerVersion = '0.3.1-TH2-4500-migrate-crawler-to-book-and-page-SNAPSHOT'
 }
 
 dependencies {
@@ -39,11 +40,11 @@ dependencies {
     // the library for interaction with infra API
     implementation('com.exactpro.th2:common:5.0.0-dev-version-5-3539375667-SNAPSHOT') {
         exclude group: 'org.apache.logging.log4j', module: 'log4j-slf4j-impl'
-        exclude group: 'com.exactpro.th2', module: 'cradle-core'
         exclude group: 'com.exactpro.th2', module: 'cradle-cassandra'
+        exclude group: 'com.exactpro.th2', module: 'cradle-core'
     }
 
-    implementation 'com.exactpro.th2:grpc-crawler-data-processor:0.3.1-TH2-4500-migrate-crawler-to-book-and-page-SNAPSHOT'
+    implementation "com.exactpro.th2:grpc-crawler-data-processor:${grpcCrawlerVersion}"
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310") {
         because('we need to process java Instant class')
     }
