@@ -47,10 +47,10 @@ public class MessagesStrategyFactory implements DataTypeStrategyFactory<ResumeMe
             @NotNull StateService<RecoveryState> stateService,
             @NotNull CrawlerMetrics metrics,
             @NotNull CrawlerConfiguration config) {
-        if (!config.getBookToGroups().isEmpty() == !config.getBookToAliases().isEmpty()) {
+        if (!config.getGroups().isEmpty() == !config.getAliases().isEmpty()) {
             throw new IllegalStateException("Ony of 'bookToGroups', 'bookToAliases' should be filled");
         }
-        return config.getBookToGroups().isEmpty()
+        return config.getGroups().isEmpty()
                 ? new MessagesStrategy(provider, metrics, config)
                 : new MessagesGroupStrategy(provider, metrics, config);
     }

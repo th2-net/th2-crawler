@@ -27,6 +27,8 @@ import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerInfo;
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorInfo;
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService;
 import com.exactpro.th2.crawler.dataprocessor.grpc.EventDataRequest;
+import com.exactpro.th2.crawler.dataprocessor.grpc.MessageDataRequest;
+import com.exactpro.th2.crawler.dataprocessor.grpc.MessageResponse;
 import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics.CrawlerDataOperation;
@@ -34,12 +36,14 @@ import com.exactpro.th2.crawler.metrics.CrawlerMetrics.CrawlerDataOperationWithE
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics.Method;
 import com.exactpro.th2.crawler.state.StateService;
 import com.exactpro.th2.crawler.state.v2.RecoveryState;
+import com.exactpro.th2.crawler.state.v2.StreamKey;
 import com.exactpro.th2.crawler.util.CrawlerTime;
 import com.exactpro.th2.crawler.util.CrawlerTimeTestImpl;
 import com.exactpro.th2.dataprovider.lw.grpc.DataProviderService;
 import com.exactpro.th2.dataprovider.lw.grpc.EventResponse;
 import com.exactpro.th2.dataprovider.lw.grpc.EventSearchRequest;
 import com.exactpro.th2.dataprovider.lw.grpc.EventSearchResponse;
+import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupResponse;
 import io.grpc.internal.GrpcUtil;
 import org.jetbrains.annotations.NotNull;
 
@@ -48,8 +52,10 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static com.exactpro.th2.common.event.EventUtils.toEventID;
@@ -80,11 +86,16 @@ public class CrawlerManager {
     private final CrawlerConfiguration configuration;
 
     public static final String[] SESSIONS = {"alias1", "alias2"};
+    public static final String[] GROUPS = {"group1", "group2"};
+    public static final String[] SCOPES = {"scope1", "scope2"};
 
+    public CrawlerManager(CrawlerConfiguration configuration, List<Interval> intervals) throws CradleStorageException {
+        this.configuration = configuration;
+        prepare(intervals);
+    }
 
     public CrawlerManager(CrawlerConfiguration configuration) throws CradleStorageException {
-        this.configuration = configuration;
-        prepare();
+        this(configuration, Collections.emptyList());
     }
 
     public DataProcessorService getDataServiceMock() {
@@ -117,22 +128,53 @@ public class CrawlerManager {
         return new Crawler(stateService, storageMock, dataServiceMock, dataProviderMock, configuration, crawlerContext, new BookId(BOOK_NAME));
     }
 
-    public static CrawlerConfiguration createConfig(String from, DataType dataType, Set<String> sessions) {
-        return createConfig(from, dataType, Duration.ofHours(1), sessions, 5, ChronoUnit.MINUTES);
+    public static CrawlerConfiguration createConfig(String from, DataType dataType, Set<String> scopes, Set<String> groups, Set<String> sessionAliases) {
+        return createConfig(
+                from,
+                dataType,
+                Duration.ofHours(1),
+                scopes, groups, sessionAliases,
+                5,
+                ChronoUnit.MINUTES
+        );
     }
 
-    public static CrawlerConfiguration createConfig(String from, DataType dataType, Duration length, Set<String> sessions, int lagOffset, ChronoUnit lagOffsetUnit) {
-        return createConfig(from, dataType, length, sessions, lagOffset, lagOffsetUnit, GrpcUtil.DEFAULT_MAX_MESSAGE_SIZE);
+    public static CrawlerConfiguration createConfig(String from, DataType dataType, Duration length, Set<String> scopes, Set<String> groups, Set<String> sessionAliases, int lagOffset, ChronoUnit lagOffsetUnit) {
+        return createConfig(
+                from,
+                dataType,
+                length,
+                scopes, groups, sessionAliases,
+                lagOffset,
+                lagOffsetUnit,
+                GrpcUtil.DEFAULT_MAX_MESSAGE_SIZE
+        );
     }
 
-    public static CrawlerConfiguration createConfig(String from, DataType dataType, Duration length, Set<String> sessions, int lagOffset, ChronoUnit lagOffsetUnit, int maxOutgoingDataSize) {
-        return new CrawlerConfiguration(from, null, NAME,
-                dataType, length.toString(), 1, ChronoUnit.NANOS, 1, lagOffset,
-                lagOffsetUnit, true, Collections.emptyMap(), Collections.singletonMap(BOOK_NAME, sessions), maxOutgoingDataSize);
+    public static CrawlerConfiguration createConfig(String from, DataType dataType, Duration length, Set<String> scopes, Set<String> groups, Set<String> sessionAliases, int lagOffset, ChronoUnit lagOffsetUnit, int maxOutgoingDataSize) {
+        return new CrawlerConfiguration(
+                from,
+                null,
+                NAME,
+                dataType,
+                length.toString(),
+                1,
+                ChronoUnit.NANOS,
+                1,
+                lagOffset,
+                lagOffsetUnit,
+                true,
+                BOOK_NAME,
+                scopes,
+                groups,
+                sessionAliases,
+                maxOutgoingDataSize
+        );
     }
 
-    private void prepare() throws CradleStorageException {
-        intervals = new ArrayList<>();
+    private void prepare(List<Interval> intervals) throws CradleStorageException {
+        this.intervals = new ArrayList<>();
+        this.intervals.addAll(intervals);
         searchEventResponse = addEvents();
 
         prepareDataProvider();
@@ -185,6 +227,24 @@ public class CrawlerManager {
             EventID eventID = events.get(events.size() - 1).getEventId();
 
             return com.exactpro.th2.crawler.dataprocessor.grpc.EventResponse.newBuilder().setId(eventID).build();
+        });
+
+        when(dataServiceMock.sendMessage(any(MessageDataRequest.class))).then(invocation -> {
+            MessageDataRequest request = invocation.getArgument(0);
+
+            List<MessageGroupResponse> messages = request.getMessageDataList();
+
+            MessageResponse.Builder builder = MessageResponse.newBuilder();
+            messages.stream()
+                    .map(MessageGroupResponse::getMessageId)
+                    .collect(Collectors.toMap(
+                            id -> new StreamKey(id.getBookName(), id.getConnectionId().getSessionAlias(), id.getDirection()),
+                            Function.identity(),
+                            (first, second) -> first.getSequence() > second.getSequence() ? first : second,
+                            LinkedHashMap::new
+                    )).values().forEach(builder::addIds);
+
+            return builder.build();
         });
     }
 

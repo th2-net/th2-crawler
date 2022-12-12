@@ -16,15 +16,6 @@
 
 package com.exactpro.th2.crawler.events.strategy;
 
-import static java.util.Objects.requireNonNull;
-
-import java.time.Instant;
-import java.util.Collection;
-import java.util.Iterator;
-import java.util.List;
-
-import org.jetbrains.annotations.Nullable;
-
 import com.exactpro.th2.common.grpc.EventID;
 import com.exactpro.th2.common.message.MessageUtils;
 import com.exactpro.th2.crawler.AbstractStrategy.AbstractCrawlerData;
@@ -33,9 +24,15 @@ import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId;
 import com.exactpro.th2.crawler.dataprocessor.grpc.EventDataRequest;
 import com.exactpro.th2.crawler.events.strategy.EventsCrawlerData.EventPart;
 import com.exactpro.th2.crawler.events.strategy.EventsCrawlerData.ResumeEventId;
-import com.exactpro.th2.crawler.util.CrawlerUtils;
 import com.exactpro.th2.dataprovider.lw.grpc.EventResponse;
 import com.exactpro.th2.dataprovider.lw.grpc.EventSearchResponse;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.List;
+
+import static java.util.Objects.requireNonNull;
 
 public class EventsCrawlerData extends AbstractCrawlerData<EventSearchResponse, ResumeEventId, EventPart, EventResponse> {
     private EventResponse lastEvent;
@@ -82,7 +79,7 @@ public class EventsCrawlerData extends AbstractCrawlerData<EventSearchResponse, 
     }
 
     public static ResumeEventId resumeIdFromEvent(EventResponse data) {
-        return new ResumeEventId(data.getEventId(), CrawlerUtils.fromTimestamp(data.getStartTimestamp()));
+        return new ResumeEventId(data.getEventId());
     }
 
     public static class EventPart implements SizableDataPart<EventResponse> {
@@ -126,19 +123,14 @@ public class EventsCrawlerData extends AbstractCrawlerData<EventSearchResponse, 
 
     public static class ResumeEventId implements Continuation {
         private final EventID resumeId;
-        private final Instant timestamp;
 
-        public ResumeEventId(EventID resumeId, Instant timestamp) {
+        public ResumeEventId(EventID resumeId) {
             this.resumeId = requireNonNull(resumeId, "'Resume id' parameter");
-            this.timestamp = requireNonNull(timestamp, "'Timestamp' parameter");
         }
 
         public EventID getResumeId() {
             return resumeId;
         }
 
-        public Instant getTimestamp() {
-            return timestamp;
-        }
     }
 }

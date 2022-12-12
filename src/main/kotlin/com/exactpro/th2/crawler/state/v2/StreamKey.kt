@@ -16,11 +16,9 @@
 package com.exactpro.th2.crawler.state.v2
 
 import com.exactpro.th2.common.grpc.Direction
-import com.fasterxml.jackson.annotation.JsonProperty
-import java.util.*
 
 data class StreamKey(
-    @param:JsonProperty("book") val book: String,
-    @param:JsonProperty("sessionAlias") val sessionAlias: String,
-    @param:JsonProperty("direction") val direction: Direction
+    val book: String,
+    val sessionAlias: String,
+    val direction: Direction
 )

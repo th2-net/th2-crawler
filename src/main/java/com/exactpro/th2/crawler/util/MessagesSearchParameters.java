@@ -38,9 +38,9 @@ public class MessagesSearchParameters {
     private MessagesSearchParameters(
             Timestamp from,
             Timestamp to,
-            Map<StreamKey, MessageID> resumeIds,
+            String book,
             Collection<String> streamIds,
-            String book
+            Map<StreamKey, MessageID> resumeIds
     ) {
         if ((streamIds == null || streamIds.isEmpty()) && (resumeIds == null || resumeIds.isEmpty())) {
             throw new IllegalArgumentException("either streamIds or resumeIds must be set");
@@ -119,7 +119,7 @@ public class MessagesSearchParameters {
         }
 
         public MessagesSearchParameters build() {
-            return new MessagesSearchParameters(from, to, resumeIds, streamIds, book);
+            return new MessagesSearchParameters(from, to, book, streamIds, resumeIds);
         }
     }
 }

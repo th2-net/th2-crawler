@@ -16,11 +16,9 @@
 package com.exactpro.th2.crawler.state.v2
 
 import com.fasterxml.jackson.annotation.JsonCreator
-import com.fasterxml.jackson.annotation.JsonProperty
 import java.time.Instant
-import java.util.*
 
 data class InnerMessageId @JsonCreator constructor(
-    @param:JsonProperty("timestamp") val timestamp: Instant,
-    @param:JsonProperty("sequence") val sequence: Long
+    val timestamp: Instant,
+    val sequence: Long
 )

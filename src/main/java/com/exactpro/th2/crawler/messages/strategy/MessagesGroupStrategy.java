@@ -29,34 +29,27 @@ import com.exactpro.th2.crawler.util.CrawlerUtils;
 import com.exactpro.th2.crawler.util.MessagesSearchParameters;
 import com.exactpro.th2.dataprovider.lw.grpc.DataProviderService;
 import com.google.protobuf.Timestamp;
+import org.apache.commons.lang3.StringUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Collections;
 import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
 
 import static java.util.Objects.requireNonNull;
 
 public class MessagesGroupStrategy extends AbstractMessagesStrategy {
-    private final String book;
-    private final Set<String> groups;
     public MessagesGroupStrategy(
             @NotNull DataProviderService provider,
             @NotNull CrawlerMetrics metrics,
             @NotNull CrawlerConfiguration config
     ) {
         super(provider, metrics, config);
-        if(config.getBookToGroups().size() != 1) {
-            throw new IllegalStateException("Current version supports only one book instead of " + config.getBookToGroups().entrySet());
+        if (StringUtils.isBlank(config.getBook())) {
+            throw new IllegalArgumentException("The 'book' property in configuration can not be blank");
         }
-        Optional<Map.Entry<String, Set<String>>> entry = config.getBookToGroups().entrySet().stream().findFirst();
-        if (entry.isPresent()) {
-            this.book = entry.get().getKey();
-            this.groups = entry.get().getValue();
-        } else {
-            throw new IllegalStateException("First book is not presented");
+        if (config.getGroups().isEmpty()) {
+            throw new IllegalArgumentException("The 'groups' property in configuration can not be empty");
         }
     }
 
@@ -73,8 +66,8 @@ public class MessagesGroupStrategy extends AbstractMessagesStrategy {
                 .setFrom(start)
                 .setTo(end)
                 .setResumeIds(resumeIds)
-                .setBook(book)
-                .setStreamIds(groups)
+                .setBook(config.getBook())
+                .setStreamIds(config.getGroups())
                 .build();
 
         NameFilter filter = config.getFilter();

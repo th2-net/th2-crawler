@@ -17,16 +17,14 @@ package com.exactpro.th2.crawler.state.v2
 
 import com.exactpro.th2.crawler.state.BaseState
 import com.fasterxml.jackson.annotation.JsonCreator
-import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize
 import com.fasterxml.jackson.databind.annotation.JsonSerialize
-import java.util.*
 
 data class RecoveryState @JsonCreator constructor(
-    @param:JsonProperty("lastProcessedEvent") val lastProcessedEvent: InnerEventId?,
+    val lastProcessedEvent: InnerEventId?,
     @field:JsonSerialize(converter = StreamKeyMapConverter.Serialize::class)
     @field:JsonDeserialize(converter = StreamKeyMapConverter.Deserialize::class)
-    @param:JsonProperty("lastProcessedMessages") val lastProcessedMessages: Map<StreamKey, InnerMessageId>?,
-    @param:JsonProperty("lastNumberOfEvents") val lastNumberOfEvents: Long,
-    @param:JsonProperty("lastNumberOfMessages") val lastNumberOfMessages: Long
+    val lastProcessedMessages: Map<StreamKey, InnerMessageId>?,
+    val processedEvents: Long,
+    val processedMessages: Long
 ) : BaseState

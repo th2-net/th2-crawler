@@ -1,4 +1,4 @@
-# Crawler (0.0.3)
+# Crawler (1.0.0)
 
 ## Overview
 This component sends events/messages to **crawler data processor** for further processing via **gRPC**.
@@ -144,7 +144,7 @@ spec:
         box: crawler
         pin: to_data_processor
       to:
-        service-class: com.exactpro.th2.crawler.dataprocessor.lw.grpc.DataProcessorService
+        service-class: com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService
         strategy: robin
         box: data-service
         pin: server
@@ -156,8 +156,8 @@ Crawler takes events/messages from intervals with startTimestamps >= "from" and 
 
 # Release notes
 
-### 0.0.4
+### 1.0.0
 
-+ Updated cradle from 3.1.2 to [3.1.3](https://github.com/th2-net/cradleapi/tree/dev-version-3.1#313-this-version-requires-migration-from-previous-versions)
-+ Updated th2-common from 3.39.3 to [3.41.0](https://github.com/th2-net/th2-common-j#3410)
-+ Updated th2-bom from 3.1.0 to 4.0.1
++ Updated cradle from 3.1.2 to [5.0.0-dev-version-5](https://github.com/th2-net/cradleapi/tree/dev-version-5)
++ Updated th2-common from 3.39.3 to [5.0.0-dev-version-5](https://github.com/th2-net/th2-common-j/tree/dev-version-5)
++ Updated th2-bom from 3.1.0 to 4.0.2

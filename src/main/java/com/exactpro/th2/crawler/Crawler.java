@@ -176,7 +176,6 @@ public class Crawler {
             Timestamp endTime = toTimestamp(interval.getEnd());
             LOGGER.trace("Requesting data for interval");
             CrawlerData<Continuation, DataPart> data = requestData(startTime, endTime, continuation, parameters);
-            long remaining = 0;
             while (data.hasNext()) {
                 DataPart nextPart = data.next();
                 Continuation prevCheckpoint = sendingReport == null ? null : sendingReport.getCheckpoint();
@@ -192,7 +191,7 @@ public class Crawler {
                 }
 
                 Continuation checkpoint = sendingReport.getCheckpoint();
-                processedElements += sendingReport.getProcessedData() + remaining;
+                processedElements += nextPart.getSize();
                 if (checkpoint != null) {
                     state = typeStrategy.continuationToState(state, checkpoint, processedElements);
                     currentInt.updateState(state, intervalsWorker);

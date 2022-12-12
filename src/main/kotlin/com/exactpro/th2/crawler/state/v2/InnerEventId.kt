@@ -16,12 +16,11 @@
 package com.exactpro.th2.crawler.state.v2
 
 import com.fasterxml.jackson.annotation.JsonCreator
-import com.fasterxml.jackson.annotation.JsonProperty
 import java.time.Instant
 
 data class InnerEventId @JsonCreator constructor(
-    @param:JsonProperty("book") val book: String,
-    @param:JsonProperty("scope") val scope: String,
-    @param:JsonProperty("startTimestamp") val startTimestamp: Instant,
-    @param:JsonProperty("id") val id: String
+    val book: String,
+    val scope: String,
+    val startTimestamp: Instant,
+    val id: String
 )

@@ -16,13 +16,12 @@
 
 package com.exactpro.th2.crawler.state.v1;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.time.Instant;
 import java.util.Objects;
 import java.util.StringJoiner;
-
-import com.exactpro.cradle.utils.CompressionUtils;
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class InnerMessageId {
     private final Instant timestamp;

@@ -48,7 +48,6 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BinaryOperator;
@@ -117,8 +116,8 @@ public abstract class AbstractMessagesStrategy extends AbstractStrategy<Messages
         putAndCheck(continuation.getIds(), lastProcessedMessages, "creating state from current state and continuation");
 
         return new RecoveryState(current.getLastProcessedEvent(), toInnerMessageIDs(lastProcessedMessages),
-                current.getLastNumberOfEvents(),
-                processedData);
+                current.getProcessedEvents(),
+                current.getProcessedMessages() + processedData);
     }
 
     @NotNull
@@ -161,28 +160,22 @@ public abstract class AbstractMessagesStrategy extends AbstractStrategy<Messages
 
         List<MessageID> responseIds = response.getIdsList();
 
-        Map.Entry<Integer, Map<StreamKey, MessageID>> processedResult = processServiceResponse(responseIds, messages);
-
-        int processedMessagesCount = processedResult == null ? messages.size() : processedResult.getKey();
-        long remaining = messages.size() - processedMessagesCount;
+        Map<StreamKey, MessageID> processedResult = processServiceResponse(responseIds, messages);
 
         MessagesCrawlerData.ResumeMessageIDs continuation = null;
         if (!responseIds.isEmpty()) {
             requireNonNull(processedResult, () -> "processServiceResponse cannot be null for not empty IDs in response: " + responseIds);
-            Map<StreamKey, MessageID> checkpoints = processedResult.getValue();
-
-            if (!checkpoints.isEmpty()) {
-
+            if (!processedResult.isEmpty()) {
                 Map<StreamKey, MessageID> grouped = new HashMap<>(prevCheckpoint == null ? data.getStartIDs() : prevCheckpoint.getIds());
-                putAndCheck(checkpoints, grouped, "creating continuation from processor response");
+                putAndCheck(processedResult, grouped, "creating continuation from processor response");
                 continuation = new MessagesCrawlerData.ResumeMessageIDs(data.getStartIDs(), grouped);
             }
         }
 
-        return new Report<>(Action.CONTINUE, processedMessagesCount, remaining, continuation);
+        return new Report<>(Action.CONTINUE, continuation);
     }
 
-    protected @Nullable Map.Entry<@NotNull Integer, @NotNull Map<StreamKey, MessageID>> processServiceResponse(
+    protected @Nullable Map<StreamKey, MessageID> processServiceResponse(
             List<MessageID> responseIds,
             List<MessageGroupResponse> messages
     ) {
@@ -191,25 +184,15 @@ public abstract class AbstractMessagesStrategy extends AbstractStrategy<Messages
         }
         Map<StreamKey, MessageID> checkpointByDirection = associateWithStreamKey(responseIds.stream(), LATEST_SEQUENCE);
 
-        int messageCount = 0;
-        var skipAliases = new HashSet<String>(responseIds.size());
         for (MessageGroupResponse data : messages) {
             MessageID messageId = data.getMessageId();
             String sessionAlias = messageId.getConnectionId().getSessionAlias();
             // Update the last message for alias + direction
             // FIXME: the update metric implementation one by one is heavy to much
             metrics.lastMessage(sessionAlias, messageId.getDirection(), data);
-            if (skipAliases.contains(sessionAlias)) {
-                continue;
-            }
-            messageCount++;
-            MessageID checkpointId = checkpointByDirection.get(createStreamKeyFrom(messageId));
-            if (messageId.equals(checkpointId)) {
-                skipAliases.add(sessionAlias);
-            }
         }
 
-        return Map.entry(messageCount, checkpointByDirection);
+        return checkpointByDirection;
     }
 
     protected MessageResponse sendMessagesToProcessor(DataProcessorService dataProcessor, MessageDataRequest messageRequest) {

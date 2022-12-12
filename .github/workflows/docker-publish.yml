@@ -35,3 +35,5 @@ jobs:
           push: true
           tags: ghcr.io/${{ github.repository }}:${{ steps.read_property.outputs.release_version }}
           labels: com.exactpro.th2.${{ steps.meta.outputs.REPOSITORY_NAME }}=${{ steps.read_property.outputs.release_version }}
+          build-args: |
+            release_version=${{ steps.release_ver.outputs.value }}

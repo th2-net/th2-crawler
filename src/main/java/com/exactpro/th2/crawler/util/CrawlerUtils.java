@@ -43,6 +43,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.Objects;
 import java.util.function.Function;
@@ -66,12 +67,17 @@ public class CrawlerUtils {
         return Instant.ofEpochSecond(timestamp.getSeconds(), timestamp.getNanos());
     }
 
-    public static Iterator<EventSearchResponse> searchEvents(DataProviderService dataProviderService,
-                                                             EventsSearchParameters info, CrawlerMetrics metrics) {
+    public static Iterator<EventSearchResponse> searchEvents(
+            DataProviderService dataProviderService,
+            EventsSearchParameters info,
+            CrawlerMetrics metrics) {
 
         EventSearchRequest.Builder eventSearchBuilder = EventSearchRequest.newBuilder()
                 .setStartTimestamp(info.from)
                 .setEndTimestamp(info.to);
+        eventSearchBuilder.getBookIdBuilder().setName(info.book);
+        eventSearchBuilder.getScopeBuilder().setName(info.scopes.iterator().next()); // FIXME: pass several scopes
+        LOGGER.warn("Only first {} scope is used instead of the whole {} set", info.scopes.iterator().next(), info.scopes);
 
         EventSearchRequest request;
         if (info.resumeId == null) {
@@ -171,11 +177,15 @@ public class CrawlerUtils {
     public static class EventsSearchParameters {
         private final Timestamp from;
         private final Timestamp to;
+        private final String book;
+        private final Collection<String> scopes;
         private final EventID resumeId;
 
-        public EventsSearchParameters(Timestamp from, Timestamp to, EventID resumeId) {
+        public EventsSearchParameters(Timestamp from, Timestamp to, String book, Collection<String> scopes, EventID resumeId) {
             this.from = Objects.requireNonNull(from, "Timestamp 'from' must not be null");
             this.to = Objects.requireNonNull(to, "Timestamp 'to' must not be null");
+            this.book = book;
+            this.scopes = scopes;
             this.resumeId = resumeId;
         }
     }

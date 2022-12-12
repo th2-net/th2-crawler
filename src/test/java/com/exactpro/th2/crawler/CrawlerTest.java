@@ -20,11 +20,14 @@ import com.exactpro.cradle.BookId;
 import com.exactpro.cradle.intervals.Interval;
 import com.exactpro.cradle.utils.CradleStorageException;
 import com.exactpro.th2.common.grpc.Direction;
+import com.exactpro.th2.common.grpc.Event;
 import com.exactpro.th2.common.grpc.EventID;
 import com.exactpro.th2.common.grpc.Message;
 import com.exactpro.th2.common.grpc.MessageID;
+import com.exactpro.th2.common.grpc.MessageMetadata;
 import com.exactpro.th2.common.grpc.Value;
 import com.exactpro.th2.common.message.MessageUtils;
+import com.exactpro.th2.common.util.StorageUtils;
 import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerInfo;
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorInfo;
 import com.exactpro.th2.crawler.dataprocessor.grpc.EventDataRequest;
@@ -33,46 +36,68 @@ import com.exactpro.th2.crawler.dataprocessor.grpc.MessageDataRequest;
 import com.exactpro.th2.crawler.dataprocessor.grpc.MessageResponse;
 import com.exactpro.th2.crawler.dataprocessor.grpc.Status;
 import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException;
+import com.exactpro.th2.crawler.state.StateService;
+import com.exactpro.th2.crawler.state.v2.InnerEventId;
+import com.exactpro.th2.crawler.state.v2.InnerMessageId;
+import com.exactpro.th2.crawler.state.v2.RecoveryState;
+import com.exactpro.th2.crawler.state.v2.StreamKey;
+import com.exactpro.th2.dataprovider.lw.grpc.DataProviderService;
 import com.exactpro.th2.dataprovider.lw.grpc.EventSearchRequest;
+import com.exactpro.th2.dataprovider.lw.grpc.EventSearchResponse;
 import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupResponse;
+import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupsSearchRequest;
 import com.exactpro.th2.dataprovider.lw.grpc.MessageSearchRequest;
 import com.exactpro.th2.dataprovider.lw.grpc.MessageSearchResponse;
 import com.exactpro.th2.dataprovider.lw.grpc.MessageStream;
 import com.exactpro.th2.dataprovider.lw.grpc.MessageStreamPointer;
 import com.exactpro.th2.dataprovider.lw.grpc.MessageStreamPointers;
+import com.google.protobuf.util.Timestamps;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
+import static com.exactpro.th2.common.message.MessageUtils.toTimestamp;
 import static com.exactpro.th2.crawler.CrawlerManager.BOOK_NAME;
 import static com.exactpro.th2.crawler.TestUtilKt.createMessageID;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 public class CrawlerTest {
+    private static final Logger LOGGER = LoggerFactory.getLogger(CrawlerTest.class);
+    private final StateService<RecoveryState> stateService =
+            StateService.createFromClasspath(RecoveryState.class, Mockito.mock(DataProviderService.class), null);
 
     @Test
     @DisplayName("Returns correct value as a sleep timeout when no intervals created")
     public void returnsCorrectSleepTime() throws UnexpectedDataProcessorException, CradleStorageException {
         Instant time = Instant.now();
         CrawlerConfiguration configuration = CrawlerManager.createConfig(
-                time.toString(), DataType.EVENTS, Duration.ofHours(1), Collections.emptySet(), 0, ChronoUnit.MINUTES);
+                time.toString(), DataType.EVENTS, Duration.ofHours(1), toSet(CrawlerManager.SCOPES), Collections.emptySet(), Collections.emptySet(), 0, ChronoUnit.MINUTES);
         CrawlerManager manager = new CrawlerManager(configuration);
 
         Crawler crawler = manager.createCrawler(() -> time.plus(35, ChronoUnit.MINUTES)); // 25 minutes to the interval
@@ -88,7 +113,7 @@ public class CrawlerTest {
     public void returnsCorrectSleepTimeWhenHasIntervals() throws UnexpectedDataProcessorException, CradleStorageException {
         Instant time = Instant.now();
         CrawlerConfiguration configuration = CrawlerManager.createConfig(
-                time.toString(), DataType.EVENTS, Duration.ofHours(1), Collections.emptySet(), 0, ChronoUnit.MINUTES);
+                time.toString(), DataType.EVENTS, Duration.ofHours(1), toSet(CrawlerManager.SCOPES), Collections.emptySet(), Collections.emptySet(), 0, ChronoUnit.MINUTES);
         CrawlerManager manager = new CrawlerManager(configuration);
         Instant end = time.plus(1, ChronoUnit.HOURS);
         manager.getIntervalsWorkerMock().storeInterval(Interval.builder()
@@ -114,7 +139,7 @@ public class CrawlerTest {
     @DisplayName("Calling method process()")
     public void processMethodCall() throws UnexpectedDataProcessorException, CradleStorageException {
         CrawlerConfiguration configuration = CrawlerManager.createConfig(
-                "2021-06-16T12:00:00.00Z", DataType.EVENTS, Collections.emptySet());
+                "2021-06-16T12:00:00.00Z", DataType.EVENTS, toSet(CrawlerManager.SCOPES), Collections.emptySet(), Collections.emptySet());
         CrawlerManager manager = new CrawlerManager(configuration);
 
         Crawler crawler = manager.createCrawler();
@@ -128,7 +153,7 @@ public class CrawlerTest {
     @Test
     public void testCrawlerMessages() throws UnexpectedDataProcessorException, CradleStorageException {
         CrawlerConfiguration configuration = CrawlerManager.createConfig(
-                "2021-06-16T12:00:00.00Z", DataType.MESSAGES, Set.of(CrawlerManager.SESSIONS));
+                "2021-06-16T12:00:00.00Z", DataType.MESSAGES, Collections.emptySet(), Collections.emptySet(), toSet(CrawlerManager.SESSIONS));
 
         CrawlerManager manager = new CrawlerManager(configuration);
         Crawler crawler = manager.createCrawler();
@@ -150,12 +175,186 @@ public class CrawlerTest {
     }
 
     @Test
+    public void startProcessMessages() throws UnexpectedDataProcessorException, CradleStorageException {
+        Instant from = Instant.parse("2021-06-16T12:00:00.00Z");
+        CrawlerConfiguration configuration = CrawlerManager
+                .createConfig(from.toString(), DataType.MESSAGES, Collections.emptySet(), Collections.emptySet(), toSet(CrawlerManager.SESSIONS));
+        Instant to = from.plus(Duration.parse(configuration.getDefaultLength()));
+
+        CrawlerManager manager = new CrawlerManager(configuration);
+        Crawler crawler = manager.createCrawler();
+
+        Collection<Message> messages = List.of(
+                createMessage(CrawlerManager.SESSIONS[0], Direction.FIRST, 1, from),
+                createMessage(CrawlerManager.SESSIONS[0], Direction.SECOND, 2, from),
+                createMessage(CrawlerManager.SESSIONS[1], Direction.SECOND, 3, from)
+        );
+
+        when(manager.getDataProviderMock().searchMessages(any(MessageSearchRequest.class)))
+                .thenAnswer(invocation ->  new MessageSearchResponseAdapter(messages).iterator());
+
+        crawler.process();
+
+        verify(manager.getDataProviderMock())
+                .searchMessages(eq(createMessageSearchRequest(from, to)));
+
+        verify(manager.getIntervalsWorkerMock(), times(2))
+                .updateRecoveryState(
+                        any(Interval.class),
+                        argThat(argument -> createRecoveryState(Collections.emptyList(), messages).equals(stateService.deserialize(argument)))
+                );
+    }
+    @Test
+    public void startProcessMessageGroups() throws UnexpectedDataProcessorException, CradleStorageException {
+        Instant from = Instant.parse("2021-06-16T12:00:00.00Z");
+        CrawlerConfiguration configuration = CrawlerManager
+                .createConfig(from.toString(), DataType.MESSAGES, Collections.emptySet(), toSet(CrawlerManager.GROUPS), Collections.emptySet());
+        Instant to = from.plus(Duration.parse(configuration.getDefaultLength()));
+
+        CrawlerManager manager = new CrawlerManager(configuration);
+        Crawler crawler = manager.createCrawler();
+
+        Collection<Message> messages = List.of(
+                createMessage(CrawlerManager.SESSIONS[0], Direction.FIRST, 1, from),
+                createMessage(CrawlerManager.SESSIONS[0], Direction.SECOND, 2, from),
+                createMessage(CrawlerManager.SESSIONS[1], Direction.SECOND, 3, from)
+        );
+
+        when(manager.getDataProviderMock().searchMessageGroups(any(MessageGroupsSearchRequest.class)))
+                .thenAnswer(invocation ->  new MessageSearchResponseAdapter(messages).iterator());
+
+        crawler.process();
+
+        verify(manager.getDataProviderMock())
+                .searchMessageGroups(eq(createMessageGroupsSearchRequest(from, to)));
+
+        verify(manager.getIntervalsWorkerMock(), times(2))
+                .updateRecoveryState(
+                        any(Interval.class),
+                        argThat(argument -> createRecoveryState(Collections.emptyList(), messages).equals(stateService.deserialize(argument)))
+                );
+    }
+    @Test
+    public void startProcessEvents() throws UnexpectedDataProcessorException, CradleStorageException {
+        Instant from = Instant.parse("2021-06-16T12:00:00.00Z");
+        CrawlerConfiguration configuration = CrawlerManager
+                .createConfig(from.toString(), DataType.EVENTS, new LinkedHashSet<>(Arrays.asList(CrawlerManager.SCOPES)), Collections.emptySet(), Collections.emptySet());
+        Instant to = from.plus(Duration.parse(configuration.getDefaultLength()));
+
+        CrawlerManager manager = new CrawlerManager(configuration);
+        Crawler crawler = manager.createCrawler();
+
+        Collection<Event> events = List.of(
+                createEvent(CrawlerManager.SCOPES[0], "1", from),
+                createEvent(CrawlerManager.SCOPES[0], "2", from.plusNanos(1)),
+                createEvent(CrawlerManager.SCOPES[1], "3", from.plusNanos(2))
+        );
+
+        when(manager.getDataProviderMock().searchEvents(any(EventSearchRequest.class)))
+                .thenAnswer(invocation -> createEventSearchResponse(events).iterator());
+
+        crawler.process();
+
+        verify(manager.getDataProviderMock())
+                .searchEvents(eq(createEventSearchRequest(from, to)));
+
+        verify(manager.getIntervalsWorkerMock(), times(2))
+                .updateRecoveryState(
+                        any(Interval.class),
+                        argThat(argument -> createRecoveryState(events, Collections.emptyList()).equals(stateService.deserialize(argument)))
+                );
+    }
+    private RecoveryState createRecoveryState(Collection<Event> events, Collection<Message> messages) {
+
+        Optional<InnerEventId> lastEvent = events.stream()
+                .map(Event::getId)
+                .sorted((eventIdA, eventIdB) -> Timestamps.compare(eventIdB.getStartTimestamp(), eventIdA.getStartTimestamp()) )
+                .map(id -> new InnerEventId(id.getBookName(), id.getScope(), StorageUtils.toInstant(id.getStartTimestamp()), id.getId()))
+                .findFirst();
+        Map<StreamKey, InnerMessageId> processedMessages = messages.stream()
+                .map(Message::getMetadata)
+                .map(MessageMetadata::getId)
+                .collect(
+                        Collectors.toMap(
+                                id -> new StreamKey(id.getBookName(), id.getConnectionId().getSessionAlias(), id.getDirection()),
+                                id -> new InnerMessageId(StorageUtils.toInstant(id.getTimestamp()), id.getSequence())
+                        )
+                );
+        RecoveryState recoveryState = new RecoveryState(
+                lastEvent.orElse(null),
+                processedMessages.isEmpty() ? null : processedMessages,
+                events.size(),
+                messages.size()
+        );
+        LOGGER.info("Created recovery state {}", recoveryState);
+
+        return recoveryState;
+    }
+    private MessageSearchRequest createMessageSearchRequest(Instant from, Instant to) {
+        MessageSearchRequest.Builder builder = MessageSearchRequest.newBuilder()
+                .setStartTimestamp(toTimestamp(from))
+                .setEndTimestamp(toTimestamp(to));
+        builder.getBookIdBuilder().setName(CrawlerManager.BOOK_NAME);
+        for (String session : CrawlerManager.SESSIONS) {
+            builder.addStreamBuilder().setName(session).setDirection(Direction.FIRST);
+            builder.addStreamBuilder().setName(session).setDirection(Direction.SECOND);
+        }
+        return builder.build();
+    }
+    private MessageGroupsSearchRequest createMessageGroupsSearchRequest(Instant from, Instant to) {
+        MessageGroupsSearchRequest.Builder builder = MessageGroupsSearchRequest.newBuilder()
+                .setStartTimestamp(toTimestamp(from))
+                .setEndTimestamp(toTimestamp(to));
+        builder.getSortBuilder().setValue(true);
+        builder.getBookIdBuilder().setName(CrawlerManager.BOOK_NAME);
+        for (String group : CrawlerManager.GROUPS) {
+            builder.addMessageGroupBuilder().setName(group);
+        }
+        return builder.build();
+    }
+    private Message createMessage(String sessionAlias, Direction direction, long sequence, Instant timestamp) {
+        Message.Builder builder = MessageUtils.message(CrawlerManager.BOOK_NAME, "msg", direction, sessionAlias);
+        builder.getMetadataBuilder()
+                .getIdBuilder()
+                .setSequence(sequence)
+                .setTimestamp(toTimestamp(timestamp));
+        return builder.build();
+    }
+    private EventSearchRequest createEventSearchRequest(Instant from, Instant to) {
+        EventSearchRequest.Builder builder = EventSearchRequest.newBuilder()
+                .setStartTimestamp(toTimestamp(from))
+                .setEndTimestamp(toTimestamp(to));
+        builder.getBookIdBuilder().setName(CrawlerManager.BOOK_NAME);
+        builder.getScopeBuilder().setName(CrawlerManager.SCOPES[0]); // FIXME: handle several scopes
+        return builder.build();
+    }
+    private List<EventSearchResponse> createEventSearchResponse(Collection<Event> events) {
+        return events.stream()
+                .map(event -> {
+                    EventSearchResponse.Builder builder = EventSearchResponse.newBuilder();
+                    builder.getEventBuilder()
+                            .setEventId(event.getId());
+                    return builder.build();
+                }).collect(Collectors.toList());
+
+    }
+    private Event createEvent(String scope, String id, Instant timestamp) {
+        Event.Builder builder = Event.newBuilder();
+        builder.getIdBuilder()
+                .setBookName(CrawlerManager.BOOK_NAME)
+                .setScope(scope)
+                .setStartTimestamp(toTimestamp(timestamp))
+                .setId(id);
+        return builder.build();
+    }
+
+    @Test
     public void testCrawlerMessagesMaxOutgoingMessageSize() throws UnexpectedDataProcessorException, CradleStorageException {
         Message prototype = MessageReaderKt.parseMessage("{\"metadata\":{\"id\":{\"connectionId\":{\"sessionAlias\":\"alias1\"},\"direction\":\"SECOND\",\"sequence\":\"1635664585511283004\",\"timestamp\":\"2021-10-31T07:18:18.085342Z\",\"bookName\":\"book\"},\"messageType\":\"reqType\",\"protocol\":\"protocol\"}}");
         MessageGroupResponse prototypeResp = MessageSearchResponseAdapter.createMessageGroupResponse(prototype).build();
 
         CrawlerConfiguration configuration = CrawlerManager.createConfig(
-                "2021-06-16T12:00:00.00Z", DataType.MESSAGES, Duration.ofHours(1), Set.of(CrawlerManager.SESSIONS), 5, ChronoUnit.MINUTES, prototypeResp.getSerializedSize() * 3);
+                "2021-06-16T12:00:00.00Z", DataType.MESSAGES, Duration.ofHours(1), Collections.emptySet(), Collections.emptySet(), toSet(CrawlerManager.SESSIONS), 5, ChronoUnit.MINUTES, prototypeResp.getSerializedSize() * 3);
 
         CrawlerManager manager = new CrawlerManager(configuration);
         Crawler crawler = manager.createCrawler();
@@ -198,7 +397,7 @@ public class CrawlerTest {
         Message prototype = MessageReaderKt.parseMessage("{\"metadata\":{\"id\":{\"connectionId\":{\"sessionAlias\":\"alias1\"},\"direction\":\"SECOND\",\"sequence\":\"1635664585511283004\",\"timestamp\":\"2021-10-31T07:18:18.085342Z\"},\"messageType\":\"reqType\",\"protocol\":\"protocol\"}}");
 
         CrawlerConfiguration configuration = CrawlerManager.createConfig(
-                "2021-06-16T12:00:00.00Z", DataType.MESSAGES, Duration.ofHours(1), Set.of(CrawlerManager.SESSIONS), 5, ChronoUnit.MINUTES, prototype.getSerializedSize() * 2);
+                "2021-06-16T12:00:00.00Z", DataType.MESSAGES, Duration.ofHours(1), Collections.emptySet(), Collections.emptySet(), toSet(CrawlerManager.SESSIONS), 5, ChronoUnit.MINUTES, prototype.getSerializedSize() * 2);
 
         CrawlerManager manager = new CrawlerManager(configuration);
         Crawler crawler = manager.createCrawler();
@@ -231,7 +430,7 @@ public class CrawlerTest {
     @DisplayName("Requiring handshake, getting other name and version")
     public void handshakeNeededAnother() throws UnexpectedDataProcessorException, CradleStorageException {
         CrawlerConfiguration configuration = CrawlerManager.createConfig(
-                "2021-06-16T12:00:00.00Z", DataType.EVENTS, Collections.emptySet());
+                "2021-06-16T12:00:00.00Z", DataType.EVENTS, toSet(CrawlerManager.SCOPES), Collections.emptySet(), Collections.emptySet());
 
         CrawlerManager manager = new CrawlerManager(configuration);
         Crawler crawler = manager.createCrawler();
@@ -256,7 +455,7 @@ public class CrawlerTest {
     @DisplayName("Crawler's actions when a data service fails")
     public void dataServiceFail() throws UnexpectedDataProcessorException, CradleStorageException {
         CrawlerConfiguration configuration = CrawlerManager.createConfig(
-                "2021-06-16T12:00:00.00Z", DataType.MESSAGES, Set.of(CrawlerManager.SESSIONS));
+                "2021-06-16T12:00:00.00Z", DataType.MESSAGES, Collections.emptySet(), Collections.emptySet(), toSet(CrawlerManager.SESSIONS));
 
         CrawlerManager manager = new CrawlerManager(configuration);
         Crawler crawler = manager.createCrawler();
@@ -300,5 +499,9 @@ public class CrawlerTest {
         when(manager.getDataServiceMock().sendMessage(any(MessageDataRequest.class))).thenThrow(new RuntimeException(exceptionMessage));
 
         Assertions.assertThrows(RuntimeException.class, crawler::process, exceptionMessage);
+    }
+
+    private Set<String> toSet(String[] array) {
+        return new LinkedHashSet<>(Arrays.asList(array));
     }
 }

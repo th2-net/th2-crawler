@@ -110,14 +110,12 @@ class DataParameters(
 
 data class Report<out C> @JvmOverloads constructor(
     val action: Action,
-    val processedData: Long,
-    val remainingData: Long,
     val checkpoint: C? = null
 ) {
     companion object {
-        private val HANDSHAKE = Report<Nothing>(Action.HANDSHAKE, 0, 0)
+        private val HANDSHAKE = Report<Nothing>(Action.HANDSHAKE)
 
-        private val EMPTY = Report<Nothing>(Action.CONTINUE, 0, 0)
+        private val EMPTY = Report<Nothing>(Action.CONTINUE)
 
         @JvmStatic
         fun <C> handshake(): Report<C> = HANDSHAKE
