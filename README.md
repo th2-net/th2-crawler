@@ -102,6 +102,7 @@ spec:
         delay: 10
         toLag: 5
         toLagOffsetUnit: MINUTES
+        book: book1
         scopes:
           - scope1
     pins:
