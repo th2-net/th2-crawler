@@ -16,6 +16,7 @@ The Crawler processes the data starting from this point in time. **Required para
 The Crawler does not process the data after this point in time. **If it is not set the Crawler will work until it is stopped.**
 
 **type: _EVENTS_** - the type of data the Crawler processes. Allowed values are **EVENTS**, **MESSAGES**. The default value is **EVENTS**.
+Also, crawler has scopes, groups, sessionAliases options. Chosen type expects filled value for one of them: EVENTS: scopes, MESSAGES: sessionAliases or groups
 
 **name: _CrawlerName_** - the Crawler's name to allow data processor to identify it. **Required parameter**
 
@@ -45,7 +46,13 @@ The default value is **HOURS**.
 processing the same intervals. If it is set to false, Crawler will not try to capture 
 the interval that another Crawler is processing at the moment. The default value is `false`.
 
-**sessionAliases: [alias1, alias2]** - aliases that Crawler will search messages by.
+**book** - book name that Crawler will search messages by.
+
+**sessionAliases: [alias1, alias2]** - session aliases that Crawler will search messages by.
+
+**groups: [group1, group2]** - cradle groups that Crawler will search messages by.
+
+**scopes: [scope1]** - event scope that Crawler will search events by. The current implementation supports processing by only one scope
 
 **shutdownTimeout: 10** - the timeout to wait until crawler finished the current processing task if it has one.
 The value will be interpreted as _shutdownTimeoutUnit_ unit. The default value is 10
@@ -95,6 +102,8 @@ spec:
         delay: 10
         toLag: 5
         toLagOffsetUnit: MINUTES
+        scopes:
+          - scope1
     pins:
       - name: to_data_provider
         connection-type: grpc
@@ -158,6 +167,7 @@ Crawler takes events/messages from intervals with startTimestamps >= "from" and 
 
 ### 1.0.0
 
++ Migrated to book and page th2 architecture. 
 + Updated cradle from 3.1.2 to [5.0.0-dev-version-5](https://github.com/th2-net/cradleapi/tree/dev-version-5)
 + Updated th2-common from 3.39.3 to [5.0.0-dev-version-5](https://github.com/th2-net/th2-common-j/tree/dev-version-5)
 + Updated th2-bom from 3.1.0 to 4.0.2

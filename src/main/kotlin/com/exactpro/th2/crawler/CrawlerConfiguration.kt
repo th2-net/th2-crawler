@@ -52,7 +52,7 @@ class CrawlerConfiguration @JvmOverloads constructor(
     @JsonProperty
     val groups: Set<String> = emptySet(),
     @JsonProperty
-    val aliases: Set<String> = emptySet(),
+    val sessionAliases: Set<String> = emptySet(),
     @JsonProperty
     val maxOutgoingDataSize: Int = GrpcUtil.DEFAULT_MAX_MESSAGE_SIZE,
 

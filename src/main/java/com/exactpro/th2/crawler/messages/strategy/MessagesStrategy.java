@@ -53,8 +53,8 @@ public class MessagesStrategy extends AbstractMessagesStrategy {
         if (StringUtils.isBlank(config.getBook())) {
             throw new IllegalArgumentException("The 'book' property in configuration can not be blank");
         }
-        if (config.getAliases().isEmpty()) {
-            throw new IllegalArgumentException("The 'aliases' property in configuration can not be empty");
+        if (config.getSessionAliases().isEmpty()) {
+            throw new IllegalArgumentException("The 'sessionAliases' property in configuration can not be empty");
         }
     }
 
@@ -70,13 +70,13 @@ public class MessagesStrategy extends AbstractMessagesStrategy {
         requireNonNull(end, "'end' parameter");
         requireNonNull(parameters, "'parameters' parameter");
         Map<StreamKey, MessageID> resumeIds = continuation == null ? null : continuation.getIds();
-        Map<StreamKey, MessageID> startIDs = resumeIds == null ? initialStartIds(config.getBook(), config.getAliases()) : resumeIds;
+        Map<StreamKey, MessageID> startIDs = resumeIds == null ? initialStartIds(config.getBook(), config.getSessionAliases()) : resumeIds;
         MessagesSearchParameters searchParams = MessagesSearchParameters.builder()
                 .setFrom(start)
                 .setTo(end)
                 .setBook(config.getBook())
                 .setResumeIds(resumeIds)
-                .setStreamIds(config.getAliases())
+                .setStreamIds(config.getSessionAliases())
                 .build();
 
         NameFilter filter = config.getFilter();
