@@ -16,22 +16,21 @@
 
 package com.exactpro.th2.crawler.messages.strategy;
 
-import org.jetbrains.annotations.NotNull;
-
 import com.exactpro.cradle.intervals.IntervalsWorker;
 import com.exactpro.th2.crawler.CrawlerConfiguration;
 import com.exactpro.th2.crawler.DataType;
 import com.exactpro.th2.crawler.DataTypeStrategy;
 import com.exactpro.th2.crawler.DataTypeStrategyFactory;
-import com.exactpro.th2.crawler.events.strategy.EventsStrategy;
 import com.exactpro.th2.crawler.messages.strategy.MessagesCrawlerData.MessagePart;
 import com.exactpro.th2.crawler.messages.strategy.MessagesCrawlerData.ResumeMessageIDs;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
 import com.exactpro.th2.crawler.state.StateService;
-import com.exactpro.th2.crawler.state.v1.RecoveryState;
-import com.exactpro.th2.dataprovider.grpc.DataProviderService;
+import com.exactpro.th2.crawler.state.v2.RecoveryState;
+import com.exactpro.th2.dataprovider.lw.grpc.DataProviderService;
 import com.google.auto.service.AutoService;
+import org.jetbrains.annotations.NotNull;
 
+@SuppressWarnings("unused")
 @AutoService(DataTypeStrategyFactory.class)
 public class MessagesStrategyFactory implements DataTypeStrategyFactory<ResumeMessageIDs, MessagePart> {
     @NotNull
@@ -48,6 +47,11 @@ public class MessagesStrategyFactory implements DataTypeStrategyFactory<ResumeMe
             @NotNull StateService<RecoveryState> stateService,
             @NotNull CrawlerMetrics metrics,
             @NotNull CrawlerConfiguration config) {
-        return new MessagesStrategy(provider, metrics, config);
+        if (!config.getGroups().isEmpty() == !config.getSessionAliases().isEmpty()) {
+            throw new IllegalStateException("Ony of 'groups', 'sessionAliases' should be filled");
+        }
+        return config.getGroups().isEmpty()
+                ? new MessagesStrategy(provider, metrics, config)
+                : new MessagesGroupStrategy(provider, metrics, config);
     }
 }

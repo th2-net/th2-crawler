@@ -17,16 +17,16 @@ package com.exactpro.th2.crawler
 
 import com.exactpro.cradle.intervals.Interval
 import com.exactpro.cradle.intervals.IntervalsWorker
+import com.exactpro.cradle.utils.CradleStorageException
 import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId
 import com.exactpro.th2.crawler.dataprocessor.grpc.DataProcessorService
 import com.exactpro.th2.crawler.dataprocessor.grpc.IntervalInfo
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics
 import com.exactpro.th2.crawler.state.StateService
-import com.exactpro.th2.crawler.state.v1.RecoveryState
-import com.exactpro.th2.dataprovider.grpc.DataProviderService
+import com.exactpro.th2.crawler.state.v2.RecoveryState
+import com.exactpro.th2.dataprovider.lw.grpc.DataProviderService
 import com.google.protobuf.Timestamp
 import mu.KotlinLogging
-import java.io.IOException
 
 interface DataTypeStrategy<C : Continuation, D : DataPart> {
     fun setupIntervalInfo(info: IntervalInfo.Builder, state: RecoveryState?)
@@ -105,20 +105,17 @@ interface DataTypeStrategyFactory<C : Continuation, D : DataPart> {
 }
 
 class DataParameters(
-    val crawlerId: CrawlerId,
-    val sessionAliases: Collection<String> = emptyList(),
+    val crawlerId: CrawlerId
 )
 
 data class Report<out C> @JvmOverloads constructor(
     val action: Action,
-    val processedData: Long,
-    val remainingData: Long,
     val checkpoint: C? = null
 ) {
     companion object {
-        private val HANDSHAKE = Report<Nothing>(Action.HANDSHAKE, 0, 0)
+        private val HANDSHAKE = Report<Nothing>(Action.HANDSHAKE)
 
-        private val EMPTY = Report<Nothing>(Action.CONTINUE, 0, 0)
+        private val EMPTY = Report<Nothing>(Action.CONTINUE)
 
         @JvmStatic
         fun <C> handshake(): Report<C> = HANDSHAKE
@@ -141,7 +138,7 @@ class InternalInterval(
             else -> _state
         }
 
-    @Throws(IOException::class)
+    @Throws(CradleStorageException::class)
     fun updateState(newState: RecoveryState, worker: IntervalsWorker) {
         val serializedState = stateService.serialize(newState)
         LOGGER.trace { "Updating state for interval ${original.toLogString()}: $serializedState" }
@@ -149,7 +146,7 @@ class InternalInterval(
         _state = newState
     }
 
-    @Throws(IOException::class)
+    @Throws(CradleStorageException::class)
     fun processed(processed: Boolean, worker: IntervalsWorker) {
         LOGGER.trace { "Updating processed status for interval ${original.toLogString()}: value=$processed" }
         original = worker.setIntervalProcessed(original, processed)
@@ -157,7 +154,7 @@ class InternalInterval(
 
     companion object {
         private val LOGGER = KotlinLogging.logger { }
-        private fun Interval.toLogString(): String = "(from: $startTime; to: $endTime)"
+        private fun Interval.toLogString(): String = "(from: $start; to: $end)"
     }
 }
 

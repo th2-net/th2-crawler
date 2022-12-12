@@ -20,24 +20,26 @@ import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.Message
 import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.common.message.toTimestamp
+import com.exactpro.th2.crawler.CrawlerManager.BOOK_NAME
 import com.exactpro.th2.crawler.createMessageID
 import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId
-import com.exactpro.th2.crawler.state.v1.StreamKey
-import com.exactpro.th2.dataprovider.grpc.MessageGroupItem
-import com.exactpro.th2.dataprovider.grpc.MessageGroupResponse
-import com.exactpro.th2.dataprovider.grpc.MessageSearchResponse
-import com.exactpro.th2.dataprovider.grpc.MessageStream
-import com.exactpro.th2.dataprovider.grpc.MessageStreamPointer
-import com.exactpro.th2.dataprovider.grpc.MessageStreamPointers
+import com.exactpro.th2.crawler.state.v2.StreamKey
+import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupItem
+import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupResponse
+import com.exactpro.th2.dataprovider.lw.grpc.MessageSearchResponse
+import com.exactpro.th2.dataprovider.lw.grpc.MessageStream
+import com.exactpro.th2.dataprovider.lw.grpc.MessageStreamPointer
+import com.exactpro.th2.dataprovider.lw.grpc.MessageStreamPointers
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 import java.time.Instant
 
 class TestMessagesCrawlerData {
+    private val timestamp: Instant = Instant.now()
     private val responses: Collection<MessageSearchResponse> =
         ArrayList<MessageSearchResponse>().apply {
             repeat(10) {
-                add(message(it.toLong()))
+                add(message(it.toLong(), timestamp = timestamp))
             }
             val allIds = this.mapNotNull { if (it.hasMessage()) it.message.messageId else null }
             add(
@@ -62,19 +64,22 @@ class TestMessagesCrawlerData {
             responses.iterator(), emptyMap(), CrawlerId.newBuilder()
                 .setName("test")
                 .build(),
-            oneMessageSize * 2 /*2 msg per request*/ + oneMessageSize / 2 /*for request*/
+            oneMessageSize * 2 + 10
         ) { true }
 
         val dataParts = data.asSequence().toList()
-        Assertions.assertEquals(5, dataParts.size)
+        assertInOrder(dataParts)
+        Assertions.assertEquals(10, dataParts.size)
         val continuation: MessagesCrawlerData.ResumeMessageIDs? = data.continuation
         Assertions.assertNotNull(continuation) { "continuation is null" }
         continuation!!
         Assertions.assertEquals(
             mapOf(
-                StreamKey("test", Direction.FIRST) to MessageID.newBuilder()
+                StreamKey(BOOK_NAME, "test", Direction.FIRST) to MessageID.newBuilder()
                     .setDirection(Direction.FIRST)
+                    .setBookName(BOOK_NAME)
                     .setSequence(9)
+                    .setTimestamp(timestamp.toTimestamp())
                     .setConnectionId(ConnectionID.newBuilder().setSessionAlias("test"))
                     .build()
             ),
@@ -82,9 +87,25 @@ class TestMessagesCrawlerData {
         )
     }
 
-    private fun message(sequence: Long, alias: String = "test", name: String = "test_message"): MessageSearchResponse {
+    private fun assertInOrder(dataParts: List<MessagesCrawlerData.MessagePart>) {
+        var lastSeq = -1L
+        for (part in dataParts) {
+            for (msg in part.request.messageDataList) {
+                val sequence = msg.messageId.sequence
+                Assertions.assertTrue(lastSeq < sequence) { "Unordered sequences: $lastSeq and $sequence" }
+                lastSeq = sequence
+            }
+        }
+    }
+
+    private fun message(
+        sequence: Long,
+        alias: String = "test",
+        name: String = "test_message",
+        timestamp: Instant = Instant.now()
+    ): MessageSearchResponse {
         val direction = Direction.FIRST
-        val messageID = createMessageID(alias, direction, sequence)
+        val messageID = createMessageID(alias, direction, sequence, timestamp = timestamp)
         return MessageSearchResponse.newBuilder()
             .setMessage(
                 MessageGroupResponse.newBuilder()
@@ -97,7 +118,6 @@ class TestMessagesCrawlerData {
                             }
                         })
                     )
-                .setTimestamp(Instant.now().toTimestamp())
                 .build())
             .build()
     }

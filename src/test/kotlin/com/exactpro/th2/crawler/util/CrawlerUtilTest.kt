@@ -20,8 +20,7 @@ import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.Direction.FIRST
 import com.exactpro.th2.common.grpc.Direction.SECOND
 import com.exactpro.th2.common.message.toTimestamp
-import com.exactpro.th2.dataprovider.grpc.MessageGroupResponse
-import com.exactpro.th2.dataprovider.grpc.MessageStreamPointers
+import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupResponse
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 import java.time.Instant
@@ -35,8 +34,8 @@ class CrawlerUtilTest {
              A:FIRST ordered
              A:SECOND only one
              B:FIRST has a gap
-             C:FIRST unorderd internal
-             D:SECOND unorderd with A
+             C:FIRST unordered internal
+             D:SECOND unordered with A
              */
             createMessageData("A", FIRST, 1, "1970-01-01T00:00:00Z"),
             createMessageData("D", SECOND, 50, "1970-01-01T00:00:10Z"),
@@ -46,7 +45,8 @@ class CrawlerUtilTest {
             createMessageData("B", FIRST, 32, "1970-01-01T00:00:04Z"),
             createMessageData("C", FIRST, 41, "1970-01-01T00:00:06Z"),
             createMessageData("C", FIRST, 42, "1970-01-01T00:00:05Z"),
-        ), MessageStreamPointers.getDefaultInstance()).toCompactString()
+        )
+        ).toCompactString()
 
         Assertions.assertEquals("""
             Search result: 
@@ -76,8 +76,8 @@ class CrawlerUtilTest {
 
     private fun createMessageData(sessionAlias: String, direction: Direction, sequence: Long, timestamp: String): MessageGroupResponse =
         MessageGroupResponse.newBuilder().apply {
-            this.timestamp = Instant.parse(timestamp).toTimestamp()
             messageIdBuilder.apply {
+                this.timestamp = Instant.parse(timestamp).toTimestamp()
                 this.direction = direction
                 this.sequence = sequence
                 connectionIdBuilder.apply {

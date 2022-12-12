@@ -27,10 +27,11 @@ import com.exactpro.th2.crawler.events.strategy.EventsCrawlerData.EventPart;
 import com.exactpro.th2.crawler.events.strategy.EventsCrawlerData.ResumeEventId;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
 import com.exactpro.th2.crawler.state.StateService;
-import com.exactpro.th2.crawler.state.v1.RecoveryState;
-import com.exactpro.th2.dataprovider.grpc.DataProviderService;
+import com.exactpro.th2.crawler.state.v2.RecoveryState;
+import com.exactpro.th2.dataprovider.lw.grpc.DataProviderService;
 import com.google.auto.service.AutoService;
 
+@SuppressWarnings("unused")
 @AutoService(DataTypeStrategyFactory.class)
 public class EventsStrategyFactory implements DataTypeStrategyFactory<ResumeEventId, EventPart> {
     @NotNull

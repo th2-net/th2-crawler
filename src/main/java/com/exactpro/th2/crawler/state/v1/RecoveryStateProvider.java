@@ -17,13 +17,14 @@
 package com.exactpro.th2.crawler.state.v1;
 
 import com.exactpro.th2.crawler.state.BaseState;
+import com.exactpro.th2.crawler.state.StateConverter;
 import com.exactpro.th2.crawler.state.StateProvider;
-import com.exactpro.th2.crawler.state.StdStateConverter;
+import com.exactpro.th2.crawler.state.StateService;
 import com.exactpro.th2.crawler.state.Version;
 import com.google.auto.service.AutoService;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
+@SuppressWarnings("unused")
 @AutoService(StateProvider.class)
 public class RecoveryStateProvider implements StateProvider {
     @NotNull
@@ -38,9 +39,8 @@ public class RecoveryStateProvider implements StateProvider {
         return RecoveryState.class;
     }
 
-    @Nullable
     @Override
-    public StdStateConverter<RecoveryState, BaseState> getConverter() {
-        return null;
+    public StateConverter<BaseState, BaseState> getConverter() {
+        return StateService.unsupportedMigrationTo(Version.V_2);
     }
 }

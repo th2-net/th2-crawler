@@ -16,18 +16,20 @@
 @file:JvmName("CrawlerUtilKt")
 package com.exactpro.th2.crawler.util
 
-import com.exactpro.th2.dataprovider.grpc.MessageGroupResponse
+import com.exactpro.th2.common.util.toInstant
+import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupResponse
 import com.google.protobuf.Timestamp
-import java.time.Instant
+import com.google.protobuf.util.Timestamps
+import java.util.stream.Stream
 
 fun SearchResult<MessageGroupResponse>.toCompactString(): String {
     val unorderedMessages = data.asSequence()
         .windowed(2, 1)
-        .filter { (first, second) -> first.timestamp.toInstant().isAfter(second.timestamp.toInstant()) }
-        .map { (first, second) -> "${first.extractIdWithTimstamp()} - ${second.extractIdWithTimstamp()}" }
+        .filter { (first, second) -> first.messageId.timestamp.toInstant().isAfter(second.messageId.timestamp.toInstant()) }
+        .map { (first, second) -> "${first.extractIdWithTimestamp()} - ${second.extractIdWithTimestamp()}" }
         .toList()
 
-    val timestamps = data.map { it.timestamp.toInstant() }
+    val timestamps = data.map { it.messageId.timestamp.toInstant() }
 
     val streams = data
         .groupBy { Pair(it.messageId.connectionId.sessionAlias, it.messageId.direction) }
@@ -43,7 +45,7 @@ fun SearchResult<MessageGroupResponse>.toCompactString(): String {
                 .toList()
                 .let { if (it.isNotEmpty()) "gaps=$it" else "" }
 
-            val messageTimestamps = elements.map { it.timestamp.toInstant() }
+            val messageTimestamps = elements.map { it.messageId.timestamp.toInstant() }
             """
                 |    $sessionAlias:$direction
                 |      sequences: $min..$max count=${sequences.size} $gaps
@@ -71,5 +73,7 @@ fun SearchResult<MessageGroupResponse>.toCompactString(): String {
     return builder.toString()
 }
 
-private fun Timestamp.toInstant() = Instant.ofEpochSecond(seconds, nanos.toLong())
-private fun MessageGroupResponse.extractIdWithTimstamp() = "${messageId.connectionId.sessionAlias}:${messageId.direction}:${messageId.sequence}(${timestamp.toInstant()})"
+fun Stream<Timestamp>.maxOrDefault(default: Timestamp): Timestamp
+    = sorted { timestampA, timestampB -> Timestamps.compare(timestampA, timestampB) }
+        .findFirst().orElse(default)
+private fun MessageGroupResponse.extractIdWithTimestamp() = "${messageId.connectionId.sessionAlias}:${messageId.direction}:${messageId.sequence}(${messageId.timestamp.toInstant()})"

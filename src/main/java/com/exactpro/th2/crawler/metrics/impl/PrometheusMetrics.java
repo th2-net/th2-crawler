@@ -18,16 +18,15 @@ package com.exactpro.th2.crawler.metrics.impl;
 
 import static com.exactpro.th2.common.metrics.CommonMetrics.*;
 
-import java.io.IOException;
-
 import com.exactpro.cradle.intervals.Interval;
+import com.exactpro.cradle.utils.CradleStorageException;
 import com.exactpro.th2.common.grpc.Direction;
 import com.exactpro.th2.crawler.DataType;
 import com.exactpro.th2.crawler.exception.UnexpectedDataProcessorException;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
 import com.exactpro.th2.crawler.util.CrawlerUtils;
-import com.exactpro.th2.dataprovider.grpc.EventResponse;
-import com.exactpro.th2.dataprovider.grpc.MessageGroupResponse;
+import com.exactpro.th2.dataprovider.lw.grpc.EventResponse;
+import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupResponse;
 
 import io.prometheus.client.Counter;
 import io.prometheus.client.Gauge;
@@ -90,12 +89,12 @@ public class PrometheusMetrics implements CrawlerMetrics {
                 .set(messageData.getMessageId().getSequence());
         lastMessageTimestamp
                 .labels(labels)
-                .set(CrawlerUtils.fromTimestamp(messageData.getTimestamp()).toEpochMilli());
+                .set(CrawlerUtils.fromTimestamp(messageData.getMessageId().getTimestamp()).toEpochMilli());
     }
 
     @Override
     public void currentInterval(Interval interval) {
-        lastIntervalTimestamp.set(interval.getEndTime().toEpochMilli());
+        lastIntervalTimestamp.set(interval.getEnd().toEpochMilli());
     }
 
     @Override
@@ -115,21 +114,15 @@ public class PrometheusMetrics implements CrawlerMetrics {
 
     @Override
     public <T> T measureTime(DataType dataType, Method method, CrawlerDataOperation<T> function) {
-        Timer timer = processingTime.labels(dataType.getTypeName(), method.name()).startTimer();
-        try {
+        try(Timer ignored = processingTime.labels(dataType.getTypeName(), method.name()).startTimer()) {
             return function.call();
-        } finally {
-            timer.observeDuration();
         }
     }
 
     @Override
-    public <T> T measureTimeWithException(DataType dataType, Method method, CrawlerDataOperationWithException<T> function) throws IOException, UnexpectedDataProcessorException {
-        Timer timer = processingTime.labels(dataType.getTypeName(), method.name()).startTimer();
-        try {
+    public <T> T measureTimeWithException(DataType dataType, Method method, CrawlerDataOperationWithException<T> function) throws UnexpectedDataProcessorException, CradleStorageException {
+        try(Timer ignored = processingTime.labels(dataType.getTypeName(), method.name()).startTimer()) {
             return function.call();
-        } finally {
-            timer.observeDuration();
         }
     }
 

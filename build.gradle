@@ -25,21 +25,21 @@ compileTestKotlin {
 }
 
 ext {
-    cradleVersion = '3.1.2'
-    grpcCrawlerVersion = '0.3.1-update-rpt-grpc-SNAPSHOT'
-    sharedDir = file("${project.rootDir}/shared")
+    cradleVersion = '5.0.0-dev-version-5-3647077177-ccc371b-SNAPSHOT'
+    grpcCrawlerVersion = '1.0.0-TH2-4500-migrate-crawler-to-book-and-page-SNAPSHOT'
 }
 
 dependencies {
     // BOM with external dependencies restrictions
-    api platform('com.exactpro.th2:bom:3.1.0-TH2-3093-1766515619-SNAPSHOT')
+    api platform('com.exactpro.th2:bom:4.0.2')
 
     api "com.exactpro.th2:cradle-core:${cradleVersion}"
 
     implementation "com.exactpro.th2:cradle-cassandra:${cradleVersion}"
 
     // the library for interaction with infra API
-    implementation('com.exactpro.th2:common:3.39.3') {
+    implementation('com.exactpro.th2:common:5.0.0-dev-version-5-3539375667-SNAPSHOT') {
+        exclude group: 'org.apache.logging.log4j', module: 'log4j-slf4j-impl'
         exclude group: 'com.exactpro.th2', module: 'cradle-cassandra'
         exclude group: 'com.exactpro.th2', module: 'cradle-core'
     }
@@ -53,16 +53,10 @@ dependencies {
     }
 
     // Logging. All versions are specified in BOM dependency
-    implementation "org.slf4j:slf4j-log4j12"
     implementation "org.slf4j:slf4j-api"
 
     // Idiomatic logging for Kotlin. Wraps slf4j
-    implementation 'io.github.microutils:kotlin-logging:2.0.4'
-
-    implementation "org.jetbrains.kotlin:kotlin-stdlib"
-    implementation("org.jetbrains.kotlin:kotlin-reflect") {
-        because('the old kotlin version in classpath')
-    }
+    implementation 'io.github.microutils:kotlin-logging:3.0.4'
 
     implementation('io.prometheus:simpleclient') {
         because('metrics to export')
@@ -72,11 +66,13 @@ dependencies {
         because('default max message size constant')
     }
 
-    compileOnly 'com.google.auto.service:auto-service-annotations:1.0'
+    compileOnly 'com.google.auto.service:auto-service-annotations:1.0.1'
     kapt 'com.google.auto.service:auto-service:1.0'
     annotationProcessor 'com.google.auto.service:auto-service:1.0'
 
-    testImplementation 'org.junit.jupiter:junit-jupiter:5.6.0'
+    testImplementation 'org.apache.logging.log4j:log4j-slf4j2-impl'
+    testImplementation 'org.apache.logging.log4j:log4j-core'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.9.0'
 
     // https://mvnrepository.com/artifact/org.mockito/mockito-core
     testImplementation group: 'org.mockito', name: 'mockito-core', version: '3.11.2'

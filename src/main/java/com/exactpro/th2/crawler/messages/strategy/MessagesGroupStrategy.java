@@ -1,5 +1,5 @@
 /*
- *  Copyright 2021 Exactpro (Exactpro Systems Limited)
+ *  Copyright 2022 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,8 +16,6 @@
 
 package com.exactpro.th2.crawler.messages.strategy;
 
-import com.exactpro.th2.common.grpc.ConnectionID;
-import com.exactpro.th2.common.grpc.Direction;
 import com.exactpro.th2.common.grpc.MessageID;
 import com.exactpro.th2.crawler.CrawlerConfiguration;
 import com.exactpro.th2.crawler.CrawlerData;
@@ -31,20 +29,17 @@ import com.exactpro.th2.crawler.util.CrawlerUtils;
 import com.exactpro.th2.crawler.util.MessagesSearchParameters;
 import com.exactpro.th2.dataprovider.lw.grpc.DataProviderService;
 import com.google.protobuf.Timestamp;
-import com.google.protobuf.util.Timestamps;
 import org.apache.commons.lang3.StringUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Collection;
-import java.util.HashMap;
+import java.util.Collections;
 import java.util.Map;
-import java.util.function.Consumer;
 
 import static java.util.Objects.requireNonNull;
 
-public class MessagesStrategy extends AbstractMessagesStrategy {
-    public MessagesStrategy(
+public class MessagesGroupStrategy extends AbstractMessagesStrategy {
+    public MessagesGroupStrategy(
             @NotNull DataProviderService provider,
             @NotNull CrawlerMetrics metrics,
             @NotNull CrawlerConfiguration config
@@ -53,65 +48,35 @@ public class MessagesStrategy extends AbstractMessagesStrategy {
         if (StringUtils.isBlank(config.getBook())) {
             throw new IllegalArgumentException("The 'book' property in configuration can not be blank");
         }
-        if (config.getSessionAliases().isEmpty()) {
-            throw new IllegalArgumentException("The 'sessionAliases' property in configuration can not be empty");
+        if (config.getGroups().isEmpty()) {
+            throw new IllegalArgumentException("The 'groups' property in configuration can not be empty");
         }
     }
 
     @NotNull
     @Override
-    public CrawlerData<ResumeMessageIDs, MessagePart> requestData(
-            @NotNull Timestamp start,
-            @NotNull Timestamp end,
-            @NotNull DataParameters parameters,
-            @Nullable ResumeMessageIDs continuation
-    ) {
+    public CrawlerData<ResumeMessageIDs, MessagePart> requestData(@NotNull Timestamp start, @NotNull Timestamp end, @NotNull DataParameters parameters,
+                                                                  @Nullable ResumeMessageIDs continuation) {
         requireNonNull(start, "'start' parameter");
         requireNonNull(end, "'end' parameter");
         requireNonNull(parameters, "'parameters' parameter");
         Map<StreamKey, MessageID> resumeIds = continuation == null ? null : continuation.getIds();
-        Map<StreamKey, MessageID> startIDs = resumeIds == null ? initialStartIds(config.getBook(), config.getSessionAliases()) : resumeIds;
+        Map<StreamKey, MessageID> startIDs = resumeIds == null ? Collections.emptyMap() : resumeIds; //TODO: remove start ids
         MessagesSearchParameters searchParams = MessagesSearchParameters.builder()
                 .setFrom(start)
                 .setTo(end)
-                .setBook(config.getBook())
                 .setResumeIds(resumeIds)
-                .setStreamIds(config.getSessionAliases())
+                .setBook(config.getBook())
+                .setStreamIds(config.getGroups())
                 .build();
 
         NameFilter filter = config.getFilter();
         return new MessagesCrawlerData(
-                CrawlerUtils.searchByAliases(provider, searchParams, metrics),
+                CrawlerUtils.searchByGroups(provider, searchParams, metrics),
                 startIDs,
                 parameters.getCrawlerId(),
                 config.getMaxOutgoingDataSize(),
                 msg -> filter == null || filter.accept(msg.getMetadata().getMessageType())
         );
-    }
-
-    private Map<StreamKey, MessageID> initialStartIds(String book, Collection<String> aliases) {
-        Map<StreamKey, MessageID> ids = new HashMap<>(aliases.size() * 2);
-        for (String sessionAlias : aliases) {
-            ConnectionID connectionID = ConnectionID.newBuilder().setSessionAlias(sessionAlias).build();
-            Consumer<Direction> addIdAction = direction -> ids.put(
-                    new StreamKey(book, sessionAlias, direction),
-                    createMessageId(book, connectionID, direction)
-            );
-            addIdAction.accept(Direction.FIRST);
-            addIdAction.accept(Direction.SECOND);
-        }
-
-        return ids;
-    }
-
-    @NotNull
-    private MessageID createMessageId(String book, ConnectionID connectionID, Direction direction) {
-        return MessageID.newBuilder()
-                .setBookName(book)
-                .setDirection(direction)
-                .setSequence(-1)
-                .setTimestamp(Timestamps.EPOCH)
-                .setConnectionId(connectionID)
-                .build();
     }
 }

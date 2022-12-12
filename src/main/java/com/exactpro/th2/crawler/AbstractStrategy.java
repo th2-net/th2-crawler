@@ -71,7 +71,7 @@ public abstract class AbstractStrategy<C extends Continuation, P extends DataPar
                 S response = data.next();
                 updateState(response);
                 VALUE value = extractValue(response);
-                if (value != null) {
+                if (value != null && checkValue(value)) {
                     elements++;
                     VALUE filtered = filterValue(value);
                     if (filtered == null) {
@@ -116,7 +116,7 @@ public abstract class AbstractStrategy<C extends Continuation, P extends DataPar
                             + " Last value: " + extractId(last)
                     );
                 }
-                cache.addLast(last); // put back to the cache to send next try
+                cache.addFirst(last); // put back to the cache to send next try
                 pushedBackSize += last.getSerializedSize();
             }
             currentValuesSize = pushedBackSize;
@@ -129,6 +129,8 @@ public abstract class AbstractStrategy<C extends Continuation, P extends DataPar
 
         @Nullable
         protected abstract VALUE extractValue(S response);
+
+        protected abstract boolean checkValue(VALUE value);
 
         protected abstract int extractCount(VALUE value);
 

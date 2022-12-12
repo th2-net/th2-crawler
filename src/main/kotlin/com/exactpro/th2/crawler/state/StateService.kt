@@ -16,7 +16,7 @@
 
 package com.exactpro.th2.crawler.state
 
-import com.exactpro.th2.dataprovider.grpc.DataProviderService
+import com.exactpro.th2.dataprovider.lw.grpc.DataProviderService
 import com.fasterxml.jackson.databind.DeserializationContext
 import com.fasterxml.jackson.databind.JavaType
 import com.fasterxml.jackson.databind.SerializationFeature
@@ -176,7 +176,7 @@ class StateService<CUR : BaseState>(
     private class UnsupportedMigrationConverter<IN, OUT> (
         override val target: VersionMarker
     ) : StateConverter<IN, OUT> {
-        override fun convert(input: IN, dataProvider: DataProviderService): OUT = throw error(UNSUPPORTED_MIGRATION_ERROR_MESSAGE)
+        override fun convert(input: IN, dataProvider: DataProviderService): OUT = error(UNSUPPORTED_MIGRATION_ERROR_MESSAGE)
     }
 
     companion object {
