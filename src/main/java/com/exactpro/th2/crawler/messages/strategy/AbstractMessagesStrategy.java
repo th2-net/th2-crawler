@@ -55,6 +55,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static com.exactpro.th2.common.message.MessageUtils.toTimestamp;
 import static com.exactpro.th2.common.util.StorageUtils.toInstant;
 import static java.util.Objects.requireNonNull;
 import static java.util.Objects.requireNonNullElse;
@@ -103,7 +104,9 @@ public abstract class AbstractMessagesStrategy extends AbstractStrategy<Messages
 
     @NotNull
     @Override
-    public RecoveryState continuationToState(@Nullable RecoveryState current, @NotNull MessagesCrawlerData.ResumeMessageIDs continuation, long processedData) {
+    public RecoveryState continuationToState(@Nullable RecoveryState current,
+                                             @NotNull MessagesCrawlerData.ResumeMessageIDs continuation,
+                                             long processedData) {
         requireNonNull(continuation, "'continuation' parameter");
         if (current == null) {
             Map<StreamKey, MessageID> startIntervalIDs = new HashMap<>(continuation.getStartIDs());
@@ -230,6 +233,7 @@ public abstract class AbstractMessagesStrategy extends AbstractStrategy<Messages
                 .setConnectionId(ConnectionID.newBuilder().setSessionAlias(streamKey.getSessionAlias()))
                 .setDirection(streamKey.getDirection())
                 .setSequence(innerId.getSequence())
+                .setTimestamp(toTimestamp(innerId.getTimestamp()))
                 .build();
     }
 

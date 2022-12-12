@@ -31,6 +31,7 @@ import com.exactpro.th2.crawler.util.CrawlerUtils;
 import com.exactpro.th2.crawler.util.MessagesSearchParameters;
 import com.exactpro.th2.dataprovider.lw.grpc.DataProviderService;
 import com.google.protobuf.Timestamp;
+import com.google.protobuf.util.Timestamps;
 import org.apache.commons.lang3.StringUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -109,6 +110,7 @@ public class MessagesStrategy extends AbstractMessagesStrategy {
                 .setBookName(book)
                 .setDirection(direction)
                 .setSequence(-1)
+                .setTimestamp(Timestamps.EPOCH)
                 .setConnectionId(connectionID)
                 .build();
     }

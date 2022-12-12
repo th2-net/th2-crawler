@@ -21,11 +21,14 @@ import com.exactpro.th2.crawler.state.v2.StreamKey;
 import com.exactpro.th2.dataprovider.lw.grpc.TimeRelation;
 import com.google.protobuf.Timestamp;
 import org.apache.commons.lang3.StringUtils;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Map;
-import java.util.Objects;
+
+import static java.util.Objects.requireNonNull;
 
 public class MessagesSearchParameters {
     private final Timestamp from;
@@ -46,11 +49,11 @@ public class MessagesSearchParameters {
             throw new IllegalArgumentException("either streamIds or resumeIds must be set");
         }
         if (StringUtils.isBlank(book)) { throw new IllegalArgumentException("'book' can't be blank"); }
-        this.from = Objects.requireNonNull(from, "Timestamp 'from' must not be null");
+        this.from = requireNonNull(from, "Timestamp 'from' must not be null");
         this.to = to;
         this.book = book;
-        this.resumeIds = resumeIds;
-        this.streamIds = streamIds;
+        this.resumeIds = requireNonNull(resumeIds, "'streamIds' must not be null");
+        this.streamIds = requireNonNull(streamIds, "'streamIds'' must not be null");
     }
 
     public Timestamp getFrom() {
@@ -62,7 +65,7 @@ public class MessagesSearchParameters {
         return to;
     }
 
-    @Nullable
+    @NotNull
     public Map<StreamKey, MessageID> getResumeIds() {
         return resumeIds;
     }
@@ -71,6 +74,7 @@ public class MessagesSearchParameters {
         return book;
     }
 
+    @NotNull
     public Collection<String> getStreamIds() {
         return streamIds;
     }
@@ -86,8 +90,10 @@ public class MessagesSearchParameters {
     public static class Builder {
         private Timestamp from;
         private Timestamp to;
-        private Map<StreamKey, MessageID> resumeIds;
-        private Collection<String> streamIds;
+        @NotNull
+        private Map<StreamKey, MessageID> resumeIds = Collections.emptyMap();
+        @NotNull
+        private Collection<String> streamIds = Collections.emptyList();
         private String book;
 
         private Builder() {
@@ -104,12 +110,12 @@ public class MessagesSearchParameters {
         }
 
         public Builder setResumeIds(Map<StreamKey, MessageID> resumeIds) {
-            this.resumeIds = resumeIds;
+            this.resumeIds = resumeIds == null ? Collections.emptyMap() : resumeIds;
             return this;
         }
 
         public Builder setStreamIds(Collection<String> streamIds) {
-            this.streamIds = streamIds;
+            this.streamIds = streamIds == null ? Collections.emptyList() : streamIds;
             return this;
         }
 

@@ -225,11 +225,19 @@ public class Crawler {
             case CONTINUE:
                 boolean messages = crawlerType == DataType.MESSAGES;
                 currentInt.processed(true, intervalsWorker);
-                long lastNumberOfEvents = messages ? 0 : processedElements;
-                long lastNumberOfMessages = messages ? processedElements : 0;
                 currentInt.updateState(state == null
-                                ? new RecoveryState(null, null, lastNumberOfEvents, lastNumberOfMessages)
-                                : new RecoveryState(state.getLastProcessedEvent(), state.getLastProcessedMessages(), lastNumberOfEvents, lastNumberOfMessages),
+                                ? new RecoveryState(
+                                        null,
+                                        null,
+                                        messages ? 0 : processedElements,
+                                        messages ? processedElements : 0
+                                    )
+                                : new RecoveryState(
+                                        state.getLastProcessedEvent(),
+                                        state.getLastProcessedMessages(),
+                                        state.getProcessedEvents(),
+                                        state.getProcessedMessages()
+                                    ),
                         intervalsWorker
                 );
                 LOGGER.info("Interval from {}, to {} was processed successfully", interval.getStart(), interval.getEnd());

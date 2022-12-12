@@ -17,15 +17,24 @@ package com.exactpro.th2.crawler
 
 import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.MessageID
+import com.exactpro.th2.common.message.toTimestamp
 import com.exactpro.th2.crawler.CrawlerManager.BOOK_NAME
+import java.time.Instant
 
 @JvmOverloads
-fun createMessageID(sessionAlias: String, direction: Direction, sequence: Long, subSequence: List<Int> = emptyList()): MessageID = MessageID.newBuilder().apply {
+fun createMessageID(
+    sessionAlias: String,
+    direction: Direction,
+    sequence: Long,
+    subSequence: List<Int> = emptyList(),
+    timestamp: Instant = Instant.now()
+): MessageID = MessageID.newBuilder().apply {
     connectionIdBuilder.apply {
         this.sessionAlias = sessionAlias
     }
     this.direction = direction
     this.sequence = sequence
     this.bookName = BOOK_NAME
+    this.timestamp = timestamp.toTimestamp()
     addAllSubsequence(subSequence)
 }.build()

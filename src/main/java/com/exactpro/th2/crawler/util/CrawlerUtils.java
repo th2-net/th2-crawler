@@ -19,6 +19,7 @@ package com.exactpro.th2.crawler.util;
 import com.exactpro.cradle.intervals.Interval;
 import com.exactpro.th2.common.grpc.Direction;
 import com.exactpro.th2.common.grpc.EventID;
+import com.exactpro.th2.common.grpc.MessageID;
 import com.exactpro.th2.common.message.MessageUtils;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics;
 import com.exactpro.th2.crawler.metrics.CrawlerMetrics.ProviderMethod;
@@ -49,6 +50,7 @@ import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import static com.exactpro.th2.crawler.util.CrawlerUtilKt.maxOrDefault;
 import static java.util.Objects.requireNonNullElse;
 
 public class CrawlerUtils {
@@ -102,7 +104,7 @@ public class CrawlerUtils {
             CrawlerMetrics metrics
     ) {
         Builder request = MessageGroupsSearchRequest.newBuilder()
-                .setStartTimestamp(info.getFrom())
+                .setStartTimestamp(maxOrDefault(info.getResumeIds().values().stream().map(MessageID::getTimestamp), info.getFrom()))
                 .setEndTimestamp(info.getTo())
                 .setBookId(BookId.newBuilder().setName(info.getBook()).build())
                 .addAllMessageGroup(Objects.requireNonNull(info.getStreamIds()).stream()
@@ -127,7 +129,7 @@ public class CrawlerUtils {
         }
 
         messageSearchBuilder.setSearchDirection(requireNonNullElse(info.getTimeRelation(), TimeRelation.NEXT));
-        if (info.getStreamIds() != null) {
+        if (!info.getStreamIds().isEmpty()) {
             var builder = MessageStream.newBuilder();
             for (String alias : info.getStreamIds()) {
                 builder.setName(alias);
@@ -137,7 +139,7 @@ public class CrawlerUtils {
         }
 
         MessageSearchRequest request;
-        if (info.getResumeIds() == null || info.getResumeIds().isEmpty()) {
+        if (info.getResumeIds().isEmpty()) {
             request = messageSearchBuilder.build();
         } else {
             request = messageSearchBuilder.addAllStreamPointer(info.getResumeIds().entrySet().stream()

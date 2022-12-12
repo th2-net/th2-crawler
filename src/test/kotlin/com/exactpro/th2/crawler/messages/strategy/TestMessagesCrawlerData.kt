@@ -19,6 +19,7 @@ import com.exactpro.th2.common.grpc.ConnectionID
 import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.Message
 import com.exactpro.th2.common.grpc.MessageID
+import com.exactpro.th2.common.message.toTimestamp
 import com.exactpro.th2.crawler.CrawlerManager.BOOK_NAME
 import com.exactpro.th2.crawler.createMessageID
 import com.exactpro.th2.crawler.dataprocessor.grpc.CrawlerId
@@ -31,12 +32,14 @@ import com.exactpro.th2.dataprovider.lw.grpc.MessageStreamPointer
 import com.exactpro.th2.dataprovider.lw.grpc.MessageStreamPointers
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
+import java.time.Instant
 
 class TestMessagesCrawlerData {
+    private val timestamp: Instant = Instant.now()
     private val responses: Collection<MessageSearchResponse> =
         ArrayList<MessageSearchResponse>().apply {
             repeat(10) {
-                add(message(it.toLong()))
+                add(message(it.toLong(), timestamp = timestamp))
             }
             val allIds = this.mapNotNull { if (it.hasMessage()) it.message.messageId else null }
             add(
@@ -76,6 +79,7 @@ class TestMessagesCrawlerData {
                     .setDirection(Direction.FIRST)
                     .setBookName(BOOK_NAME)
                     .setSequence(9)
+                    .setTimestamp(timestamp.toTimestamp())
                     .setConnectionId(ConnectionID.newBuilder().setSessionAlias("test"))
                     .build()
             ),
@@ -94,9 +98,14 @@ class TestMessagesCrawlerData {
         }
     }
 
-    private fun message(sequence: Long, alias: String = "test", name: String = "test_message"): MessageSearchResponse {
+    private fun message(
+        sequence: Long,
+        alias: String = "test",
+        name: String = "test_message",
+        timestamp: Instant = Instant.now()
+    ): MessageSearchResponse {
         val direction = Direction.FIRST
-        val messageID = createMessageID(alias, direction, sequence)
+        val messageID = createMessageID(alias, direction, sequence, timestamp = timestamp)
         return MessageSearchResponse.newBuilder()
             .setMessage(
                 MessageGroupResponse.newBuilder()
