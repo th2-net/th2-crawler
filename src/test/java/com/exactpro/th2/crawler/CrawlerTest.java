@@ -76,6 +76,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static com.exactpro.th2.common.message.MessageUtils.toTimestamp;
 import static com.exactpro.th2.crawler.CrawlerManager.BOOK_NAME;
@@ -206,7 +207,7 @@ public class CrawlerTest {
         verify(manager.getIntervalsWorkerMock(), times(2))
                 .updateRecoveryState(
                         any(Interval.class),
-                        argThat(argument -> createRecoveryState(Collections.emptyList(), messages).equals(stateService.deserialize(argument)))
+                        argThat(argument -> createMessagesRecoveryState(messages).equals(stateService.deserialize(argument)))
                 );
     }
     @Test
@@ -222,7 +223,7 @@ public class CrawlerTest {
                 createMessage(CrawlerManager.SESSIONS[1], Direction.SECOND, 3, from.plusNanos(3))
         );
 
-        RecoveryState recoveryState = createRecoveryState(Collections.emptyList(), messages);
+        RecoveryState recoveryState = createMessagesRecoveryState(messages);
         CrawlerManager manager = new CrawlerManager(
                 configuration,
                 List.of(createInterval(
@@ -285,7 +286,7 @@ public class CrawlerTest {
         verify(manager.getIntervalsWorkerMock(), times(2))
                 .updateRecoveryState(
                         any(Interval.class),
-                        argThat(argument -> createRecoveryState(Collections.emptyList(), messages).equals(stateService.deserialize(argument)))
+                        argThat(argument -> createMessagesRecoveryState(messages).equals(stateService.deserialize(argument)))
                 );
     }
     @Test
@@ -295,43 +296,47 @@ public class CrawlerTest {
                 .createConfig(from.toString(), DataType.MESSAGES, Collections.emptySet(), toSet(CrawlerManager.GROUPS), Collections.emptySet());
         Instant to = from.plus(Duration.parse(configuration.getDefaultLength()));
 
-        Collection<Message> messages = List.of(
-                createMessage(CrawlerManager.SESSIONS[0], Direction.FIRST, 1, from.plusNanos(1)),
-                createMessage(CrawlerManager.SESSIONS[0], Direction.SECOND, 2, from.plusNanos(2)),
-                createMessage(CrawlerManager.SESSIONS[1], Direction.SECOND, 3, from.plusNanos(3))
+        Collection<Message> messagesBefore = List.of(
+                createMessage(CrawlerManager.SESSIONS[0], Direction.FIRST, 1, from),
+                createMessage(CrawlerManager.SESSIONS[0], Direction.SECOND, 2, from),
+                createMessage(CrawlerManager.SESSIONS[1], Direction.SECOND, 3, from)
         );
+        Collection<Message> messagesAfter = Stream.concat(messagesBefore.stream(), Stream.of(
+                createMessage(CrawlerManager.SESSIONS[1], Direction.SECOND, 4, from),
+                createMessage(CrawlerManager.SESSIONS[1], Direction.FIRST, 5, from)
+        )).collect(Collectors.toList());
 
-        RecoveryState recoveryState = createRecoveryState(Collections.emptyList(), messages);
         CrawlerManager manager = new CrawlerManager(
                 configuration,
                 List.of(createInterval(
                         configuration,
                         from,
                         to,
-                        stateService.serialize(recoveryState))
+                        stateService.serialize(createMessagesRecoveryState(messagesBefore)))
                 )
         );
         Crawler crawler = manager.createCrawler();
 
 
         when(manager.getDataProviderMock().searchMessageGroups(any(MessageGroupsSearchRequest.class)))
-                .thenAnswer(invocation -> Collections.emptyIterator());
+                .thenAnswer(invocation -> new MessageSearchResponseAdapter(messagesAfter).iterator());
 
         crawler.process();
 
         MessageGroupsSearchRequest messageSearchRequest = createMessageGroupsSearchRequest(
                 from,
                 to,
-                messages.stream()
+                messagesBefore.stream()
                         .map(Message::getMetadata)
                         .map(MessageMetadata::getId)
                         .collect(Collectors.toList()));
         verify(manager.getDataProviderMock(), description(messageSearchRequest.toString()))
                 .searchMessageGroups(argThat(argument -> isEqual(messageSearchRequest, argument)));
 
+        RecoveryState recoveryState = createMessagesRecoveryState(messagesAfter);
         verify(
                 manager.getIntervalsWorkerMock(),
-                times(1)
+                times(2)
                     .description(stateService.serialize(recoveryState))
         ).updateRecoveryState(
                 any(Interval.class),
@@ -365,7 +370,7 @@ public class CrawlerTest {
         verify(manager.getIntervalsWorkerMock(), times(2))
                 .updateRecoveryState(
                         any(Interval.class),
-                        argThat(argument -> createRecoveryState(events, Collections.emptyList()).equals(stateService.deserialize(argument)))
+                        argThat(argument -> createEventsRecoveryState(events).equals(stateService.deserialize(argument)))
                 );
     }
     @Test
@@ -381,7 +386,7 @@ public class CrawlerTest {
                 createEvent(CrawlerManager.SCOPES[1], "3", from.plusNanos(2))
         );
 
-        RecoveryState recoveryState = createRecoveryState(events, Collections.emptyList());
+        RecoveryState recoveryState = createEventsRecoveryState(events);
         CrawlerManager manager = new CrawlerManager(
                 configuration,
                 List.of(createInterval(
@@ -420,31 +425,58 @@ public class CrawlerTest {
                 .setRecoveryState(recoveryState)
                 .build();
     }
-    private RecoveryState createRecoveryState(Collection<Event> events, Collection<Message> messages) {
+    private RecoveryState createRecoveryState(
+            InnerEventId lastEvent,
+            Map<StreamKey, InnerMessageId> processedMessages,
+            int eventSize,
+            int messageSize
+    ) {
+        RecoveryState recoveryState = new RecoveryState(
+                lastEvent,
+                processedMessages.isEmpty() ? null : processedMessages,
+                eventSize,
+                messageSize
+        );
+        LOGGER.info("Created recovery state {}", recoveryState);
 
-        Optional<InnerEventId> lastEvent = events.stream()
-                .map(Event::getId)
-                .sorted((eventIdA, eventIdB) -> Timestamps.compare(eventIdB.getStartTimestamp(), eventIdA.getStartTimestamp()) )
-                .map(id -> new InnerEventId(id.getBookName(), id.getScope(), StorageUtils.toInstant(id.getStartTimestamp()), id.getId()))
-                .findFirst();
+        return recoveryState;
+    }
+    private RecoveryState createMessagesRecoveryState(Collection<Message> messages) {
         Map<StreamKey, InnerMessageId> processedMessages = messages.stream()
                 .map(Message::getMetadata)
                 .map(MessageMetadata::getId)
                 .collect(
                         Collectors.toMap(
                                 id -> new StreamKey(id.getBookName(), id.getConnectionId().getSessionAlias(), id.getDirection()),
-                                id -> new InnerMessageId(StorageUtils.toInstant(id.getTimestamp()), id.getSequence())
+                                id -> new InnerMessageId(StorageUtils.toInstant(id.getTimestamp()), id.getSequence()),
+                                (idA, idB) -> {
+                                    int compareResult = idA.getTimestamp().compareTo(idB.getTimestamp());
+                                    if (compareResult < 0) {
+                                        return idB;
+                                    } else if (compareResult > 0) {
+                                        return idA;
+                                    } else {
+                                        return idA.getSequence() > idB.getSequence() ? idA : idB;
+                                    }
+                                }
                         )
                 );
-        RecoveryState recoveryState = new RecoveryState(
-                lastEvent.orElse(null),
-                processedMessages.isEmpty() ? null : processedMessages,
-                events.size(),
-                messages.size()
-        );
-        LOGGER.info("Created recovery state {}", recoveryState);
-
-        return recoveryState;
+        return createRecoveryState(null, processedMessages, 0, messages.size());
+    }
+//    private RecoveryState createMessageGroupsRecoveryState(Collection<Message> messages) {
+//        MessageID lastId = Iterables.getLast(messages).getMetadata().getId();
+//        Map<StreamKey, InnerMessageId> processedMessages = Map.of(
+//                new StreamKey(lastId.getBookName(), lastId.getConnectionId().getSessionAlias(), lastId.getDirection()),
+//                new InnerMessageId(StorageUtils.toInstant(lastId.getTimestamp()), lastId.getSequence()));
+//        return createRecoveryState(Optional.empty(), processedMessages, 0, messages.size());
+//    }
+    private RecoveryState createEventsRecoveryState(Collection<Event> events) {
+        Optional<InnerEventId> lastEvent = events.stream()
+                .map(Event::getId)
+                .sorted((eventIdA, eventIdB) -> Timestamps.compare(eventIdB.getStartTimestamp(), eventIdA.getStartTimestamp()) )
+                .map(id -> new InnerEventId(id.getBookName(), id.getScope(), StorageUtils.toInstant(id.getStartTimestamp()), id.getId()))
+                .findFirst();
+        return createRecoveryState(lastEvent.orElse(null), Collections.emptyMap(), events.size(), 0);
     }
     private MessageSearchRequest createMessageSearchRequest(Instant from, Instant to, List<MessageID> recoveryIds) {
         MessageSearchRequest.Builder builder = MessageSearchRequest.newBuilder()

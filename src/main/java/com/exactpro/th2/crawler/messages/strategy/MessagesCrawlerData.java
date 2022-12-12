@@ -114,6 +114,14 @@ public class MessagesCrawlerData extends AbstractCrawlerData<MessageSearchRespon
     }
 
     @Override
+    protected boolean checkValue(MessageGroupResponse messageGroupResponse) {
+        MessageID id = messageGroupResponse.getMessageId();
+        StreamKey streamKey = new StreamKey(id.getBookName(), id.getConnectionId().getSessionAlias(), id.getDirection());
+        MessageID startId = startIDs.get(streamKey);
+        return startId == null || startId.getSequence() < id.getSequence();
+    }
+
+    @Override
     protected int extractCount(MessageGroupResponse value) {
         return value.getMessageItemCount();
     }

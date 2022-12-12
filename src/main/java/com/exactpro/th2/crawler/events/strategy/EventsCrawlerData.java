@@ -69,6 +69,11 @@ public class EventsCrawlerData extends AbstractCrawlerData<EventSearchResponse, 
     }
 
     @Override
+    protected boolean checkValue(EventResponse eventResponse) {
+        return true;
+    }
+
+    @Override
     protected int extractCount(EventResponse eventResponse) {
         return 1;
     }
