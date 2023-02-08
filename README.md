@@ -61,6 +61,9 @@ filter:
   mode: DROP # ACCEPT
 ```
 
+**aliasAsWildcard: false** - enables alias extraction from provider using the wildcards defined in **sessionAliases** parameter.
+Disabled by default.
+
 ## Configuration update instructions
 
 In order to update **sessionAliases** property, you will need to update the version
