@@ -25,21 +25,21 @@ compileTestKotlin {
 }
 
 ext {
-    cradleVersion = '3.1.2'
+    cradleVersion = '3.1.3-dev-version-3.1-3066856749-57fb640-SNAPSHOT'
     grpcCrawlerVersion = '0.3.1-update-rpt-grpc-SNAPSHOT'
     sharedDir = file("${project.rootDir}/shared")
 }
 
 dependencies {
     // BOM with external dependencies restrictions
-    api platform('com.exactpro.th2:bom:3.1.0-TH2-3093-1766515619-SNAPSHOT')
+    api platform('com.exactpro.th2:bom:4.0.1')
 
     api "com.exactpro.th2:cradle-core:${cradleVersion}"
 
     implementation "com.exactpro.th2:cradle-cassandra:${cradleVersion}"
 
     // the library for interaction with infra API
-    implementation('com.exactpro.th2:common:3.39.3') {
+    implementation('com.exactpro.th2:common:3.41.0') {
         exclude group: 'com.exactpro.th2', module: 'cradle-cassandra'
         exclude group: 'com.exactpro.th2', module: 'cradle-core'
     }
@@ -53,11 +53,10 @@ dependencies {
     }
 
     // Logging. All versions are specified in BOM dependency
-    implementation "org.slf4j:slf4j-log4j12"
     implementation "org.slf4j:slf4j-api"
 
     // Idiomatic logging for Kotlin. Wraps slf4j
-    implementation 'io.github.microutils:kotlin-logging:2.0.4'
+    implementation 'io.github.microutils:kotlin-logging:2.1.21'
 
     implementation "org.jetbrains.kotlin:kotlin-stdlib"
     implementation("org.jetbrains.kotlin:kotlin-reflect") {

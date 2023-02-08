@@ -33,11 +33,13 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Set;
 import java.util.function.BinaryOperator;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import org.apache.commons.io.FilenameUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -77,6 +79,8 @@ import com.exactpro.th2.dataprovider.grpc.MessageSearchResponse;
 import com.exactpro.th2.dataprovider.grpc.MessageStream;
 import com.exactpro.th2.dataprovider.grpc.MessageStreamPointer;
 import com.exactpro.th2.dataprovider.grpc.MessageStreamPointers;
+import com.exactpro.th2.dataprovider.grpc.MessageStreamsRequest;
+import com.exactpro.th2.dataprovider.grpc.MessageStreamsResponse;
 import com.exactpro.th2.dataprovider.grpc.TimeRelation;
 import com.google.protobuf.Timestamp;
 
@@ -150,12 +154,15 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
         requireNonNull(end, "'end' parameter");
         requireNonNull(parameters, "'parameters' parameter");
         Map<StreamKey, MessageID> resumeIds = continuation == null ? null : continuation.getIds();
-        Map<StreamKey, MessageID> startIDs = resumeIds == null ? initialStartIds(start, parameters.getSessionAliases()) : resumeIds;
+        Collection<String> sessionAliases = config.getAliasAsWildcard()
+                ? collectAliases(provider, parameters.getSessionAliases())
+                : parameters.getSessionAliases();
+        Map<StreamKey, MessageID> startIDs = resumeIds == null ? initialStartIds(start, sessionAliases) : resumeIds;
         MessagesSearchParameters searchParams = MessagesSearchParameters.builder()
                 .setFrom(start)
                 .setTo(end)
                 .setResumeIds(resumeIds)
-                .setAliases(parameters.getSessionAliases())
+                .setAliases(sessionAliases)
                 .build();
 
         NameFilter filter = config.getFilter();
@@ -419,5 +426,23 @@ public class MessagesStrategy extends AbstractStrategy<ResumeMessageIDs, Message
                         Entry::getKey,
                         this::toMessageId
                 ));
+    }
+
+    private Collection<String> collectAliases(DataProviderService provider, Collection<String> wildcards) {
+        MessageStreamsResponse messageStreams = provider.getMessageStreams(MessageStreamsRequest.getDefaultInstance());
+        if (messageStreams.getMessageStreamCount() == 0) {
+            return Collections.emptyList();
+        }
+        Collection<String> aliases = new HashSet<>();
+        for (MessageStream stream : messageStreams.getMessageStreamList()) {
+            for (String wildcard : wildcards) {
+                if (FilenameUtils.wildcardMatch(stream.getName(), wildcard)) {
+                    aliases.add(stream.getName());
+                    break;
+                }
+            }
+        }
+        LOGGER.info("Aliases match the wildcard: {}", aliases);
+        return aliases;
     }
 }

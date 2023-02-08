@@ -61,6 +61,9 @@ filter:
   mode: DROP # ACCEPT
 ```
 
+**aliasAsWildcard: false** - enables alias extraction from provider using the wildcards defined in **sessionAliases** parameter.
+Disabled by default.
+
 ## Configuration update instructions
 
 In order to update **sessionAliases** property, you will need to update the version
@@ -150,3 +153,11 @@ spec:
 ### Important notes
 
 Crawler takes events/messages from intervals with startTimestamps >= "from" and < "to" of intervals.
+
+# Release notes
+
+### 0.0.4
+
++ Updated cradle from 3.1.2 to [3.1.3](https://github.com/th2-net/cradleapi/tree/dev-version-3.1#313-this-version-requires-migration-from-previous-versions)
++ Updated th2-common from 3.39.3 to [3.41.0](https://github.com/th2-net/th2-common-j#3410)
++ Updated th2-bom from 3.1.0 to 4.0.1
